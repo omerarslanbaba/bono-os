@@ -108,12 +108,18 @@
   "pendingDependencies": {
     "queueMigration": {
       "pr": 13,
+      "head": "b5ac6d42de3ffcf97fb92cdaa62b72f132ba8845",
+      "status": "implementation-tested-draft-not-integrated",
+      "historicalCommandCount": 270,
       "integrated": false,
-      "reason": "Do not revive or migrate the historical queued commands until Codex queue/history work is explicitly ready."
+      "reason": "PR #13 is based on an older integration head and is not mergeable with the current integration branch. Reconcile conflicts first; preserve durable retirement records and never replay the 270 historical commands implicitly."
     },
     "visionDocs": {
       "pr": 14,
-      "mergedToMain": false
+      "head": "cd41e228fda621da4110167772b801df7d85aba4",
+      "status": "docs-only-draft-mergeable",
+      "mergedToMain": false,
+      "recommendation": "Suitable for separate human-approved merge to main; no runtime code is changed."
     },
     "chromeExtensionAlignment": {
       "ready": false,
