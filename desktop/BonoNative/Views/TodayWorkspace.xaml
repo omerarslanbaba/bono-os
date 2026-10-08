@@ -26,9 +26,9 @@
     <Border Style="{StaticResource KpiCard}" Margin="0,0,10,0"><StackPanel><TextBlock Text="◷  BUGÜNKÜ DURUŞMA" Foreground="#A0A8B0" FontSize="11"/><TextBlock x:Name="TodayHearings" Text="—" Foreground="#F4F6F7" FontSize="29" FontWeight="SemiBold" Margin="0,8,0,0"/></StackPanel></Border>
     <Border Style="{StaticResource KpiCard}" Margin="0,0,10,0"><StackPanel><TextBlock Text="⚖  7 GÜN İÇİNDEKİ DURUŞMA" Foreground="#A0A8B0" FontSize="11"/><TextBlock x:Name="WeekHearings" Text="—" Foreground="#F4F6F7" FontSize="29" FontWeight="SemiBold" Margin="0,8,0,0"/></StackPanel></Border>
     <Border Style="{StaticResource KpiCard}" Margin="0,0,10,0"><StackPanel><TextBlock Text="!  7 GÜN İÇİNDEKİ SÜRE" Foreground="#A0A8B0" FontSize="11"/><TextBlock x:Name="UrgentDeadlines" Text="—" Foreground="#F4F6F7" FontSize="29" FontWeight="SemiBold" Margin="0,8,0,0"/></StackPanel></Border>
-    <Border Style="{StaticResource KpiCard}"><StackPanel><TextBlock Text="✓  BUGÜNKÜ AÇIK İŞ" Foreground="#A0A8B0" FontSize="11"/><TextBlock x:Name="TodayTasks" Text="—" Foreground="#F4F6F7" FontSize="29" FontWeight="SemiBold" Margin="0,8,0,0"/></StackPanel></Border>
+    <Border Style="{StaticResource KpiCard}"><StackPanel><TextBlock Text="✓  BUGÜNKÜ AÇIK İŞ" Foreground="#A0A8B0" FontSize="11"/><TextBlock x:Name="TodayTasks" Text="—" ToolTip="Bu sayaç mevcut API tarafından sağlanmıyor." Foreground="#F4F6F7" FontSize="29" FontWeight="SemiBold" Margin="0,8,0,0"/></StackPanel></Border>
    </UniformGrid>
-   <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+   <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="1.55*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="0.75*"/></Grid.ColumnDefinitions>
     <Border Style="{StaticResource PanelCard}">
      <StackPanel><TextBlock Text="◷   Günlük Özet" FontSize="15" FontWeight="SemiBold" Foreground="#F0F4F6" Margin="0,0,0,15"/>
       <TextBlock x:Name="BriefEmpty" Text="Bugün için kayıt yok." Foreground="#969DA5" Visibility="Collapsed"/>
