@@ -19,6 +19,7 @@ on:
       - 'scripts/test_webview2_uyap_targeted_search_e2e.js'
       - 'scripts/document_view_service_selftest.js'
       - 'scripts/document_view_http_selftest.js'
+      - 'scripts/test_document_view_http_stable.js'
       - 'scripts/test_webview2_archive_route_e2e.js'
       - 'bridge/document_view_service.js'
       - 'bridge/document_view_http.js'
@@ -105,7 +106,7 @@ jobs:
         run: npm run test:document-view-service
 
       - name: Archive document view HTTP security contract
-        run: npm run test:document-view-http
+        run: npm run test:document-view-http-stable
 
       - name: Core route PDF UDF ownership and SHA E2E
         run: npm run test:webview2-archive-route-e2e
