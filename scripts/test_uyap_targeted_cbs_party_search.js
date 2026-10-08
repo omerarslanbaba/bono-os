@@ -36,7 +36,7 @@ db.prepare(`insert into uyap_command_queue(command_type,endpoint_key,payload_jso
 const schema=uyap.cbsPartySearchSchemaStatus();
 must(schema.ready&&schema.cbsSearch.verified&&schema.partyLookup.verified,"observed CBS/party schema not ready");
 must(schema.matching.partyField==="adi"&&schema.matching.mode==="exact_normalized","party matching contract wrong");
-const units=uyap.cbsUnitOptions(99);
+const units=uyap.cbsUnitOptions(1);
 must(units.units.length===1&&units.units[0].birimId==="9000001","observed CBS unit missing");
 
 const privateName="Örnek Hedef Kişi";
