@@ -10,6 +10,8 @@ on:
       - 'scripts/test_web_desktop_case_ui.js'
       - 'scripts/test_web_desktop_hearings.js'
       - 'scripts/test_webview2_uyap_single_case_e2e.js'
+      - 'scripts/test_uyap_single_case_sync.js'
+      - 'package.json'
       - 'bridge/server.js'
       - 'bridge/uyap.js'
       - 'bridge/db.js'
@@ -55,8 +57,11 @@ jobs:
       - name: Verify case document inquiry UI
         run: node scripts/test_web_desktop_case_ui.js
 
+      - name: Isolated SQLite document.list lifecycle fixture
+        run: npm run test:uyap-single-case-sync
+
       - name: Isolated single-case UYAP lifecycle E2E
-        run: node scripts/test_webview2_uyap_single_case_e2e.js
+        run: npm run test:webview2-uyap-e2e
 
       - name: Verify web API URLs stay same-origin
         shell: pwsh
