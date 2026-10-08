@@ -19,9 +19,12 @@ export const api={
   uyapDiscoveryStatus:()=>request('/api/uyap/discovery/status'),
   startUyapDiscovery:(opts={})=>request('/api/uyap/discovery/start',{method:'POST',body:JSON.stringify(opts)}),
   uyapArchiveStatus:()=>request('/api/uyap/archive/status'),
-  startUyapArchive:()=>request('/api/uyap/archive/start',{method:'POST',body:'{}'}),
   uyapCases:()=>request('/api/uyap/cases'),
   uyapRemoteDocuments:caseId=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/remote-documents'),
+  uyapDownloadSummary:caseId=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/download-summary'),
   syncUyapDocuments:caseId=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/sync-documents',{method:'POST',body:'{}'}),
-  downloadUyapDocument:id=>request('/api/uyap/remote-documents/'+encodeURIComponent(id)+'/download',{method:'POST',body:'{}'})
+  queueMissingUyapDocuments:(caseId,limit=200)=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/download-missing',{method:'POST',body:JSON.stringify({limit,confirmed:true})}),
+  pauseUyapDownloads:()=>request('/api/uyap/downloads/pause',{method:'POST',body:'{}'}),
+  resumeUyapDownloads:()=>request('/api/uyap/downloads/resume',{method:'POST',body:JSON.stringify({confirmed:true})}),
+  downloadUyapDocument:id=>request('/api/uyap/remote-documents/'+encodeURIComponent(id)+'/download',{method:'POST',body:JSON.stringify({confirmed:true})})
 };

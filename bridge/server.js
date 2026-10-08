@@ -291,10 +291,10 @@ const server=http.createServer(async(req,res)=>{
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/download-missing$/);
     if(req.method==="POST"&&m){
       const b=await readBody(req);
+      if(b.confirmed!==true) return json(res,409,{error:"Evrak batch kuyruğu için açık kullanıcı onayı gerekli."});
       const caseId=Number(m[1]),limit=Math.max(1,Math.min(200,Number(b.limit)||200));
-      uyap.setManualDownloadPause(false,"");
       const out=uyap.enqueuePendingDownloads(caseId,limit);
-      audit("lawyer","uyap_download_case_batch","case",caseId,{limit,queued:out.queued});
+      audit("lawyer","uyap_download_case_batch","case",caseId,{limit,queued:out.queued,manualDownloadPaused:uyap.sessionState().manualDownloadPaused});
       return json(res,202,{ok:true,...out});
     }
     if(req.method==="POST"&&p==="/api/uyap/downloads/pause"){
@@ -302,13 +302,18 @@ const server=http.createServer(async(req,res)=>{
       return json(res,200,out);
     }
     if(req.method==="POST"&&p==="/api/uyap/downloads/resume"){
+      const b=await readBody(req);
+      if(b.confirmed!==true) return json(res,409,{error:"UYAP indirmelerini devam ettirmek için açık kullanıcı onayı gerekli."});
       const out=uyap.setManualDownloadPause(false,"");
+      audit("lawyer","uyap_downloads_resume","uyap",null,{confirmed:true});
       return json(res,200,out);
     }
     m=p.match(/^\/api\/uyap\/remote-documents\/(\d+)\/download$/);
     if(req.method==="POST"&&m){
+      const b=await readBody(req);
+      if(b.confirmed!==true) return json(res,409,{error:"UYAP evrak indirme kuyruğu için açık kullanıcı onayı gerekli."});
       const id=uyap.enqueueRemoteDocumentDownload(Number(m[1]));
-      audit("lawyer","uyap_download_document","uyap_remote_document",m[1],{commandId:id});
+      audit("lawyer","uyap_download_document","uyap_remote_document",m[1],{commandId:id,confirmed:true,manualDownloadPaused:uyap.sessionState().manualDownloadPaused});
       return json(res,202,{ok:true,id});
     }
     if(req.method==="POST"&&p==="/api/uyap/hearings/sync-range"){

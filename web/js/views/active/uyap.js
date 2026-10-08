@@ -7,7 +7,7 @@ function discoveryBar(s,a){
   const c=a.cbs||{};
   const cbsUnits=(c.units?.queued||0)+(c.units?.running||0);
   const cbsSearch=(c.search?.queued||0)+(c.search?.running||0);
-  const state=active?'Tam arşiv senkronizasyonu çalışıyor':'Tam arşiv senkronizasyonu hazır';
+  const state=active?'UYAP dosya sorgulaması çalışıyor':'UYAP dosya sorgulaması hazır';
   const detail=`Keşif: ${d.completed||0} tamamlandı · ${d.queued||0} bekliyor · CBS birim: ${cbsUnits} · CBS dosya: ${cbsSearch} · Hata: ${a.failedCommands||0}`;
   return `<div class="uyap-discovery">
     <div class="uyap-discovery-stats">
@@ -20,7 +20,8 @@ function discoveryBar(s,a){
     </div>
     <div class="uyap-discovery-actions">
       <span class="discovery-state">${esc(state)}<small>${esc(detail)}</small></span>
-      <button id="syncAllUyap" class="primary-action" ${active?'disabled':''}>Tam UYAP Arşivini Başlat</button>
+      <button id="syncAllUyap" class="primary-action" ${active?'disabled':''}>Tüm Dosya ve Evrak Listelerini Sorgula</button>
+      <small class="discovery-safe-note">Bu işlem yalnız dosya/evrak listelerini sorgular; PDF/UDF indirme başlatmaz.</small>
     </div>
   </div>`;
 }
@@ -154,8 +155,8 @@ export async function renderUyap(id){
   document.querySelector('#syncAllUyap')?.addEventListener('click',async e=>{
     e.currentTarget.disabled=true;e.currentTarget.textContent='Senkronizasyon başlatılıyor…';
     try{
-      await api.startUyapArchive();
-      e.currentTarget.textContent='Senkronizasyon arka planda çalışıyor';
+      await api.startUyapDiscovery({statuses:[0,1],syncDocuments:true});
+      e.currentTarget.textContent='Dosya ve evrak listeleri sorgulanıyor';
     }catch(err){alert(err.message);e.currentTarget.disabled=false}
   });
 }
@@ -186,7 +187,7 @@ function bindDocumentTree(){
 }
 
 async function renderCase(id){
-  const [docs,finance,cases]=await Promise.all([api.uyapRemoteDocuments(id),api.accountingOverview(id),api.uyapCases()]);
+  const [docs,finance,cases,downloadSummary]=await Promise.all([api.uyapRemoteDocuments(id),api.accountingOverview(id),api.uyapCases(),api.uyapDownloadSummary(id)]);
   const file=cases.find(x=>String(x.id)===String(id))||{};
   const status=v=>({discovered:'İndirilecek',download_queued:'İndirme kuyruğunda',downloaded:'İndirildi',indexed:'İndekslendi',filed:'Arşivlendi',summarized:'Nota dönüştürüldü',duplicate:'Mükerrer',skipped:'Arşiv dışı',review:'İnceleme gerekli'}[String(v||'').toLowerCase()]||v||'Keşfedildi');
 
@@ -199,16 +200,37 @@ async function renderCase(id){
   const pending=(finance.pending||[]).map(x=>`<div class="notice-row accounting-row"><div><div class="doc-title">${esc(x.remote_title||x.document_type||x.original_file_name||'Mali evrak')}</div><div class="doc-meta">${esc(x.document_date||'Tarih yok')}</div><div class="accounting-source">${esc(x.reason||'İnceleme bekliyor')}</div></div>${badge('İnceleme bekliyor')}</div>`).join('');
   const financeBody=(converted||pending)?`<div class="case-finance-grid"><div>${section('Otomatik Notlar','₺',converted||empty('Bu dosyada otomatik mali not yok.'))}</div><div>${section('İnceleme Bekleyenler','!',pending||empty('Bu dosyada inceleme bekleyen mali evrak yok.'))}</div></div>`:empty('Bu dosyada tahsilat/reddiyat kaydı yok.');
 
+  const missing=Number(downloadSummary.missingDownloadable||0);
+  const activeDownloads=Number(downloadSummary.activeCommands||0);
+  const capacity=Number(downloadSummary.capacity||0);
+  const manualPaused=!!downloadSummary.manualDownloadPaused;
   const tabs=`<div class="case-tabs"><button class="case-tab active" data-file-tab="documents">Evraklar <span>${docs.length}</span></button><button class="case-tab" data-file-tab="finance">Tahsilat / Reddiyat <span>${(finance.counts?.converted||0)+(finance.counts?.pending||0)}</span></button></div>`;
+  const downloadActions=`<div class="file-actionbar">
+    <button id="syncUyapDocs" class="primary-action" ${file.uyap_dosya_id?'':'disabled'}>${file.uyap_dosya_id?'Evrak Listesini Yenile':'UYAP bağlantısı bulunamadı'}</button>
+    <button id="queueMissingUyapDocs" class="subtle-action" ${missing>0&&capacity>0?'':'disabled'}>Eksik Evrakları Kuyruğa Ekle (en fazla ${Math.min(200,capacity)})</button>
+    <button id="${manualPaused?'resumeUyapDownloads':'pauseUyapDownloads'}" class="subtle-action">${manualPaused?'İndirmeleri Devam Ettir':'İndirmeleri Duraklat'}</button>
+    <span class="download-safety-state">Toplam ${downloadSummary.total||0} · BONO’da ${downloadSummary.existing||0} · Eksik ${missing} · Aktif ${activeDownloads}/200 · ${manualPaused?'İndirmeler duraklatıldı':'İndirmeler açık'}</span>
+  </div>`;
   const related=(file.related_cases||[]).map(x=>`<a class="notice-row clickable" href="#uyap/${x.caseId}"><div><div class="doc-title">Bağlantılı Arabuluculuk Dosyası · ${esc(x.courtFileNo||'')}</div><div class="doc-meta">${esc(x.court||'')} · ${esc(x.caseType||'')} · ${esc(x.status||'')}</div></div><span>→</span></a>`).join('');
 
   mount(`<div class="case-header"><a class="back-link" href="#uyap">← Dosyalarıma dön</a><h1><span class="foy-badge ${file.office_file_no?'':'pending'}">${esc(file.office_file_no||'Föy Bekliyor')}</span>${esc(file.court||'Dosya')} ${file.court_file_no?'· '+esc(file.court_file_no):''}</h1><p class="detail-subtitle">${esc(file.case_type||'Dosya içeriği')}</p>${related?`<div class="related-case-list">${related}</div>`:''}</div>
-    <div class="file-actionbar"><button id="syncUyapDocs" class="primary-action" ${file.uyap_dosya_id?'':'disabled'}>${file.uyap_dosya_id?'Tüm Evrakları Senkronize Et':'UYAP bağlantısı bulunamadı'}</button></div>
+    ${downloadActions}
     ${tabs}
     <div class="file-tab-panel" data-file-panel="documents">${section('Evraklar','▤',renderDocumentTree(docs,status))}</div>
     <div class="file-tab-panel" data-file-panel="finance" hidden>${financeBody}</div>`,'uyap');
 
   document.querySelectorAll('[data-file-tab]').forEach(b=>b.onclick=()=>{const tab=b.dataset.fileTab;document.querySelectorAll('[data-file-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('[data-file-panel]').forEach(p=>p.hidden=p.dataset.filePanel!==tab)});
   bindDocumentTree();
-  document.querySelector('#syncUyapDocs:not(:disabled)')?.addEventListener('click',async e=>{e.currentTarget.disabled=true;e.currentTarget.textContent='Senkronizasyon arka planda çalışıyor';try{await api.syncUyapDocuments(id)}catch(err){alert(err.message);e.currentTarget.disabled=false;e.currentTarget.textContent='Tüm Evrakları Senkronize Et'}});
+  document.querySelector('#syncUyapDocs:not(:disabled)')?.addEventListener('click',async e=>{e.currentTarget.disabled=true;e.currentTarget.textContent='Evrak listesi yenileniyor';try{await api.syncUyapDocuments(id);await renderCase(id)}catch(err){alert(err.message);e.currentTarget.disabled=false;e.currentTarget.textContent='Evrak Listesini Yenile'}});
+  document.querySelector('#queueMissingUyapDocs:not(:disabled)')?.addEventListener('click',async e=>{
+    if(!confirm('Bu dosya için en fazla 200 eksik evrak indirme kuyruğuna eklenecek. Manuel duraklatma açıksa indirmeler siz devam ettirmeden başlamaz. Devam edilsin mi?'))return;
+    e.currentTarget.disabled=true;
+    try{await api.queueMissingUyapDocuments(id,200);await renderCase(id)}catch(err){alert(err.message);e.currentTarget.disabled=false}
+  });
+  document.querySelector('#pauseUyapDownloads')?.addEventListener('click',async e=>{e.currentTarget.disabled=true;try{await api.pauseUyapDownloads();await renderCase(id)}catch(err){alert(err.message);e.currentTarget.disabled=false}});
+  document.querySelector('#resumeUyapDownloads')?.addEventListener('click',async e=>{
+    if(!confirm('UYAP indirme kuyruğundaki evraklar indirilmeye başlayacak. Devam edilsin mi?'))return;
+    e.currentTarget.disabled=true;
+    try{await api.resumeUyapDownloads();await renderCase(id)}catch(err){alert(err.message);e.currentTarget.disabled=false}
+  });
 }

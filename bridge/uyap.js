@@ -940,10 +940,15 @@ function caseDownloadSummary(caseId){
   const lastSync=db.prepare(`SELECT finished_at FROM uyap_command_queue
     WHERE endpoint_key='document.list' AND status='completed' AND payload_json LIKE ?
     ORDER BY id DESC LIMIT 1`).get('%"caseId":'+Number(c.id)+'%')?.finished_at||null;
+  const session=sessionState();
+  const activeCommands=activeCaseDownloadCount(c.id);
   return {
     caseId:Number(c.id),requestedCaseId:Number(caseId),total:rows.length,existing,queued,
     missingDownloadable,review,skipped,summarize,lastSync,
-    batchSize:200,downloadState:sessionState().documentDownloadState
+    batchSize:200,activeCommands,capacity:Math.max(0,200-activeCommands),
+    manualDownloadPaused:session.manualDownloadPaused,
+    downloadState:session.documentDownloadState,
+    downloadReason:session.documentDownloadReason
   };
 }
 function enqueuePendingDownloads(caseId,limit=200){
