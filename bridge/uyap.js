@@ -684,9 +684,9 @@ function mergeRemoteDocumentRows(targetId,sourceId){
     FROM correspondence_match_suggestions WHERE remote_document_id=?`).run(target.id,source.id);
   db.prepare("DELETE FROM correspondence_match_suggestions WHERE remote_document_id=?").run(source.id);
 
-  const sourceLike='%"remoteDocumentDbId":'+source.id+'%';
   db.prepare(`UPDATE uyap_command_queue SET status='cancelled',finished_at=datetime('now'),error='merged_duplicate_remote_document'
-    WHERE command_type='download_document' AND status IN ('queued','running','failed') AND payload_json LIKE ?`).run(sourceLike);
+    WHERE command_type='download_document' AND status IN ('queued','running','failed')
+      AND ${downloadCommandMatchesRemoteSql()}`).run(Number(source.id));
 
   let status=remoteStatusRank(source.status)>remoteStatusRank(target.status)?source.status:target.status;
   const localAsset=target.local_asset_id||source.local_asset_id||null;
@@ -743,9 +743,9 @@ function upsertRemoteList(caseId,data,{baseline=false}={}){
         String(oldMeta.dosyaId||"")!==String(d?.dosyaId||"");
       upd.run(stable,remoteId,title||null,d.tur||null,isoDate(d.onaylandigiTarih),fileName,JSON.stringify(d),exists.id);
       if(tokenChanged){
-        const like='%"remoteDocumentDbId":'+exists.id+'%';
         const cancelled=db.prepare(`UPDATE uyap_command_queue SET status='cancelled',finished_at=datetime('now'),error='stale_remote_metadata'
-          WHERE command_type='download_document' AND status IN ('queued','failed') AND payload_json LIKE ?`).run(like).changes;
+          WHERE command_type='download_document' AND status IN ('queued','failed')
+            AND ${downloadCommandMatchesRemoteSql()}`).run(Number(exists.id)).changes;
         if(cancelled>0&&!exists.local_asset_id) db.prepare("UPDATE uyap_remote_documents SET status='discovered',last_seen_at=datetime('now') WHERE id=?").run(exists.id);
       }
       updated++;
@@ -865,6 +865,17 @@ function caseContentDownloadBlocked(caseId){
   const names=[c.client_name,...db.prepare("SELECT name FROM parties WHERE case_id=?").all(Number(caseId)).map(x=>x.name)];
   return names.some(x=>nrm(x).includes("mahsun ozturk"));
 }
+function downloadCommandMatchesRemoteSql(){
+  return "json_valid(payload_json)=1 AND CAST(json_extract(payload_json,'$.context.remoteDocumentDbId') AS INTEGER)=?";
+}
+function downloadCommandMatchesCaseSql(){
+  return "json_valid(payload_json)=1 AND CAST(json_extract(payload_json,'$.context.caseId') AS INTEGER)=?";
+}
+function activeCaseDownloadCount(caseId){
+  return Number(db.prepare(`SELECT count(*) n FROM uyap_command_queue
+    WHERE command_type='download_document' AND status IN ('queued','running')
+      AND ${downloadCommandMatchesCaseSql()}`).get(Number(caseId))?.n||0);
+}
 function enqueueRemoteDocumentDownload(remoteDbId){
   if(sessionState().state==="login_required")return null;
   const d=db.prepare("SELECT * FROM uyap_remote_documents WHERE id=?").get(Number(remoteDbId)); if(!d)throw new Error("UYAP evrakı bulunamadı");
@@ -874,10 +885,10 @@ function enqueueRemoteDocumentDownload(remoteDbId){
     }
     return null;
   }
-  const sameCommandLike='%\"remoteDocumentDbId\":'+d.id+'%';
   const existingCommand=db.prepare(`SELECT id FROM uyap_command_queue
-    WHERE command_type='download_document' AND status IN ('queued','running') AND payload_json LIKE ?
-    ORDER BY id DESC LIMIT 1`).get(sameCommandLike);
+    WHERE command_type='download_document' AND status IN ('queued','running')
+      AND ${downloadCommandMatchesRemoteSql()}
+    ORDER BY id DESC LIMIT 1`).get(Number(d.id));
   if(existingCommand)return null;
   if(caseContentDownloadBlocked(d.case_id)){
     let meta={};try{meta=JSON.parse(d.metadata_json||"{}")}catch{}
@@ -938,21 +949,41 @@ function caseDownloadSummary(caseId){
 function enqueuePendingDownloads(caseId,limit=200){
   const c=linkedUyapCase(caseId); if(!c)throw new Error("UYAP case bulunamadı");
   limit=Math.max(1,Math.min(200,Number(limit)||200));
-  const active=db.prepare("SELECT count(*) n FROM uyap_remote_documents WHERE case_id=? AND status='download_queued'").get(Number(c.id)).n;
-  const rows=db.prepare("SELECT id FROM uyap_remote_documents WHERE case_id=? AND local_asset_id IS NULL AND status='discovered' ORDER BY COALESCE(document_date,'') DESC,id DESC").all(Number(c.id));
-  let queued=0,skipped=0,review=0;
-  for(const r of rows){
-    if(queued>=limit)break;
-    const before=db.prepare("SELECT status FROM uyap_remote_documents WHERE id=?").get(r.id)?.status;
-    try{if(enqueueRemoteDocumentDownload(r.id))queued++}catch{}
-    const after=db.prepare("SELECT status FROM uyap_remote_documents WHERE id=?").get(r.id)?.status;
-    if(before!==after&&after==="skipped")skipped++;
-    if(before!==after&&after==="review")review++;
+  let active=0,capacity=0,queued=0,skipped=0,review=0;
+  let tx=false;
+  try{
+    // Aynı case için eşzamanlı batch çağrılarını SQLite writer lock ile sırala.
+    // Böylece aktif queued/running toplamı hiçbir anda 200'ü aşmaz.
+    db.exec("BEGIN IMMEDIATE"); tx=true;
+    active=activeCaseDownloadCount(c.id);
+    capacity=Math.max(0,200-active);
+    const batchLimit=Math.min(limit,capacity);
+    if(batchLimit>0){
+      const rows=db.prepare("SELECT id FROM uyap_remote_documents WHERE case_id=? AND local_asset_id IS NULL AND status='discovered' ORDER BY COALESCE(document_date,'') DESC,id DESC").all(Number(c.id));
+      for(const r of rows){
+        if(queued>=batchLimit)break;
+        const before=db.prepare("SELECT status FROM uyap_remote_documents WHERE id=?").get(r.id)?.status;
+        try{if(enqueueRemoteDocumentDownload(r.id))queued++}catch{}
+        const after=db.prepare("SELECT status FROM uyap_remote_documents WHERE id=?").get(r.id)?.status;
+        if(before!==after&&after==="skipped")skipped++;
+        if(before!==after&&after==="review")review++;
+      }
+    }
+    db.exec("COMMIT"); tx=false;
+  }catch(e){
+    if(tx){try{db.exec("ROLLBACK")}catch{}}
+    throw e;
   }
-  return {active:Number(active||0),queued,skipped,review,limit,summary:caseDownloadSummary(c.id)};
+  return {
+    active:Number(active||0),capacity:Number(capacity||0),queued,skipped,review,limit,
+    activeAfter:activeCaseDownloadCount(c.id),
+    summary:caseDownloadSummary(c.id)
+  };
 }
 function ingestDownloadedDocument(commandId){
   const q=db.prepare("SELECT * FROM uyap_command_queue WHERE id=?").get(Number(commandId)); if(!q)throw new Error("UYAP komutu bulunamadı");
+  if(String(q.command_type||"")!=="download_document")throw new Error("UYAP ingest yalnız download_document komutları için geçerli");
+  if(String(q.status||"")!=="completed")throw new Error("UYAP ingest yalnız completed indirme komutları için geçerli: "+String(q.status||"unknown"));
   const payload=q.payload_json?JSON.parse(q.payload_json):{},meta=q.result_meta_json?JSON.parse(q.result_meta_json):{};
   const remoteDbId=Number(payload?.context?.remoteDocumentDbId||0); if(!remoteDbId)throw new Error("Remote evrak bağlamı eksik");
   const remote=db.prepare("SELECT * FROM uyap_remote_documents WHERE id=?").get(remoteDbId); if(!remote)throw new Error("Remote evrak bulunamadı");
@@ -1056,4 +1087,4 @@ function discoveryStatus(){
   const withDocs=db.prepare("SELECT count(DISTINCT case_id) n FROM uyap_remote_documents").get().n;
   return {...counts,totalCases:Number(totalCases||0),casesWithDocuments:Number(withDocs||0),rate:rateState()};
 }
-module.exports={GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,setManualDownloadPause,recoverSession,queue,cases,remoteDocuments,documentDownloadPolicy,caseDownloadSummary,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,discoveryStatus};
+module.exports={GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,setManualDownloadPause,recoverSession,queue,cases,remoteDocuments,documentDownloadPolicy,caseDownloadSummary,activeCaseDownloadCount,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,discoveryStatus};
