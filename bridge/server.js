@@ -292,7 +292,7 @@ const server=http.createServer(async(req,res)=>{
       const id=uyap.enqueueCaseDocumentSync(caseId,{priority:6,purpose:"manual_case_sync",source:"web_case_detail"});
       const sync=uyap.caseDocumentSyncStatus(caseId);
       audit("lawyer","uyap_sync_documents","case",m[1],{commandId:id,state:sync.state});
-      return json(res,202,{ok:true,id,commandId:id,sync});
+      return json(res,202,{ok:true,accepted:true,id,commandId:Number(id),sync});
     }
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/download-missing$/);
     if(req.method==="POST"&&m){
