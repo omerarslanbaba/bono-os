@@ -33,14 +33,6 @@ public partial class MainWindow : Window
         UyapGrid.ItemsSource = uyapCases;
         UyapDocumentsGrid.ItemsSource = uyapDocuments;
         HearingsGrid.ItemsSource = hearings;
-        HearingCalendar.DisplayDate = DateTime.Today;
-        HearingCalendarNext.DisplayDate = DateTime.Today.AddMonths(1);
-        HearingCalendarThird.DisplayDate = DateTime.Today.AddMonths(2);
-        HearingCalendarNext.DisplayDateStart = new DateTime(DateTime.Today.AddMonths(1).Year, DateTime.Today.AddMonths(1).Month, 1);
-        HearingCalendarNext.DisplayDateEnd = HearingCalendarNext.DisplayDateStart.Value.AddMonths(1).AddDays(-1);
-        HearingCalendarThird.DisplayDateStart = new DateTime(DateTime.Today.AddMonths(2).Year, DateTime.Today.AddMonths(2).Month, 1);
-        HearingCalendarThird.DisplayDateEnd = HearingCalendarThird.DisplayDateStart.Value.AddMonths(1).AddDays(-1);
-        HomeHearingsGrid.ItemsSource = hearings;
         SetActiveNav(NavHome);
         Loaded += async (_, _) => await BootAsync();
         Closed += (_, _) => Cleanup();
@@ -387,7 +379,8 @@ public partial class MainWindow : Window
             )));
         }
         Replace(hearings, next.OrderBy(x => x.Sort).Select(x => x.Row));
-        if (next.Count > 0 && next[0].Sort != DateTime.MaxValue) HearingCalendar.DisplayDate = next[0].Sort;
+        LargeHearingCalendar.SetHearings(next.Where(x => x.Sort != DateTime.MaxValue).Select(x =>
+            new BonoNative.Views.ThreeMonthHearingCalendar.HearingEntry(x.Sort, x.Row.Court, x.Row.FileNo, x.Row.Type, x.Row.Foy)));
     }
 
     static DateTime? ParseSqlDate(string s)
@@ -642,14 +635,12 @@ public partial class MainWindow : Window
         }
     }
 
-    void HearingCalendar_SelectedDatesChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    void LargeHearingCalendar_HearingOpened(object sender, BonoNative.Views.ThreeMonthHearingCalendar.HearingEntry entry)
     {
-        if (HearingCalendar?.SelectedDate is not DateTime date || HearingsGrid?.ItemsSource == null) return;
-        var view = CollectionViewSource.GetDefaultView(HearingsGrid.ItemsSource);
-        view.Filter = item => item is HearingRow h && (DateTime.TryParseExact(h.DateText,
-            "dd.MM.yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.None, out var dt) && dt.Date == date.Date);
-        if (view.IsEmpty) view.Filter = null;
+        ShowPage(UyapPage, "Duruşma Dosyası", entry.Start.ToString("dd.MM.yyyy HH:mm") + " · " + entry.Court);
+        SetActiveNav(NavFiles);
+        UyapSearch.Text = entry.FileNo;
+        _ = LoadUyapAsync();
     }
 
     static string FindBonoHome()
