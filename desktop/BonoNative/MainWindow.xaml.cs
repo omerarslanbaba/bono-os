@@ -19,8 +19,11 @@ public partial class MainWindow : Window
     readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(3) };
     readonly ObservableCollection<OfficeFileRow> files = new();
     readonly ObservableCollection<UyapCaseRow> uyapCases = new();
+    readonly ObservableCollection<UyapDocumentRow> uyapDocuments = new();
     readonly ObservableCollection<HearingRow> hearings = new();
     Process? coreProcess;
+    int selectedUyapCaseId;
+    UyapCaseRow? selectedUyapCase;
     bool refreshing;
 
     public MainWindow()
@@ -28,6 +31,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         FilesGrid.ItemsSource = files;
         UyapGrid.ItemsSource = uyapCases;
+        UyapDocumentsGrid.ItemsSource = uyapDocuments;
         HearingsGrid.ItemsSource = hearings;
         HomeHearingsGrid.ItemsSource = hearings;
         SetActiveNav(NavHome);
@@ -149,7 +153,8 @@ public partial class MainWindow : Window
             if (healthy)
             {
                 await LoadSummaryAsync();
-                if (UyapPage.Visibility == Visibility.Visible) await LoadUyapAsync();
+                if (UyapDetailPage.Visibility == Visibility.Visible) await LoadUyapCaseDetailAsync(false);
+                else if (UyapPage.Visibility == Visibility.Visible) await LoadUyapAsync();
                 else if (OfficeFilesView.Visibility == Visibility.Visible) await OfficeFilesView.RefreshAsync();
                 else if (HearingsPage.Visibility == Visibility.Visible || HomePage.Visibility == Visibility.Visible) await LoadHearingsAsync();
                 FooterStatus.Text = "Canlı · " + DateTime.Now.ToString("HH:mm:ss");
@@ -192,6 +197,7 @@ public partial class MainWindow : Window
             {
                 "paused_token_refresh" => "evrak bilgileri yenileniyor",
                 "paused_viewer_html" => "belge görüntüleyici bekliyor",
+                "paused_manual" => "indirmeler bekletiliyor",
                 _ => documentState.Replace("_", " ")
             };
             UyapStateText.Text = "Bağlı · " + detail;
@@ -235,6 +241,7 @@ public partial class MainWindow : Window
         foreach (var x in doc.RootElement.EnumerateArray())
         {
             next.Add(new UyapCaseRow(
+                Num(x, "id"),
                 Str(x, "office_file_no"),
                 Str(x, "court"),
                 Str(x, "court_file_no"),
@@ -246,6 +253,112 @@ public partial class MainWindow : Window
         }
         Replace(uyapCases, next);
         ApplyUyapFilter();
+    }
+
+    async Task<JsonDocument> PostJsonAsync(string path, string json = "{}")
+    {
+        using var body = new StringContent(json, Encoding.UTF8, "application/json");
+        using var res = await http.PostAsync(BaseUrl + path, body);
+        res.EnsureSuccessStatusCode();
+        var bytes = await res.Content.ReadAsByteArrayAsync();
+        return JsonDocument.Parse(bytes);
+    }
+
+    async Task OpenUyapCaseAsync(UyapCaseRow row)
+    {
+        selectedUyapCaseId = row.Id;
+        selectedUyapCase = row;
+        ShowPage(UyapDetailPage, "UYAP Dosyası", row.Court + " · " + row.FileNo);
+        SetActiveNav(NavUyap);
+        UyapDetailTitle.Text = row.Court;
+        UyapDetailSubtitle.Text = string.Join(" · ", new[] { row.FileNo, row.CaseType, string.IsNullOrWhiteSpace(row.Foy) ? null : "FÖY " + row.Foy }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        await LoadUyapCaseDetailAsync(true);
+    }
+
+    async Task LoadUyapCaseDetailAsync(bool includeDocuments)
+    {
+        if (selectedUyapCaseId <= 0) return;
+        using var summary = await GetJsonAsync($"/api/uyap/cases/{selectedUyapCaseId}/download-summary");
+        var s = summary.RootElement;
+        var total = Num(s, "total");
+        var existing = Num(s, "existing");
+        var missing = Num(s, "missingDownloadable");
+        var queued = Num(s, "queued");
+        DetailTotal.Text = total.ToString();
+        DetailExisting.Text = existing.ToString();
+        DetailMissing.Text = missing.ToString();
+        DetailQueued.Text = queued.ToString();
+        DetailLastSync.Text = "Son senkron: " + (Str(s, "lastSync") is var last && !string.IsNullOrWhiteSpace(last) ? last : "henüz yok");
+        DownloadMissingButton.Content = missing > 200 ? $"Eksik Evrakları İndir (200 / {missing})" : $"Eksik Evrakları İndir ({missing})";
+        DownloadMissingButton.IsEnabled = missing > 0;
+
+        if (!includeDocuments) return;
+        using var docs = await GetJsonAsync($"/api/uyap/cases/{selectedUyapCaseId}/remote-documents");
+        var next = new List<UyapDocumentRow>();
+        foreach (var x in docs.RootElement.EnumerateArray())
+        {
+            next.Add(new UyapDocumentRow(
+                Str(x, "document_date"),
+                Str(x, "remote_title"),
+                Str(x, "document_type"),
+                FriendlyDocumentStatus(Str(x, "status"))
+            ));
+        }
+        Replace(uyapDocuments, next);
+    }
+
+    async void OpenUyapCase_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button b || !int.TryParse(b.Tag?.ToString(), out var id)) return;
+        var row = uyapCases.FirstOrDefault(x => x.Id == id);
+        if (row != null) await OpenUyapCaseAsync(row);
+    }
+
+    async void BackToUyapCases_Click(object sender, RoutedEventArgs e)
+    {
+        selectedUyapCaseId = 0;
+        selectedUyapCase = null;
+        ShowPage(UyapPage, "UYAP Dosyaları", "UYAP dosyaları ve evrak arşiv durumu");
+        SetActiveNav(NavUyap);
+        await LoadUyapAsync();
+    }
+
+    async void SyncCaseDocuments_Click(object sender, RoutedEventArgs e)
+    {
+        if (selectedUyapCaseId <= 0) return;
+        try
+        {
+            SyncCaseDocumentsButton.IsEnabled = false;
+            FooterStatus.Text = "Dosyanın UYAP evrak listesi yenileniyor…";
+            using var _ = await PostJsonAsync($"/api/uyap/cases/{selectedUyapCaseId}/sync-documents");
+            FooterStatus.Text = "Evrak senkronu sorgu kuyruğuna alındı.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "UYAP Evrak Senkronu", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally { SyncCaseDocumentsButton.IsEnabled = true; }
+    }
+
+    async void DownloadMissing_Click(object sender, RoutedEventArgs e)
+    {
+        if (selectedUyapCaseId <= 0) return;
+        try
+        {
+            DownloadMissingButton.IsEnabled = false;
+            FooterStatus.Text = "Bu dosyanın eksik evrakları kuyruğa ekleniyor…";
+            using var result = await PostJsonAsync($"/api/uyap/cases/{selectedUyapCaseId}/download-missing", "{\"limit\":200}");
+            var queued = Num(result.RootElement, "queued");
+            FooterStatus.Text = queued > 0
+                ? $"{queued} evrak indirme kuyruğuna eklendi."
+                : "İndirilecek yeni evrak bulunamadı.";
+            await LoadUyapCaseDetailAsync(true);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "UYAP Evrak İndirme", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally { DownloadMissingButton.IsEnabled = true; }
     }
 
     async Task LoadHearingsAsync()
@@ -298,6 +411,20 @@ public partial class MainWindow : Window
         _ => (s ?? "").Replace("_", " ")
     };
 
+    static string FriendlyDocumentStatus(string s) => (s ?? "").Trim().ToLowerInvariant() switch
+    {
+        "discovered" => "Eksik",
+        "download_queued" => "Kuyrukta",
+        "downloaded" => "İndirildi",
+        "indexed" => "Mevcut",
+        "filed" => "Dosyalandı",
+        "summarized" => "Özetlendi",
+        "skipped" => "Atlandı",
+        "review" => "İnceleme",
+        "" => "—",
+        _ => (s ?? "").Replace("_", " ")
+    };
+
     static void Replace<T>(ObservableCollection<T> target, IEnumerable<T> source)
     {
         target.Clear();
@@ -310,12 +437,12 @@ public partial class MainWindow : Window
     {
         try
         {
-            FooterStatus.Text = "UYAP arşiv akışı başlatılıyor…";
+            FooterStatus.Text = "UYAP dosya sorguları başlatılıyor…";
             using var body = new StringContent("{}", Encoding.UTF8, "application/json");
             using var res = await http.PostAsync(BaseUrl + "/api/uyap/archive/start", body);
             res.EnsureSuccessStatusCode();
             await LoadSummaryAsync();
-            FooterStatus.Text = "UYAP arşiv akışı çalışıyor.";
+            FooterStatus.Text = "UYAP dosya sorguları çalışıyor.";
         }
         catch (Exception ex)
         {
@@ -385,6 +512,7 @@ public partial class MainWindow : Window
         FilesPage.Visibility = Visibility.Collapsed;
         OfficeFilesView.Visibility = Visibility.Collapsed;
         UyapPage.Visibility = Visibility.Collapsed;
+        UyapDetailPage.Visibility = Visibility.Collapsed;
         HearingsPage.Visibility = Visibility.Collapsed;
         SystemPage.Visibility = Visibility.Collapsed;
         if (ReferenceEquals(page, FilesPage)) page = OfficeFilesView;
@@ -466,19 +594,7 @@ public partial class MainWindow : Window
     async void UyapRow_DoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         if (UyapGrid.SelectedItem is not UyapCaseRow row) return;
-        if (!string.IsNullOrWhiteSpace(row.Foy))
-        {
-            ShowPage(FilesPage, "Dosyalarım", row.Court + " · " + row.FileNo);
-            SetActiveNav(NavFiles);
-            OfficeFilesView.SetSearch(row.Foy);
-            await OfficeFilesView.RefreshAsync();
-        }
-        else
-        {
-            MessageBox.Show(row.Court + "\\n" + row.FileNo + "\\n" + row.CaseType +
-                "\\nEvrak: " + row.RemoteCount + " · İndeks: " + row.IndexedCount,
-                "UYAP Dosya Bilgileri", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
+        await OpenUyapCaseAsync(row);
     }
 
     async void HearingRow_DoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -532,6 +648,9 @@ public partial class MainWindow : Window
     }
 
     public record OfficeFileRow(string FileNo, string Client, string Title, string Status, int CaseCount);
-    public record UyapCaseRow(string Foy, string Court, string FileNo, string CaseType, string Status, int RemoteCount, int IndexedCount);
+    public record UyapCaseRow(int Id, string Foy, string Court, string FileNo, string CaseType, string Status, int RemoteCount, int IndexedCount);
+    public record UyapDocumentRow(string Date, string Title, string Type, string Status);
     public record HearingRow(string DateText, string Court, string FileNo, string Type, string Foy);
 }
+
+
