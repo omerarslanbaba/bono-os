@@ -98,6 +98,63 @@ function statusText(r){
   return /kapalı|closed|archiv|kesinleş|tamamlan/.test(s)?'Kapalı':'Açık';
 }
 function options(values){return [...new Set(values.filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'tr')).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('')}
+function targetedSearchForm(searchOptions){
+  const units=Array.isArray(searchOptions?.units)?searchOptions.units:[];
+  const unitOptions=units.map(x=>'<option value="'+esc(x.yargiTuru+'|'+x.birimTuru2)+'">'+esc(x.label)+'</option>').join('');
+  const disabled=searchOptions?.ready&&units.length?'':'disabled';
+  const note=searchOptions?.ready?'UYAP gerçek arama şeması doğrulandı. Yıl/esas sonuçtaki dosya numarasıyla exact eşleşir.':'UYAP hedefli arama şeması henüz hazır değil.';
+  return `<div class="case-query targeted-case-search"><div class="case-query-grid">
+    <label>Yargı Birimi Türü<select id="remoteUnit" ${disabled}><option value="">Seçin</option>${unitOptions}</select></label>
+    <label>Dosya Durumu<select id="remoteStatus" ${disabled}><option value="0">Açık</option><option value="1">Kapalı</option></select></label>
+    <label>Mahkeme<input id="remoteCourt" placeholder="Örn. Kocaeli 3. İş Mahkemesi" ${disabled}></label>
+    <label>Yıl / Esas<div class="case-year-row"><input id="remoteYear" inputmode="numeric" placeholder="2026" ${disabled}><input id="remoteBaseNo" inputmode="numeric" placeholder="Esas no" ${disabled}></div></label>
+  </div><div class="case-query-actions"><span id="remoteSearchState">${esc(note)}</span><button id="remoteSearchButton" type="button" class="primary-action" ${disabled}>⌕ UYAP'ta Dosyayı Bul</button></div></div>`;
+}
+async function pollTargetedCaseSearch(searchId){
+  const stateEl=document.getElementById('remoteSearchState');
+  if(!stateEl)return;
+  try{
+    const s=await api.uyapCaseSearchStatus(searchId);
+    stateEl.textContent=s.label||s.state;
+    if(s.state==='completed'&&s.match?.caseId){
+      stateEl.innerHTML='Dosya bulundu: <a href="#uyap/'+encodeURIComponent(s.match.caseId)+'">'+esc(s.match.court+' · '+s.match.fileNo)+'</a>';
+      document.getElementById('remoteSearchButton')?.removeAttribute('disabled');
+      return;
+    }
+    if(s.terminal||s.state==='login_required'){
+      document.getElementById('remoteSearchButton')?.removeAttribute('disabled');
+      return;
+    }
+    setTimeout(()=>pollTargetedCaseSearch(searchId),Number(s.pollAfterMs||1500));
+  }catch(err){
+    stateEl.textContent=err.message||'UYAP dosya araması izlenemedi';
+    document.getElementById('remoteSearchButton')?.removeAttribute('disabled');
+  }
+}
+function bindTargetedSearch(){
+  const btn=document.getElementById('remoteSearchButton');if(!btn)return;
+  btn.onclick=async()=>{
+    const unit=String(document.getElementById('remoteUnit')?.value||'');
+    const [yargiTuru,birimTuru2]=unit.split('|');
+    const payload={
+      yargiTuru:Number(yargiTuru),birimTuru2,
+      court:String(document.getElementById('remoteCourt')?.value||'').trim(),
+      year:Number(document.getElementById('remoteYear')?.value||0),
+      baseNumber:Number(document.getElementById('remoteBaseNo')?.value||0),
+      dosyaDurumKod:Number(document.getElementById('remoteStatus')?.value||0)
+    };
+    if(!unit||!payload.court||!payload.year||!payload.baseNumber){alert('Yargı birimi, mahkeme, yıl ve esas numarası gerekli.');return}
+    btn.disabled=true;document.getElementById('remoteSearchState').textContent='UYAP dosya araması kuyruğa alınıyor…';
+    try{
+      const r=await api.searchUyapCase(payload);
+      document.getElementById('remoteSearchState').textContent='UYAP dosya araması bekliyor…';
+      pollTargetedCaseSearch(r.searchId);
+    }catch(err){
+      document.getElementById('remoteSearchState').textContent=err.message||'UYAP dosya araması başlatılamadı';
+      btn.disabled=false;
+    }
+  };
+}
 function queryForm(rows){
   const years=rows.map(r=>String(r.court_file_no||'').match(/(20\d{2})\//)?.[1]);
   return `<div class="case-query"><div class="case-query-grid">
@@ -139,7 +196,7 @@ function bindQuery(rows){
 
 export async function renderUyap(id){
   if(id)return renderCase(id);
-  const [rows,status,archive]=await Promise.all([api.uyapCases(),api.uyapDiscoveryStatus(),api.uyapArchiveStatus()]);
+  const [rows,status,archive,searchOptions]=await Promise.all([api.uyapCases(),api.uyapDiscoveryStatus(),api.uyapArchiveStatus(),api.uyapCaseSearchOptions()]);
   const counts={};for(const r of rows){const c=caseCategory(r);counts[c]=(counts[c]||0)+1}
   const order=['Ceza','Hukuk','İş','Aile','İcra','Tüketici','İdare','Diğer'];
   const cats=['Tümü',...order.filter(x=>counts[x])];
@@ -149,7 +206,8 @@ export async function renderUyap(id){
     <div class="doc-meta">${esc(cat)} · ${esc(r.case_type||'')} · ${r.remote_count||0} evrak · ${r.indexed_count||0} BONO’da${r.related_cases?.length?' · '+r.related_cases.length+' bağlantılı arabuluculuk':''}</div></div><span>→</span>
   </a>`}).join('')}</div>`:empty('Henüz dosya keşfedilmedi.');
   mount(pageHero('Dosyalarım','Dosyaları yargı türü, birimi, mahkemesi ve esas numarasıyla sorgula.')+
-    queryForm(rows)+discoveryBar(status,archive)+section('Dosya Sorgulama Sonuçları','⚖',body),'uyap');
+    targetedSearchForm(searchOptions)+queryForm(rows)+discoveryBar(status,archive)+section('Dosya Sorgulama Sonuçları','⚖',body),'uyap');
+  bindTargetedSearch();
   bindQuery(rows);
   // Sorgulama filtreleri bindQuery tarafından yönetilir.
   document.querySelector('#syncAllUyap')?.addEventListener('click',async e=>{

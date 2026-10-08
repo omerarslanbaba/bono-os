@@ -383,7 +383,8 @@ function reportResult(id,result={}){
     const cleanData=rawData==null?null:sanitizeResultData(rawData);
     const payload=row.payload_json?JSON.parse(row.payload_json):{};
     const ctx=payload?.context||{};
-    const resultJson=cleanData==null?null:JSON.stringify(cleanData);
+    const targetedCasePage=row.endpoint_key==="case.search"&&ctx.targetedCaseSearch&&Array.isArray(cleanData);
+    const resultJson=cleanData==null?null:(targetedCasePage?null:JSON.stringify(cleanData));
     db.prepare(`UPDATE uyap_command_queue SET status='completed',finished_at=datetime('now'),result_meta_json=?,result_json=? WHERE id=?`)
       .run(JSON.stringify(safeResult(result)),resultJson,id);
     if(row.endpoint_key==="document.viewer_params"&&ctx.purpose==="refresh_document_tokens"){
@@ -410,24 +411,29 @@ function reportResult(id,result={}){
       }
     }
     if(row.endpoint_key==="case.search"&&Array.isArray(cleanData)){
-      upsertCasesFromSearch(cleanData);
-      if(ctx.discovery&&ctx.stage==="cases"){
-        const list=Array.isArray(cleanData?.[0])?cleanData[0]:[];
-        const total=Number(cleanData?.[1]||0),pageSize=Number(payload?.body?.pageSize||500),page=Number(ctx.pageNumber||1);
-        if(total>page*pageSize) enqueueCaseSearchPage({yargiTuru:ctx.yargiTuru,birimTuru2:ctx.birimTuru2,dosyaDurumKod:ctx.dosyaDurumKod,pageNumber:page+1,syncDocuments:ctx.syncDocuments});
-        if(ctx.syncDocuments){
-          for(const item of list){
-            const ext="uyap:case:"+String(item?.birimId||"")+":"+String(item?.dosyaNo||"");
-            const c=db.prepare("SELECT id FROM cases WHERE external_id=?").get(ext);
-            if(c?.id){
-              try{
-                if(ctx.sessionRefresh) enqueueCaseDocumentSync(c.id,{priority:6,purpose:"session_refresh_documents",source:"session_case_search"});
-                else enqueueCaseDocumentSync(c.id);
-              }catch{}
+      if(ctx.targetedCaseSearch){
+        const summary=finalizeTargetedCaseSearchPage(cleanData,ctx,payload);
+        db.prepare("UPDATE uyap_command_queue SET result_json=? WHERE id=?").run(JSON.stringify(summary),id);
+      }else{
+        upsertCasesFromSearch(cleanData);
+        if(ctx.discovery&&ctx.stage==="cases"){
+          const list=Array.isArray(cleanData?.[0])?cleanData[0]:[];
+          const total=Number(cleanData?.[1]||0),pageSize=Number(payload?.body?.pageSize||500),page=Number(ctx.pageNumber||1);
+          if(total>page*pageSize) enqueueCaseSearchPage({yargiTuru:ctx.yargiTuru,birimTuru2:ctx.birimTuru2,dosyaDurumKod:ctx.dosyaDurumKod,pageNumber:page+1,syncDocuments:ctx.syncDocuments});
+          if(ctx.syncDocuments){
+            for(const item of list){
+              const ext="uyap:case:"+String(item?.birimId||"")+":"+String(item?.dosyaNo||"");
+              const c=db.prepare("SELECT id FROM cases WHERE external_id=?").get(ext);
+              if(c?.id){
+                try{
+                  if(ctx.sessionRefresh) enqueueCaseDocumentSync(c.id,{priority:6,purpose:"session_refresh_documents",source:"session_case_search"});
+                  else enqueueCaseDocumentSync(c.id);
+                }catch{}
+              }
             }
           }
+          if(ctx.sessionRefresh) maybeFinishSessionRefresh();
         }
-        if(ctx.sessionRefresh) maybeFinishSessionRefresh();
       }
     }
     if(row.endpoint_key==="cbs.provinces"&&ctx.discovery&&ctx.stage==="cbs_provinces"){
@@ -833,18 +839,30 @@ function shapeOfObservedObject(value){
   }
   return out;
 }
-function caseSearchSchemaStatus(){
+function caseSearchObservedTemplate(){
   const ep=db.prepare("SELECT endpoint_key,method,host,path,enabled,min_interval_ms,last_verified_at FROM uyap_endpoints WHERE endpoint_key='case.search'").get();
   const pathName=String(ep?.path||"/search_phrase_detayli.ajx");
   const obs=db.prepare(`SELECT id,method,host,path,status,last_seen_at,hit_count,sample_request_json
     FROM uyap_endpoint_observations
     WHERE path=? AND sample_request_json IS NOT NULL
     ORDER BY last_seen_at DESC LIMIT 1`).get(pathName);
-  let parsed=null,parseError=null;
-  if(obs?.sample_request_json){
-    try{parsed=JSON.parse(obs.sample_request_json)}catch(e){parseError=String(e?.message||e)}
-  }
+  if(!obs?.sample_request_json)return {ep,pathName,obs:null,parsed:null,parseError:null};
+  try{return {ep,pathName,obs,parsed:JSON.parse(obs.sample_request_json),parseError:null}}
+  catch(e){return {ep,pathName,obs,parsed:null,parseError:String(e?.message||e)}}
+}
+function verifiedCaseSearchObservedFields(parsed){
+  const body=parsed?.body;
+  if(!body||typeof body!=="object"||Array.isArray(body))return false;
+  const required={
+    dosyaDurumKod:"number",pageSize:"number",pageNumber:"number",
+    birimId:"string",birimTuru2:"string",birimTuru3:"string"
+  };
+  return Object.entries(required).every(([k,t])=>Object.prototype.hasOwnProperty.call(body,k)&&typeof body[k]===t);
+}
+function caseSearchSchemaStatus(){
+  const {ep,pathName,obs,parsed,parseError}=caseSearchObservedTemplate();
   const observed=!!parsed;
+  const verified=observed&&verifiedCaseSearchObservedFields(parsed);
   return {
     contractVersion:"uyap.case-search-schema.v1",
     endpoint:{
@@ -854,8 +872,9 @@ function caseSearchSchemaStatus(){
       path:pathName,
       enabled:!!Number(ep?.enabled||0)
     },
-    state:observed?"observed":"observation_required",
+    state:verified?"ready":(observed?"observed_unverified":"observation_required"),
     observed,
+    verified,
     observedAt:obs?.last_seen_at||null,
     observationId:obs?.id?Number(obs.id):null,
     observationStatus:obs?.status==null?null:Number(obs.status),
@@ -865,16 +884,193 @@ function caseSearchSchemaStatus(){
       body:shapeOfObservedObject(parsed?.body),
       headers:Object.keys(parsed?.headers||{}).sort()
     }:null,
+    fieldBindings:verified?{
+      request:{
+        status:"dosyaDurumKod",
+        pageSize:"pageSize",
+        pageNumber:"pageNumber",
+        unitId:"birimId",
+        unitType:"birimTuru2",
+        jurisdictionType:"birimTuru3"
+      },
+      response:{
+        court:"birimAdi",
+        courtUnitId:"birimId",
+        fileNumber:"dosyaNo",
+        opaqueCaseId:"dosyaId"
+      },
+      note:"Yıl ve esas numarası request alanı değildir; response dosyaNo üzerinde exact eşleşir."
+    }:null,
     parseError,
     targetedSearch:{
-      ready:false,
-      requiredInputs:["court","year","baseNumber"],
-      reason:observed?"target_field_bindings_unverified":"request_schema_not_observed"
+      ready:verified,
+      requiredInputs:["yargiTuru","birimTuru2","court","year","baseNumber","dosyaDurumKod"],
+      reason:verified?"observed_schema_verified":(observed?"observed_schema_missing_required_fields":"request_schema_not_observed")
     },
     liveQueryRequired:!observed,
-    message:observed
-      ?"Gerçek request şeması gözlemlendi; mahkeme/yıl/esas alanlarının request alanlarına bağlanması ayrıca doğrulanmalı."
-      :"Gerçek /search_phrase_detayli.ajx request şeması henüz gözlemlenmedi. Payload tahmin edilmez."
+    message:verified
+      ?"Gerçek /search_phrase_detayli.ajx şeması doğrulandı. Hedef mahkeme/yıl/esas response üzerinde exact filtrelenir."
+      :(observed?"Request gözlemlendi ancak gerekli alanlar doğrulanamadı. Payload üretilmez.":"Gerçek /search_phrase_detayli.ajx request şeması henüz gözlemlenmedi. Payload tahmin edilmez.")
+  };
+}
+function caseSearchOptions(){
+  const schema=caseSearchSchemaStatus();
+  const rows=db.prepare(`SELECT id,payload_json,result_json,finished_at FROM uyap_command_queue
+    WHERE endpoint_key='case.units' AND status='completed' AND result_json IS NOT NULL
+    ORDER BY id DESC`).all();
+  const seen=new Set(),units=[];
+  for(const row of rows){
+    let payload=null,data=null;
+    try{payload=JSON.parse(row.payload_json||"{}");data=JSON.parse(row.result_json||"[]")}catch{continue}
+    const y=Number(payload?.body?.yargiTuru??payload?.context?.yargiTuru);
+    if(!Number.isFinite(y)||!Array.isArray(data))continue;
+    for(const unit of data){
+      const b2=String(unit?.tablo||"").trim(),label=String(unit?.kod||"").trim();
+      if(!b2||!label)continue;
+      const key=y+"|"+b2;if(seen.has(key))continue;seen.add(key);
+      units.push({yargiTuru:y,birimTuru2:b2,label,observedAt:row.finished_at||null});
+    }
+  }
+  units.sort((a,b)=>a.label.localeCompare(b.label,"tr")||a.yargiTuru-b.yargiTuru||a.birimTuru2.localeCompare(b.birimTuru2));
+  return {contractVersion:"uyap.case-search-options.v1",schemaState:schema.state,ready:schema.targetedSearch.ready,units};
+}
+function normalizeTargetText(value){
+  return String(value||"").normalize("NFKC").toLocaleLowerCase("tr-TR").replace(/[^\p{L}\p{N}]+/gu," ").trim().replace(/\s+/g," ");
+}
+function normalizeTargetFileNo(year,baseNumber){
+  const y=Number(year),n=Number(baseNumber);
+  if(!Number.isInteger(y)||y<1900||y>2200)throw new Error("Geçersiz dosya yılı");
+  if(!Number.isInteger(n)||n<1)throw new Error("Geçersiz esas numarası");
+  return y+"/"+n;
+}
+function responseFileNo(value){
+  const m=String(value||"").match(/(\d{4})\s*\/\s*(\d+)/);
+  return m?(Number(m[1])+"/"+Number(m[2])):"";
+}
+function targetedCaseMatches(item,ctx){
+  return responseFileNo(item?.dosyaNo)===String(ctx.targetDosyaNo||"") &&
+    normalizeTargetText(item?.birimAdi)===String(ctx.targetCourtKey||"");
+}
+function safeTargetedCase(item,caseId=null){
+  return {
+    caseId:caseId==null?null:Number(caseId),
+    court:String(item?.birimAdi||""),
+    fileNo:String(item?.dosyaNo||""),
+    status:String(item?.dosyaDurum||""),
+    caseType:String(item?.dosyaTur||""),
+    birimId:String(item?.birimId||"")
+  };
+}
+function enqueueTargetedCaseSearchPage(ctx,pageNumber){
+  const schema=caseSearchSchemaStatus();
+  if(!schema.targetedSearch.ready)throw new Error("UYAP hedefli dosya arama şeması hazır değil: "+schema.targetedSearch.reason);
+  const {parsed}=caseSearchObservedTemplate();
+  const body={...(parsed?.body||{})};
+  body.dosyaDurumKod=Number(ctx.dosyaDurumKod);
+  body.pageSize=500;
+  body.pageNumber=Number(pageNumber);
+  body.birimId="";
+  body.birimTuru2=String(ctx.birimTuru2);
+  body.birimTuru3=String(ctx.yargiTuru);
+  return enqueue({commandType:"fetch_json",endpointKey:"case.search",
+    payload:{query:{...(parsed?.query||{})},body,context:{
+      targetedCaseSearch:true,searchId:String(ctx.searchId),targetKey:String(ctx.targetKey),
+      targetCourt:String(ctx.targetCourt),targetCourtKey:String(ctx.targetCourtKey),targetDosyaNo:String(ctx.targetDosyaNo),
+      yargiTuru:Number(ctx.yargiTuru),birimTuru2:String(ctx.birimTuru2),dosyaDurumKod:Number(ctx.dosyaDurumKod),
+      pageNumber:Number(pageNumber),source:"targeted_case_search"
+    }},
+    priority:6});
+}
+function enqueueTargetedCaseSearch(input={}){
+  if(sessionState().state==="login_required")throw new Error("UYAP oturumu gerekli");
+  const schema=caseSearchSchemaStatus();
+  if(!schema.targetedSearch.ready)throw new Error("UYAP hedefli dosya arama şeması hazır değil: "+schema.targetedSearch.reason);
+  const yargiTuru=Number(input.yargiTuru),birimTuru2=String(input.birimTuru2||"").trim();
+  const court=String(input.court||"").trim(),courtKey=normalizeTargetText(court);
+  const targetDosyaNo=normalizeTargetFileNo(input.year,input.baseNumber);
+  const dosyaDurumKod=Number(input.dosyaDurumKod);
+  if(!Number.isInteger(yargiTuru)||yargiTuru<0)throw new Error("Yargı türü gerekli");
+  if(!birimTuru2)throw new Error("Yargı birimi türü gerekli");
+  if(!courtKey)throw new Error("Mahkeme adı gerekli");
+  if(![0,1].includes(dosyaDurumKod))throw new Error("Dosya durumu 0 veya 1 olmalı");
+  const option=caseSearchOptions().units.find(x=>Number(x.yargiTuru)===yargiTuru&&String(x.birimTuru2)===birimTuru2);
+  if(!option)throw new Error("Yargı birimi gerçek case.units gözleminde doğrulanmadı");
+  const targetKey=crypto.createHash("sha256").update([yargiTuru,birimTuru2,dosyaDurumKod,courtKey,targetDosyaNo].join("|")).digest("hex");
+  const active=db.prepare(`SELECT id,payload_json FROM uyap_command_queue
+    WHERE endpoint_key='case.search' AND status IN ('queued','running')
+      AND json_valid(payload_json)=1
+      AND json_extract(payload_json,'$.context.targetedCaseSearch')=1
+      AND json_extract(payload_json,'$.context.targetKey')=?
+    ORDER BY id LIMIT 1`).get(targetKey);
+  if(active?.id){
+    let p={};try{p=JSON.parse(active.payload_json||"{}")}catch{}
+    return {searchId:String(p?.context?.searchId||""),commandId:Number(active.id),dedup:true,target:{court,fileNo:targetDosyaNo,yargiTuru,birimTuru2,dosyaDurumKod}};
+  }
+  const searchId=crypto.randomUUID();
+  const ctx={searchId,targetKey,targetCourt:court,targetCourtKey:courtKey,targetDosyaNo,yargiTuru,birimTuru2,dosyaDurumKod};
+  const commandId=enqueueTargetedCaseSearchPage(ctx,1);
+  return {searchId,commandId,dedup:false,target:{court,fileNo:targetDosyaNo,yargiTuru,birimTuru2,dosyaDurumKod}};
+}
+function targetedCaseSearchStatus(searchId){
+  searchId=String(searchId||"").trim();
+  const rows=db.prepare(`SELECT id,status,priority,attempts,max_attempts,created_at,dispatched_at,finished_at,error,payload_json,result_json
+    FROM uyap_command_queue
+    WHERE endpoint_key='case.search' AND json_valid(payload_json)=1
+      AND json_extract(payload_json,'$.context.targetedCaseSearch')=1
+      AND json_extract(payload_json,'$.context.searchId')=?
+    ORDER BY id`).all(searchId);
+  if(!rows.length)return null;
+  let first={};try{first=JSON.parse(rows[0].payload_json||"{}")?.context||{}}catch{}
+  const target={court:String(first.targetCourt||""),fileNo:String(first.targetDosyaNo||""),yargiTuru:Number(first.yargiTuru),birimTuru2:String(first.birimTuru2||""),dosyaDurumKod:Number(first.dosyaDurumKod)};
+  const commands=rows.map(r=>({id:Number(r.id),status:r.status,priority:Number(r.priority||0),attempts:Number(r.attempts||0),maxAttempts:Number(r.max_attempts||0),createdAt:r.created_at||null,dispatchedAt:r.dispatched_at||null,finishedAt:r.finished_at||null,error:r.error||null}));
+  let match=null,ambiguous=false,hasMore=false;
+  for(const row of rows){
+    if(row.status!=="completed"||!row.result_json)continue;
+    try{
+      const x=JSON.parse(row.result_json);
+      if(x?.type!=="targeted_case_search_result")continue;
+      hasMore=hasMore||!!x.hasMore;
+      if(Array.isArray(x.matches)&&x.matches.length){
+        if(x.matches.length>1)ambiguous=true;
+        match=x.matches[0]||match;
+      }
+    }catch{}
+  }
+  const session=sessionState();
+  const running=rows.find(r=>r.status==="running"),queued=rows.find(r=>r.status==="queued");
+  let state="not_found",label="UYAP'ta eşleşen dosya bulunamadı",terminal=true,success=false,requiresLogin=false;
+  if(match&&!ambiguous){state="completed";label="UYAP dosyası bulundu";success=true}
+  else if(ambiguous){state="ambiguous";label="Birden fazla exact eşleşme bulundu"}
+  else if(session.state==="login_required"&&(running||queued)){state="login_required";label="UYAP oturumu gerekli";terminal=false;requiresLogin=true}
+  else if(running){state="running";label="UYAP'ta dosya aranıyor";terminal=false}
+  else if(queued||hasMore){state="queued";label="UYAP dosya araması bekliyor";terminal=false}
+  else if(rows.some(r=>r.status==="failed")){state="failed";label="UYAP dosya araması başarısız"}
+  else if(rows.some(r=>r.status==="cancelled"&&/401|403|auth|login/i.test(String(r.error||"")))){state="login_required";label="UYAP oturumu gerekli";terminal=false;requiresLogin=true}
+  return {
+    contractVersion:"uyap.targeted-case-search.v1",searchId,state,label,terminal,success,requiresLogin,
+    pollAfterMs:["queued","running"].includes(state)?1500:null,target,commands,match:match||null,
+    session:{state:session.state,manualDownloadPaused:session.manualDownloadPaused}
+  };
+}
+function finalizeTargetedCaseSearchPage(cleanData,ctx,payload){
+  const list=Array.isArray(cleanData?.[0])?cleanData[0]:[];
+  const total=Number(cleanData?.[1]||0),pageSize=Number(payload?.body?.pageSize||500),page=Number(ctx.pageNumber||1);
+  const exact=list.filter(item=>targetedCaseMatches(item,ctx));
+  const matches=[];
+  if(exact.length){
+    upsertCasesFromSearch([exact,exact.length]);
+    for(const item of exact){
+      const ext="uyap:case:"+String(item?.birimId||"")+":"+String(item?.dosyaNo||"");
+      const c=db.prepare("SELECT id FROM cases WHERE external_id=?").get(ext);
+      matches.push(safeTargetedCase(item,c?.id||null));
+    }
+  }
+  let nextCommandId=null;
+  const hasMore=!matches.length&&total>page*pageSize;
+  if(hasMore)nextCommandId=enqueueTargetedCaseSearchPage(ctx,page+1);
+  return {
+    type:"targeted_case_search_result",searchId:String(ctx.searchId),page,pageSize,total,
+    matchCount:matches.length,matches,hasMore,nextCommandId
   };
 }
 function buildDocumentSyncContract(base){
@@ -1274,4 +1470,4 @@ function discoveryStatus(){
   const withDocs=db.prepare("SELECT count(DISTINCT case_id) n FROM uyap_remote_documents").get().n;
   return {...counts,totalCases:Number(totalCases||0),casesWithDocuments:Number(withDocs||0),rate:rateState()};
 }
-module.exports={GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,setManualDownloadPause,recoverSession,queue,cases,remoteDocuments,caseDocumentSyncStatus,caseSearchSchemaStatus,documentDownloadPolicy,caseDownloadSummary,activeCaseDownloadCount,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,discoveryStatus};
+module.exports={GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,setManualDownloadPause,recoverSession,queue,cases,remoteDocuments,caseDocumentSyncStatus,caseSearchSchemaStatus,caseSearchOptions,enqueueTargetedCaseSearch,targetedCaseSearchStatus,documentDownloadPolicy,caseDownloadSummary,activeCaseDownloadCount,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,discoveryStatus};

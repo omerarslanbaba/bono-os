@@ -278,6 +278,19 @@ const server=http.createServer(async(req,res)=>{
     }
     if(req.method==="GET"&&p==="/api/uyap/cases") return json(res,200,uyap.cases());
     if(req.method==="GET"&&p==="/api/uyap/case-search-schema") return json(res,200,uyap.caseSearchSchemaStatus());
+    if(req.method==="GET"&&p==="/api/uyap/case-search/options") return json(res,200,uyap.caseSearchOptions());
+    if(req.method==="POST"&&p==="/api/uyap/case-search"){
+      const b=await readBody(req);
+      if(uyap.sessionState().state==="login_required") return json(res,409,{error:"UYAP oturumu gerekli."});
+      const out=uyap.enqueueTargetedCaseSearch(b);
+      audit("lawyer","uyap_targeted_case_search","uyap",null,{searchId:out.searchId,commandId:out.commandId});
+      return json(res,202,{ok:true,accepted:true,...out,status:uyap.targetedCaseSearchStatus(out.searchId)});
+    }
+    m=p.match(/^\/api\/uyap\/case-search\/([A-Za-z0-9-]+)$/);
+    if(req.method==="GET"&&m){
+      const out=uyap.targetedCaseSearchStatus(m[1]);
+      return out?json(res,200,out):json(res,404,{error:"UYAP dosya araması bulunamadı"});
+    }
 
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/remote-documents$/);
     if(req.method==="GET"&&m) return json(res,200,uyap.remoteDocuments(Number(m[1])));
