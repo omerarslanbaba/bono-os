@@ -21,7 +21,7 @@ function rfc5987(name){
 }
 function contentDisposition(kind,fileName){
   const mode=kind==="inline"?"inline":"attachment";
-  const clean=String(fileName||"document").replace(/[\r\n]/g," ").trim()||"document";
+  const clean=String(fileName||"document").replace(/[\r\n\x00-\x1F\x7F\\/:]+/g,"_").replace(/\s+/g," ").trim()||"document";
   return mode+'; filename="'+safeAsciiName(clean)+'"; filename*=UTF-8\'\''+rfc5987(clean);
 }
 function matchRoute(method,requestUrl){
