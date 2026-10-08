@@ -36,6 +36,29 @@ try {
     $current = Join-Path $installRoot "current\BONO OS Native.exe"
     if ((Get-Content $current -Raw).Trim() -ne "version-one") { throw "Initial install failed." }
 
+    $approvalRejected = $false
+    try {
+        & $updater -Mode Install -PackagePath $p2 -RootPath $installRoot
+    } catch {
+        $approvalRejected = $true
+    }
+    if (-not $approvalRejected) { throw "Install without -Approve was not rejected." }
+    if ((Get-Content $current -Raw).Trim() -ne "version-one") { throw "Unapproved install modified current version." }
+
+    $lock = [IO.File]::Open($current,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None)
+    try {
+        $lockRejected = $false
+        try {
+            & $updater -Mode Install -PackagePath $p2 -RootPath $installRoot -Approve
+        } catch {
+            $lockRejected = $true
+        }
+        if (-not $lockRejected) { throw "Install while current executable was locked was not rejected." }
+    } finally {
+        $lock.Dispose()
+    }
+    if ((Get-Content $current -Raw).Trim() -ne "version-one") { throw "Locked install modified current version." }
+
     $failed = $false
     try {
         & $updater -Mode Install -PackagePath $p2 -RootPath $installRoot -Approve -TestSimulateFailureAfterSwap
@@ -64,7 +87,7 @@ try {
     $state = Get-Content (Join-Path $installRoot "state.json") -Raw | ConvertFrom-Json
     if ($state.action -ne "rollback") { throw "State file did not record rollback." }
 
-    Write-Host "PASS updater install/hash/failure-recovery/rollback tests"
+    Write-Host "PASS updater approval/lock/hash/failure-recovery/rollback tests"
 } finally {
     Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
 }
