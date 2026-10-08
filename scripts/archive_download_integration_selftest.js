@@ -91,7 +91,7 @@ function finishActiveBatch(caseId){
 
 try{
   addCase(1,201);
-  const b1=tx(()=>uyap.enqueuePendingDownloads(1,200));
+  const b1=uyap.enqueuePendingDownloads(1,200);
   let c1=counts(1);
   if(b1.queued===200&&c1.download_queued===200&&c1.discovered===1){
     pass("batch1_queues_up_to_200",{result:b1,counts:c1});
@@ -108,7 +108,7 @@ try{
 
   let continuationCalls=0,totalContinuationQueued=0;
   while(Number(counts(1).discovered||0)>0&&continuationCalls<10){
-    const next=tx(()=>uyap.enqueuePendingDownloads(1,200));
+    const next=uyap.enqueuePendingDownloads(1,200);
     continuationCalls++;
     totalContinuationQueued+=Number(next.queued||0);
     if(Number(next.queued||0)===0)break;
@@ -120,8 +120,8 @@ try{
     {continuationCalls,totalContinuationQueued,counts:c1});
 
   addCase(2,201);
-  const cap1=tx(()=>uyap.enqueuePendingDownloads(2,200));
-  const cap2=tx(()=>uyap.enqueuePendingDownloads(2,200));
+  const cap1=uyap.enqueuePendingDownloads(2,200);
+  const cap2=uyap.enqueuePendingDownloads(2,200);
   const active=Number(counts(2).download_queued||0);
   if(active>200){
     risk("active_batch_cap_is_per_invocation",{
