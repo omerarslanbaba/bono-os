@@ -478,3 +478,6 @@ a.search-hit:hover,
 .case-document-text summary{cursor:pointer;font-weight:600;font-size:12px}
 .case-document-text pre{font:12px/1.7 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:650px;overflow-y:auto;color:#e3e8ed}
 @media(max-width:850px){.case-document-flags{grid-template-columns:repeat(2,minmax(0,1fr))}.case-document-viewer-head{flex-direction:column}.case-document-pdf{height:390px}}
+
+.case-query-local-note{margin:5px 0 2px;font-size:11px;color:#9fb6bf;line-height:1.6;border-left:2px solid #3889a2;padding-left:11px}
+.case-query select:disabled{opacity:.55;cursor:not-allowed}
