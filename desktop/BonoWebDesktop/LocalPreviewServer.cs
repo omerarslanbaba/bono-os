@@ -100,7 +100,7 @@ public sealed class LocalPreviewServer : IAsyncDisposable
             }
         });
 
-        app.Run(async context =>
+        app.MapFallback(async context =>
         {
             if (HttpMethods.IsGet(context.Request.Method))
             {
