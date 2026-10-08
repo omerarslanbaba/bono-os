@@ -559,6 +559,13 @@ public partial class MainWindow : Window
         SetActiveNav(NavFiles);
         await OfficeFilesView.RefreshAsync();
     }
+    async void OfficeFilesView_UyapCaseOpened(object sender, int caseId)
+    {
+        await LoadUyapAsync();
+        var match = uyapCases.FirstOrDefault(x => x.Id == caseId);
+        if (match != null) await OpenUyapCaseAsync(match);
+    }
+
     async void OfficeFilesView_UyapRequested(object sender, EventArgs e) => await OpenUyapFilesAsync();
 
     async Task OpenUyapFilesAsync()
