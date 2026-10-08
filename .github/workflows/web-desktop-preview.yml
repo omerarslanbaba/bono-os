@@ -47,6 +47,18 @@ jobs:
       - name: Verify case document inquiry UI
         run: node scripts/test_web_desktop_case_ui.js
 
+      - name: Verify web API URLs stay same-origin
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem 'web' -Recurse -File | Where-Object { $_.Extension -in '.js','.html' }
+          $hits = $files | Select-String -Pattern 'https?://(127\.0\.0\.1|localhost):47831' -ErrorAction SilentlyContinue
+          if ($hits) {
+            $hits | ForEach-Object { Write-Host $_.Path ':' $_.LineNumber ':' $_.Line }
+            throw 'Web UI contains absolute BONO Core URLs; relative /api paths are required for same-origin preview proxy.'
+          }
+          $api = Get-Content 'web/js/api.js' -Raw
+          if (-not $api.Contains('fetch(path')) { throw 'Expected relative fetch(path) API transport missing.' }
+
       - name: Restore WebView2 project
         run: dotnet restore desktop/BonoWebDesktop/BonoWebDesktop.csproj -r win-x64
 
