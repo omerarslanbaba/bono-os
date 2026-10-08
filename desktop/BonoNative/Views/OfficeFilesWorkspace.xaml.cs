@@ -20,6 +20,7 @@ public partial class OfficeFilesWorkspace : UserControl
     private bool _loading;
 
     public event EventHandler<OfficeFileItem>? FileOpened;
+    public event EventHandler? UyapRequested;
 
     public OfficeFilesWorkspace()
     {
@@ -127,6 +128,8 @@ public partial class OfficeFilesWorkspace : UserControl
         DetailView.Visibility = Visibility.Visible;
         await DetailView.OpenAsync(file.Id);
     }
+
+    private void OpenUyap_Click(object sender, RoutedEventArgs e) => UyapRequested?.Invoke(this, EventArgs.Empty);
 
     private void DetailBack_Click(object sender, EventArgs e) => DetailView.Visibility = Visibility.Collapsed;
 
