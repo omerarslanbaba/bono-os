@@ -43,7 +43,7 @@ function handleDocumentViewRequest(req,res,db){
     if(result.document?.integrity?.exists===true){
       const verified=streamGuard.openVerifiedDocumentContent(db,route.caseId,route.remoteDocumentDbId);
       if(verified.ok){
-        try{fs.closeSync(verified.fd)}catch{}
+        streamGuard.disposeVerifiedContent(verified);
         result.document.integrity.streamSafe=true;
         result.document.integrity.streamBlockReason=null;
       }else{
@@ -77,7 +77,11 @@ function handleDocumentViewRequest(req,res,db){
   };
   res.writeHead(200,headers);
   const stream=fs.createReadStream(opened.path,{fd:opened.fd,autoClose:true,start:0});
-  stream.on("error",()=>{try{res.destroy()}catch{}});
+  let cleaned=false;
+  const cleanup=()=>{if(cleaned)return;cleaned=true;streamGuard.disposeVerifiedContent(opened)};
+  stream.on("error",()=>{cleanup();try{res.destroy()}catch{}});
+  stream.on("close",cleanup);
+  res.on("close",()=>{if(!stream.closed)try{stream.destroy()}catch{};cleanup()});
   stream.pipe(res);
   return true;
 }
