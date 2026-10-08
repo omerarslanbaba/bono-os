@@ -16,6 +16,8 @@
     "test:document-view-http": "node scripts/document_view_http_selftest.js",
     "test:webview2-archive-route-e2e": "node scripts/test_webview2_archive_route_e2e.js",
     "test:uyap-targeted-cbs-party-search": "node scripts/test_uyap_targeted_cbs_party_search.js",
-    "test:uyap-batch-safety": "node scripts/test_uyap_batch_safety.js"
+    "test:uyap-batch-safety": "node scripts/test_uyap_batch_safety.js",
+    "test:integration-manifest": "node scripts/test_integration_manifest.js",
+    "test:single-file-windows-pipeline": "node scripts/test_single_file_windows_pipeline.js"
   }
 }
