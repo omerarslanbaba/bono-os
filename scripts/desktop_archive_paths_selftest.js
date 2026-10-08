@@ -25,3 +25,12 @@ test('reject invalid IDs and avoid filesystem side effects', () => {
   assert.throws(()=>naming.caseFolder({caseId:'../escape'}), TypeError);
   assert.throws(()=>naming.caseFolder({}), TypeError);
 });
+
+test('existing Dava Dosyaları paths remain authoritative and untouched', () => {
+  const root = path.resolve('Dava Dosyaları');
+  const actual = naming.existingCaseDirectory(root, 'Mevcut Klasör\\Alt Dosya');
+  assert.equal(actual, path.resolve(root, 'Mevcut Klasör', 'Alt Dosya'));
+  assert.throws(() => naming.existingCaseDirectory(root, '../Outside'), TypeError);
+  assert.throws(() => naming.existingCaseDirectory(root, 'C:/Outside'), TypeError);
+  assert.throws(() => naming.existingCaseDirectory(root, ''), TypeError);
+});
