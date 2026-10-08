@@ -106,7 +106,7 @@ public partial class ThreeMonthHearingCalendar : UserControl
                     {
                         Content = new TextBlock
                         {
-                            Text = h.Start.ToString("HH:mm") + "\\n" + h.FileNo,
+                            Text = h.Start.ToString("HH:mm") + "\n" + h.FileNo,
                             TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.Wrap, FontSize = 10,
                             Foreground = Brush("#DCEFF8")
                         },
