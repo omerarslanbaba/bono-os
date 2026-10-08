@@ -8,7 +8,7 @@ Bu plan yalnız metadata migrasyonunu tarif eder. Canonical fiziksel kopya zaten
 - Remote document ID: `74`
 - Beklenen SHA-256: `5c620fb763693933fc27cab5c56141eb8f20d57360f9534338427aa7d6357a0c`
 - Kaynak: `C:\Users\omera\Downloads\(2)CevapDilekcesi.pdf`
-- Canonical hedef: `C:\Users\omera\OneDrive\Masaüstü\Dava Dosyaları\Asliye Hukuk Mahkemesi\Körfez 2. Asliye Hukuk Mahkemesi - 2026-218\Cevap Dilekçesi - 2026-09-14.pdf`
+- Canonical hedef: `C:\Users\omera\OneDrive\Masaüstü\Dava Dosyaları\Asliye Hukuk Mahkemesi\Körfez 2. Asliye Hukuk Mahkemesi - 2026-218\Cevap Dilekcesi - 2026-09-14.pdf`
 
 ## Uygulamadan önce
 
