@@ -21,6 +21,7 @@ public partial class OfficeFilesWorkspace : UserControl
 
     public event EventHandler<OfficeFileItem>? FileOpened;
     public event EventHandler? UyapRequested;
+    public event EventHandler<int>? UyapCaseOpened;
 
     public OfficeFilesWorkspace()
     {
@@ -33,6 +34,7 @@ public partial class OfficeFilesWorkspace : UserControl
     public void SetSearch(string value)
     {
         QueryBox.Text = value ?? "";
+        UyapResults.Search(value ?? "");
         ApplyFilter();
     }
 
@@ -129,6 +131,16 @@ public partial class OfficeFilesWorkspace : UserControl
         await DetailView.OpenAsync(file.Id);
     }
 
+    private void UyapResults_CaseOpened(object sender, int id) => UyapCaseOpened?.Invoke(this, id);
+    private void ShowUyapTab_Click(object sender, RoutedEventArgs e) => ToggleTabs(true);
+    private void ShowOfficeTab_Click(object sender, RoutedEventArgs e) => ToggleTabs(false);
+    private void ToggleTabs(bool uyap)
+    {
+        UyapResults.Visibility = uyap ? Visibility.Visible : Visibility.Collapsed;
+        OfficePanel.Visibility = uyap ? Visibility.Collapsed : Visibility.Visible;
+        UyapTab.Background = new System.Windows.Media.SolidColorBrush(uyap ? System.Windows.Media.Color.FromRgb(24,54,69) : System.Windows.Media.Color.FromRgb(35,38,42));
+        OfficeTab.Background = new System.Windows.Media.SolidColorBrush(uyap ? System.Windows.Media.Color.FromRgb(35,38,42) : System.Windows.Media.Color.FromRgb(24,54,69));
+    }
     private void OpenUyap_Click(object sender, RoutedEventArgs e) => UyapRequested?.Invoke(this, EventArgs.Empty);
 
     private void DetailBack_Click(object sender, EventArgs e) => DetailView.Visibility = Visibility.Collapsed;
