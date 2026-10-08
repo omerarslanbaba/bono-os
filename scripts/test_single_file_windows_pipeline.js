@@ -32,7 +32,8 @@ async function req(base,url,options={}){const r=await fetch(base+url,{headers:{"
  const base="http://127.0.0.1:"+port;
  try{
   let healthy=false;for(let i=0;i<80;i++){try{if((await req(base,"/health")).status===200){healthy=true;break}}catch{}if(server.exitCode!=null)break;await sleep(100)}must(healthy,"isolated Core did not start\n"+out+"\n"+err);
-  const requestKey=crypto.randomUUID();\n  const start=await req(base,"/api/uyap/cases/101/query",{method:"POST",headers:{"X-Bono-User-Action":"1","Origin":base},body:JSON.stringify({requestKey,refresh:true})});
+  const requestKey=crypto.randomUUID();
+  const start=await req(base,"/api/uyap/cases/101/query",{method:"POST",headers:{"X-Bono-User-Action":"1","Origin":base},body:JSON.stringify({requestKey,refresh:true})});
   must(start.status===202&&start.body.commandId,"document.list command not accepted");
   const commandId=Number(start.body.commandId);
   const claim=await req(base,"/api/uyap/commands/next?host=avukat.uyap.gov.tr&lane=query");
@@ -40,8 +41,8 @@ async function req(base,url,options={}){const r=await fetch(base+url,{headers:{"
   const payload={tumEvraklar:[{evrakId:"PIPE-1",dosyaId:"DOSYA-101",tur:"Gerekçeli Karar",onaylandigiTarih:"09/10/2026",birimEvrakNo:"1",dosyaAdi:"gerekceli.pdf"}]};
   const result=await req(base,"/api/uyap/commands/"+commandId+"/result",{method:"POST",body:JSON.stringify({ok:true,status:200,contentType:"application/json",data:payload})});
   must(result.status===200&&result.body.ok===true,"document.list fake result rejected");
-  const sync=await req(base,"/api/uyap/cases/101/document-sync-status");
-  must(sync.status===200&&sync.body.state==="completed"&&sync.body.documents.remoteCount===1,"metadata lifecycle did not complete");
+  const history=await req(base,"/api/uyap/cases/101/query-history");
+  must(history.status===200&&history.body[0]?.state==="completed"&&history.body[0]?.operation==="document.list","user-query history did not complete");
   let docs=await req(base,"/api/uyap/cases/101/remote-documents");
   must(docs.status===200&&docs.body.length===1&&docs.body[0].remote_document_id==="PIPE-1","remote metadata not materialized");
   const queue=await req(base,"/api/uyap/queue?limit=100");
