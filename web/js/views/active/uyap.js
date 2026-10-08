@@ -187,14 +187,23 @@ function bindDocumentTree(){
 }
 
 async function renderCase(id){
-  const [docs,finance,cases,downloadSummary]=await Promise.all([api.uyapRemoteDocuments(id),api.accountingOverview(id),api.uyapCases(),api.uyapDownloadSummary(id)]);
+  const [docs,finance,cases,downloadSummary,syncStatus]=await Promise.all([api.uyapRemoteDocuments(id),api.accountingOverview(id),api.uyapCases(),api.uyapDownloadSummary(id),api.uyapDocumentSyncStatus(id)]);
   const file=cases.find(x=>String(x.id)===String(id))||{};
   const status=v=>({discovered:'İndirilecek',download_queued:'İndirme kuyruğunda',downloaded:'İndirildi',indexed:'İndekslendi',filed:'Arşivlendi',summarized:'Nota dönüştürüldü',duplicate:'Mükerrer',skipped:'Arşiv dışı',review:'İnceleme gerekli'}[String(v||'').toLowerCase()]||v||'Keşfedildi');
 
   const counts={};for(const d of docs){const c=docCategory(d);counts[c]=(counts[c]||0)+1}
   const cats=['Tümü',...Object.keys(counts).sort((a,b)=>a.localeCompare(b,'tr'))];
   const filters=`<div class="document-categories">${cats.map((c,i)=>`<button class="category-chip ${i===0?'active':''}" data-cat="${esc(c)}">${esc(c)} <span>${c==='Tümü'?docs.length:counts[c]}</span></button>`).join('')}</div>`;
-  const docRows=docs.length?`<div class="evrak-scroll">${docs.map(d=>{const cat=docCategory(d);return `<div class="notice-row evrak-row" data-category="${esc(cat)}"><div><div class="doc-title">${esc(d.remote_title||d.document_type||'UYAP Evrakı')}</div><div class="doc-meta">${esc(d.document_date||'')} · ${esc(cat)} · ${esc(status(d.status))}</div></div><div class="row-actions">${d.status==='summarized'?badge('Nota dönüştürüldü','green'):(d.local_asset_id?badge('BONO’da','green'):badge(d.status==='download_queued'?'Bekliyor':'Henüz alınmadı'))}</div></div>`}).join('')}</div>`:empty('Evrak listesi henüz alınmadı.');
+  const syncMessage={
+    not_synced:'UYAP evrak listesi henüz sorgulanmadı.',
+    queued:'Evrak listesi sorgusu kuyrukta bekliyor.',
+    running:'UYAP’tan evrak listesi sorgulanıyor.',
+    login_required:'UYAP oturumu gerekli. Chrome üzerindeki UYAP oturumunu açın.',
+    failed:'Evrak listesi alınamadı'+(syncStatus.error?': '+syncStatus.error:'.'),
+    empty:'UYAP sorgusu tamamlandı; bu dosyada evrak bulunamadı.',
+    metadata_unbound:'UYAP evrak metadata’sı döndü ancak BONO listesine işlenemedi.'
+  }[syncStatus.state]||'Evrak listesi henüz alınmadı.';
+  const docRows=docs.length?`<div class="evrak-scroll">${docs.map(d=>{const cat=docCategory(d);return `<div class="notice-row evrak-row" data-category="${esc(cat)}"><div><div class="doc-title">${esc(d.remote_title||d.document_type||'UYAP Evrakı')}</div><div class="doc-meta">${esc(d.document_date||'')} · ${esc(cat)} · ${esc(status(d.status))}</div></div><div class="row-actions">${d.status==='summarized'?badge('Nota dönüştürüldü','green'):(d.local_asset_id?badge('BONO’da','green'):badge(d.status==='download_queued'?'Bekliyor':'Henüz alınmadı'))}</div></div>`}).join('')}</div>`:empty(syncMessage);
 
   const converted=(finance.converted||[]).map(x=>`<div class="notice-row accounting-row"><div><div class="doc-title">${esc(x.title)}</div><div class="doc-meta">${esc(extractLine(x.body,'Tarih'))} · ${esc(extractLine(x.body,'Tutar'))}</div><div class="accounting-source">${esc(extractLine(x.body,'Kaynak belge'))}</div></div>${badge('Nota dönüştürüldü','green')}</div>`).join('');
   const pending=(finance.pending||[]).map(x=>`<div class="notice-row accounting-row"><div><div class="doc-title">${esc(x.remote_title||x.document_type||x.original_file_name||'Mali evrak')}</div><div class="doc-meta">${esc(x.document_date||'Tarih yok')}</div><div class="accounting-source">${esc(x.reason||'İnceleme bekliyor')}</div></div>${badge('İnceleme bekliyor')}</div>`).join('');
@@ -204,9 +213,13 @@ async function renderCase(id){
   const activeDownloads=Number(downloadSummary.activeCommands||0);
   const capacity=Number(downloadSummary.capacity||0);
   const manualPaused=!!downloadSummary.manualDownloadPaused;
+  const syncBusy=['queued','running'].includes(syncStatus.state);
+  const syncLabel=syncStatus.state==='not_synced'?'UYAP’tan Evrak Listesini Getir':(syncBusy?(syncStatus.state==='queued'?'Sorgu Bekliyor':'Sorgulanıyor…'):'Evrak Listesini Yenile');
+  const syncTone=syncStatus.state==='completed'||syncStatus.state==='empty'?'green':(syncStatus.state==='failed'||syncStatus.state==='metadata_unbound'?'red':'');
   const tabs=`<div class="case-tabs"><button class="case-tab active" data-file-tab="documents">Evraklar <span>${docs.length}</span></button><button class="case-tab" data-file-tab="finance">Tahsilat / Reddiyat <span>${(finance.counts?.converted||0)+(finance.counts?.pending||0)}</span></button></div>`;
   const downloadActions=`<div class="file-actionbar">
-    <button id="syncUyapDocs" class="primary-action" ${file.uyap_dosya_id?'':'disabled'}>${file.uyap_dosya_id?'Evrak Listesini Yenile':'UYAP bağlantısı bulunamadı'}</button>
+    <button id="syncUyapDocs" class="primary-action" ${file.uyap_dosya_id&&!syncBusy&&syncStatus.state!=='login_required'?'':'disabled'}>${file.uyap_dosya_id?syncLabel:'UYAP bağlantısı bulunamadı'}</button>
+    <span class="sync-state ${syncTone}">${esc(syncStatus.label||'')}</span>
     <button id="queueMissingUyapDocs" class="subtle-action" ${missing>0&&capacity>0?'':'disabled'}>Eksik Evrakları Kuyruğa Ekle (en fazla ${Math.min(200,capacity)})</button>
     <button id="${manualPaused?'resumeUyapDownloads':'pauseUyapDownloads'}" class="subtle-action">${manualPaused?'İndirmeleri Devam Ettir':'İndirmeleri Duraklat'}</button>
     <span class="download-safety-state">Toplam ${downloadSummary.total||0} · BONO’da ${downloadSummary.existing||0} · Eksik ${missing} · Aktif ${activeDownloads}/200 · ${manualPaused?'İndirmeler duraklatıldı':'İndirmeler açık'}</span>
@@ -221,7 +234,10 @@ async function renderCase(id){
 
   document.querySelectorAll('[data-file-tab]').forEach(b=>b.onclick=()=>{const tab=b.dataset.fileTab;document.querySelectorAll('[data-file-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('[data-file-panel]').forEach(p=>p.hidden=p.dataset.filePanel!==tab)});
   bindDocumentTree();
-  document.querySelector('#syncUyapDocs:not(:disabled)')?.addEventListener('click',async e=>{e.currentTarget.disabled=true;e.currentTarget.textContent='Evrak listesi yenileniyor';try{await api.syncUyapDocuments(id);await renderCase(id)}catch(err){alert(err.message);e.currentTarget.disabled=false;e.currentTarget.textContent='Evrak Listesini Yenile'}});
+  document.querySelector('#syncUyapDocs:not(:disabled)')?.addEventListener('click',async e=>{
+    e.currentTarget.disabled=true;e.currentTarget.textContent='Sorgu kuyruğa alınıyor…';
+    try{await api.syncUyapDocuments(id);await renderCase(id)}catch(err){alert(err.message);await renderCase(id)}
+  });
   document.querySelector('#queueMissingUyapDocs:not(:disabled)')?.addEventListener('click',async e=>{
     if(!confirm('Bu dosya için en fazla 200 eksik evrak indirme kuyruğuna eklenecek. Manuel duraklatma açıksa indirmeler siz devam ettirmeden başlamaz. Devam edilsin mi?'))return;
     e.currentTarget.disabled=true;
@@ -233,4 +249,7 @@ async function renderCase(id){
     e.currentTarget.disabled=true;
     try{await api.resumeUyapDownloads();await renderCase(id)}catch(err){alert(err.message);e.currentTarget.disabled=false}
   });
+  if(syncBusy){
+    setTimeout(()=>{if(location.hash===`#uyap/${id}`)renderCase(id).catch(()=>{})},1500);
+  }
 }

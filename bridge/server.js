@@ -280,13 +280,19 @@ const server=http.createServer(async(req,res)=>{
 
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/remote-documents$/);
     if(req.method==="GET"&&m) return json(res,200,uyap.remoteDocuments(Number(m[1])));
+    m=p.match(/^\/api\/uyap\/cases\/(\d+)\/document-sync-status$/);
+    if(req.method==="GET"&&m) return json(res,200,uyap.caseDocumentSyncStatus(Number(m[1])));
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/download-summary$/);
     if(req.method==="GET"&&m) return json(res,200,uyap.caseDownloadSummary(Number(m[1])));
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/sync-documents$/);
     if(req.method==="POST"&&m){
-      const id=uyap.enqueueCaseDocumentSync(Number(m[1]),{priority:6,purpose:"manual_case_sync",source:"native_case_detail"});
-      audit("lawyer","uyap_sync_documents","case",m[1],{commandId:id});
-      return json(res,202,{ok:true,id});
+      const caseId=Number(m[1]);
+      const before=uyap.caseDocumentSyncStatus(caseId);
+      if(before.sessionState==="login_required") return json(res,409,{error:"UYAP oturumu gerekli.",sync:before});
+      const id=uyap.enqueueCaseDocumentSync(caseId,{priority:6,purpose:"manual_case_sync",source:"web_case_detail"});
+      const sync=uyap.caseDocumentSyncStatus(caseId);
+      audit("lawyer","uyap_sync_documents","case",m[1],{commandId:id,state:sync.state});
+      return json(res,202,{ok:true,id,sync});
     }
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/download-missing$/);
     if(req.method==="POST"&&m){

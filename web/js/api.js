@@ -21,6 +21,7 @@ export const api={
   uyapArchiveStatus:()=>request('/api/uyap/archive/status'),
   uyapCases:()=>request('/api/uyap/cases'),
   uyapRemoteDocuments:caseId=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/remote-documents'),
+  uyapDocumentSyncStatus:caseId=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/document-sync-status'),
   uyapDownloadSummary:caseId=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/download-summary'),
   syncUyapDocuments:caseId=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/sync-documents',{method:'POST',body:'{}'}),
   queueMissingUyapDocuments:(caseId,limit=200)=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/download-missing',{method:'POST',body:JSON.stringify({limit,confirmed:true})}),
