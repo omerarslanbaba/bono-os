@@ -1,0 +1,33 @@
+name: BONO OS Original Web Desktop Preview
+on:
+  push:
+    branches: [feature/desktop-webview2]
+    paths:
+      - 'desktop/BonoWebDesktop/**'
+      - '.github/workflows/web-desktop-preview.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore desktop/BonoWebDesktop/BonoWebDesktop.csproj -r win-x64
+      - name: Publish independent WebView2 EXE
+        run: dotnet publish desktop/BonoWebDesktop/BonoWebDesktop.csproj -c Release -r win-x64 --self-contained true --no-restore -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist
+      - name: Verify output and hash
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'dist/BONO OS Web Desktop.exe')) { throw 'Expected EXE missing' }
+          (Get-FileHash 'dist/BONO OS Web Desktop.exe' -Algorithm SHA256).Hash.ToLowerInvariant() + '  BONO OS Web Desktop.exe' | Set-Content dist/SHA256SUMS.txt -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bono-os-original-web-desktop-preview
+          path: |
+            dist/**
+          retention-days: 7
