@@ -164,7 +164,7 @@ function renderDocumentTree(docs,status){
  const folders=new Map();
  for(const doc of docs){const name=String(doc.document_type||doc.remote_title||'Diğer Evrak');if(!folders.has(name))folders.set(name,[]);folders.get(name).push(doc)}
  const ordered=[...folders.entries()].sort((a,b)=>a[0].localeCompare(b[0],'tr'));
- const groups=ordered.map(([name,items],i)=>`<details class="evrak-folder" ${i===0?'open':''}><summary>▱　${esc(name)} (${items.length})</summary><div class="evrak-folder-items">${items.map(x=>{const tag=x.local_asset_id?'a':'div',link=x.local_asset_id?` href="/api/assets/${x.local_asset_id}/content" target="_blank" rel="noopener"`:'';return `<${tag} class="evrak-entry ${x.local_asset_id?'clickable-document':''}"${link} data-doc-name="${esc(String([name,x.remote_title,x.original_file_name].join(' ')).toLocaleLowerCase('tr-TR'))}" data-doc-date="${esc(x.document_date||'')}"><div><strong>${esc(x.remote_title||x.original_file_name||name)}</strong><small>${esc(x.document_date||'')} · ${esc(status(x.status))}</small></div>${x.status==='summarized'?badge('Nota dönüştürüldü','green'):(x.status==='skipped'?badge('Arşiv dışı'):(x.status==='review'?badge('İncele'):(x.local_asset_id?badge('Aç','green'):badge('Bekliyor'))))}</${tag}>`}).join('')}</div></details>`).join('');
+ const groups=ordered.map(([name,items],i)=>`<details class="evrak-folder" ${i===0?'open':''}><summary>▱　${esc(name)} (${items.length})</summary><div class="evrak-folder-items">${items.map(x=>`<button type="button" class="evrak-entry clickable-document case-document-open" data-remote-document-id="${esc(x.id)}" data-doc-name="${esc(String([name,x.remote_title,x.original_file_name].join(' ')).toLocaleLowerCase('tr-TR'))}" data-doc-date="${esc(x.document_date||'')}"><div><strong>${esc(x.remote_title||x.original_file_name||name)}</strong><small>${esc(x.document_date||'')} · ${esc(status(x.status))}</small></div>${x.local_asset_id?badge('Detay','green'):badge('Durumu gör')}</button>`).join('')}</div></details>`).join('');
  return `<div class="evrak-tree-tools"><input id="evrakSearch" placeholder="Evrakta ara" aria-label="Evrakta ara"><button id="expandAllEvrak" class="subtle-action" type="button" title="Tüm klasörleri aç / kapat">▤</button><select id="evrakSort" aria-label="Sıralama"><option value="new">Yeni → Eski</option><option value="old">Eski → Yeni</option><option value="name">Adına göre</option></select></div><div class="evrak-tree"><div class="evrak-tree-root">▾　▱ Dosya Evrakları (${docs.length})</div>${groups||'<div class="empty">Evrak listesi henüz alınmadı.</div>'}</div>`;
 }
 function bindDocumentTree(){
@@ -220,12 +220,13 @@ async function renderCase(id){
   mount(`<div class="case-header"><a class="back-link" href="#uyap">← Dosyalarıma dön</a><h1><span class="foy-badge ${file.office_file_no?'':'pending'}">${esc(file.office_file_no||'Föy Bekliyor')}</span>${esc(file.court||'Dosya')} ${file.court_file_no?'· '+esc(file.court_file_no):''}</h1><p class="detail-subtitle">${esc(file.case_type||'Dosya içeriği')}</p><div class="case-parties"><strong>Taraf Bilgileri</strong><div>${file.client_name?`<span><b>Müvekkil:</b> ${esc(file.client_name)}</span>`:''}${file.party_names?`<span><b>Kayıtlı taraflar:</b> ${esc(file.party_names)}</span>`:'<span>UYAP taraf bilgisi henüz kaydedilmemiş.</span>'}</div></div>${related?`<div class="related-case-list">${related}</div>`:''}</div>
     <div class="case-sync-panel ${docs.length?'has-documents':'is-empty'}"><div class="case-sync-copy"><strong>${docs.length?'Evrak listesini güncelle':'Bu dosyanın evrak listesi henüz alınmamış'}</strong><p>${docs.length?'Yeni evrak olup olmadığını UYAP üzerinden sorgulayabilirsin.':'UYAP üzerinden yalnız bu dosyanın evrak listesini sorgula. Bu işlem PDF/UDF dosyalarını indirmez.'}</p><small id="syncUyapStatus" role="status" aria-live="polite">${file.uyap_dosya_id?'Liste sorgulaması hazır.':'Bu kayıt için UYAP dosya bağlantısı bulunamadı.'}</small></div><button id="syncUyapDocs" type="button" class="primary-action" ${file.uyap_dosya_id?'':'disabled'}>↻ UYAP'tan Evrak Listesini Getir</button></div>
     ${tabs}
-    <div class="file-tab-panel" data-file-panel="documents">${documentSummary}${docs.length?'':documentGuidance}${section('Evraklar','▤',renderDocumentTree(docs,status))}${downloadControls}</div>
+    <div class="file-tab-panel" data-file-panel="documents">${documentSummary}${docs.length?'':documentGuidance}${section('Evraklar','▤',renderDocumentTree(docs,status))}<div id="caseDocumentViewer" class="case-document-viewer" hidden aria-live="polite"></div>${downloadControls}</div>
     <div class="file-tab-panel" data-file-panel="finance" hidden>${financeBody}</div>`,'uyap');
 
   document.querySelectorAll('[data-file-tab]').forEach(b=>b.onclick=()=>{const tab=b.dataset.fileTab;document.querySelectorAll('[data-file-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('[data-file-panel]').forEach(p=>p.hidden=p.dataset.filePanel!==tab)});
   bindDocumentTree();
   bindCaseDocumentControls(id);
+  bindCaseDocumentViewer(id);
 }
 
 
@@ -310,4 +311,35 @@ function bindCaseDocumentControls(caseId){
     }catch(err){if(alive()){downloadNotice.textContent='İndirme kuyruğu hatası: '+err.message;await refreshDownloadState();}}
   });
   poll();
+}
+
+function bindCaseDocumentViewer(caseId){
+  const panel=document.getElementById('caseDocumentViewer');
+  const entries=document.querySelectorAll('.case-document-open');
+  let seq=0;
+  for(const button of entries)button.addEventListener('click',async()=>{
+    const docId=Number(button.dataset.remoteDocumentId);
+    if(!Number.isSafeInteger(docId)||docId<1||!panel)return;
+    const current=++seq;
+    panel.hidden=false;
+    panel.textContent='Evrak bilgileri doğrulanıyor…';
+    try{
+      const response=await api.caseDocumentView(caseId,docId);
+      if(current!==seq||!panel.isConnected||location.hash!=='#uyap/'+caseId)return;
+      if(response?.ok!==true||Number(response.document?.caseId)!==Number(caseId)||Number(response.document?.remoteDocumentDbId)!==docId)throw new Error('Evrakın dava dosyasına bağlı olduğu doğrulanamadı');
+      const d=response.document,download=d.download||{},integrity=d.integrity||{},readability=d.readability||{},viewer=d.viewer||{};
+      const plainStatus=(v)=>v?'Evet':'Hayır';
+      const label=(text,value)=>'<div><span>'+esc(text)+'</span><strong>'+esc(value)+'</strong></div>';
+      const canOpen=viewer.openable===true&&integrity.verified===true&&integrity.exists===true;
+      const contentUrl=api.caseDocumentContentUrl(caseId,docId);
+      const opened=canOpen?(viewer.mode==='pdf_inline'?'<iframe title="Doğrulanmış PDF evrakı" class="case-document-pdf" src="'+contentUrl+'"></iframe>':viewer.mode==='udf_text'?'':('<a class="subtle-action" href="'+contentUrl+'" target="_blank" rel="noopener">Doğrulanmış evrakı aç / indir ↗</a>')):'<div class="case-document-warning">Dosyanın bütünlüğü doğrulanmadan fiziksel içerik açılmaz.</div>';
+      const body=readability.readable===true&&typeof readability.text==='string'?'<details class="case-document-text" open><summary>Çıkarılmış belge metni</summary><pre>'+esc(readability.text)+'</pre></details>':'<div class="case-document-warning">Metin okunamıyor veya henüz çıkarılmamış. '+esc(readability.error||readability.status||'')+'</div>';
+      panel.innerHTML='<div class="case-document-viewer-head"><div><small>EVRAK İNCELEME</small><h3>'+esc(d.name||'UYAP Evrakı')+'</h3><p>'+esc(d.documentType||'Evrak')+' · '+esc(d.documentDate||'Tarih bilinmiyor')+'</p></div><button id="closeCaseDocumentViewer" class="subtle-action" type="button">Kapat ×</button></div><div class="case-document-flags">'+label('İndirilmiş',plainStatus(download.downloaded===true))+label('SHA doğrulandı',plainStatus(integrity.verified===true))+label('Metin okunabilir',plainStatus(readability.readable===true))+label('Görüntüleme',viewer.mode||'Kullanılamıyor')+'</div>'+opened+body;
+      panel.querySelector('#closeCaseDocumentViewer')?.addEventListener('click',()=>{seq++;panel.hidden=true;panel.textContent=''});
+      panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+    }catch(err){
+      if(current!==seq||!panel.isConnected)return;
+      panel.textContent='Evrak görüntüleme servisine ulaşılamadı: '+err.message+'. Güncel Core entegrasyonu gerekebilir.';
+    }
+  });
 }
