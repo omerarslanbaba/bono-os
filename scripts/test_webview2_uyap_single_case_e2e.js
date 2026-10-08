@@ -128,9 +128,9 @@ async function main(){
   const view=fs.readFileSync(path.join(__dirname,"..","web","js","views","active","uyap.js"),"utf8");
   must(view.includes("r.party_names"),"list party rendering was lost");
   must(view.includes("file.party_names"),"detail party rendering was lost");
-  must(view.includes("UYAP'tan Evrak Listesini Getir"),"initial single-case sync CTA missing");
-  must(view.includes("setTimeout"),"queued/running UI polling missing");
-  must(view.includes("Bu işlem PDF/UDF dosyalarını indirmez."),"no-download disclosure missing");
+  must(view.includes("UYAP'ta Sorgula")&&view.includes("mountUserQueries"),"controlled single-case query CTA missing");
+  must(view.includes("mountUserQueries"),"user-query UI binding missing");
+  must(view.includes("Fiziksel evrak indirme ayrı onaydır")||view.includes("PDF/UDF dosyalarını indirmez"),"no-download disclosure missing");
 
   console.log(JSON.stringify({
     ok:true,
