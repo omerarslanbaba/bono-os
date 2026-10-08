@@ -15,7 +15,7 @@ const v09=require("./v09");
 const workflow=require("./workflow_engine");
 const eventBus=require("./event_bus");
 
-const PORT=47831;
+const PORT=Number(process.env.BONO_PORT||47831);
 const ROOT=path.join(__dirname,"..");
 const DATA_DIR=path.join(ROOT,"data");
 const WEB_DIR=path.join(ROOT,"web");
@@ -280,35 +280,46 @@ const server=http.createServer(async(req,res)=>{
 
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/remote-documents$/);
     if(req.method==="GET"&&m) return json(res,200,uyap.remoteDocuments(Number(m[1])));
+    m=p.match(/^\/api\/uyap\/cases\/(\d+)\/document-sync-status$/);
+    if(req.method==="GET"&&m) return json(res,200,uyap.caseDocumentSyncStatus(Number(m[1])));
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/download-summary$/);
     if(req.method==="GET"&&m) return json(res,200,uyap.caseDownloadSummary(Number(m[1])));
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/sync-documents$/);
     if(req.method==="POST"&&m){
-      const id=uyap.enqueueCaseDocumentSync(Number(m[1]),{priority:6,purpose:"manual_case_sync",source:"native_case_detail"});
-      audit("lawyer","uyap_sync_documents","case",m[1],{commandId:id});
-      return json(res,202,{ok:true,id});
+      const caseId=Number(m[1]);
+      const before=uyap.caseDocumentSyncStatus(caseId);
+      if(before.sessionState==="login_required") return json(res,409,{error:"UYAP oturumu gerekli.",sync:before});
+      const id=uyap.enqueueCaseDocumentSync(caseId,{priority:6,purpose:"manual_case_sync",source:"web_case_detail"});
+      const sync=uyap.caseDocumentSyncStatus(caseId);
+      audit("lawyer","uyap_sync_documents","case",m[1],{commandId:id,state:sync.state});
+      return json(res,202,{ok:true,id,commandId:id,sync});
     }
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/download-missing$/);
     if(req.method==="POST"&&m){
       const b=await readBody(req);
+      if(b.confirmed!==true) return json(res,409,{error:"Evrak batch kuyruğu için açık kullanıcı onayı gerekli."});
       const caseId=Number(m[1]),limit=Math.max(1,Math.min(200,Number(b.limit)||200));
-      uyap.setDocumentDownloadState("ready","per_file_batch:"+caseId);
       const out=uyap.enqueuePendingDownloads(caseId,limit);
-      audit("lawyer","uyap_download_case_batch","case",caseId,{limit,queued:out.queued});
+      audit("lawyer","uyap_download_case_batch","case",caseId,{limit,queued:out.queued,confirmed:true,manualDownloadPaused:uyap.sessionState().manualDownloadPaused});
       return json(res,202,{ok:true,...out});
     }
     if(req.method==="POST"&&p==="/api/uyap/downloads/pause"){
-      const out=uyap.setDocumentDownloadState("paused_manual","manual_download_pause");
+      const out=uyap.setManualDownloadPause(true,"manual_download_pause");
       return json(res,200,out);
     }
     if(req.method==="POST"&&p==="/api/uyap/downloads/resume"){
-      const out=uyap.setDocumentDownloadState("ready","");
+      const b=await readBody(req);
+      if(b.confirmed!==true) return json(res,409,{error:"UYAP indirmelerini devam ettirmek için açık kullanıcı onayı gerekli."});
+      const out=uyap.setManualDownloadPause(false,"");
+      audit("lawyer","uyap_downloads_resume","uyap",null,{confirmed:true});
       return json(res,200,out);
     }
     m=p.match(/^\/api\/uyap\/remote-documents\/(\d+)\/download$/);
     if(req.method==="POST"&&m){
+      const b=await readBody(req);
+      if(b.confirmed!==true) return json(res,409,{error:"UYAP evrak indirme kuyruğu için açık kullanıcı onayı gerekli."});
       const id=uyap.enqueueRemoteDocumentDownload(Number(m[1]));
-      audit("lawyer","uyap_download_document","uyap_remote_document",m[1],{commandId:id});
+      audit("lawyer","uyap_download_document","uyap_remote_document",m[1],{commandId:id,confirmed:true,manualDownloadPaused:uyap.sessionState().manualDownloadPaused});
       return json(res,202,{ok:true,id});
     }
     if(req.method==="POST"&&p==="/api/uyap/hearings/sync-range"){
@@ -449,9 +460,11 @@ const bucket=new Date().toISOString().slice(0,13);
 jobs.enqueue("rebuild_search",{},"startup-search:"+new Date().toISOString().slice(0,10),30);
 jobs.enqueue("scan_documents",{},"document-scan:"+bucket,60);
 
-const worker=new Worker(path.join(__dirname,"worker.js"));
-worker.on("error",e=>console.error("BONO worker error",e));
-worker.on("exit",code=>{if(code!==0)console.error("BONO worker exit",code)});
+if(process.env.BONO_DISABLE_WORKER!=="1"){
+  const worker=new Worker(path.join(__dirname,"worker.js"));
+  worker.on("error",e=>console.error("BONO worker error",e));
+  worker.on("exit",code=>{if(code!==0)console.error("BONO worker exit",code)});
+}
 
 v04.setHeartbeat("server","ok",{pid:process.pid,port:PORT});
 setInterval(()=>v04.setHeartbeat("server","ok",{pid:process.pid,port:PORT}),30000);
