@@ -57,7 +57,7 @@ const server=http.createServer(async(req,res)=>{
   try{
     if(documentViewHttp.handleDocumentViewRequest(req,res,db)) return;
     if(req.method==="GET"&&p==="/favicon.ico"){res.writeHead(204);return res.end()}
-    if(req.method==="GET"&&p==="/health") return json(res,200,{ok:true,service:"BONO OS",port:PORT,ui:true,schema:9});
+    if(req.method==="GET"&&p==="/health") return json(res,200,{ok:true,service:"BONO OS",port:PORT,ui:true,schema:9,uyapExecutionHeld:uyap.executionHeld()});
     if(req.method==="GET"&&p==="/api/summary") return json(res,200,repo.summary());
     if(req.method==="GET"&&p==="/api/brief") return json(res,200,repo.brief());
     if(req.method==="GET"&&p==="/api/search") return json(res,200,{query:u.searchParams.get("q")||"",results:repo.search(u.searchParams.get("q")||"",Number(u.searchParams.get("limit")||25))});

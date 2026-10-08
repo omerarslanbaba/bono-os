@@ -1,3 +1,6 @@
+// Process-scoped maintenance hold; no HTTP or database setting can release it.
+const UYAP_EXECUTION_HELD=process.env.BONO_UYAP_EXECUTION_HOLD==="1";
+function executionHeld(){return UYAP_EXECUTION_HELD;}
 const db=require("./db");
 const fs=require("fs");
 const path=require("path");
@@ -278,6 +281,7 @@ function rateState(){
   return {...state,integration_mode:integrationMode()};
 }
 function claimNext(host,lane="any"){
+  if(executionHeld())return {wait:true,reason:"local_return_hold",retryAfterMs:60000};
   if(integrationMode()!=="browser_readonly") return {wait:true,reason:"observe_only",retryAfterMs:60000};
   if(sessionState().state==="login_required") return {wait:true,reason:"uyap_login_required",retryAfterMs:5000};
   lane=["download","query"].includes(String(lane||"").toLowerCase())?String(lane).toLowerCase():"any";
@@ -358,6 +362,7 @@ function claimNext(host,lane="any"){
   }catch(e){db.exec("ROLLBACK");throw e}
 }
 function reportResult(id,result={}){
+  if(executionHeld())return {ok:false,reason:"local_return_hold"};
   const row=db.prepare("SELECT * FROM uyap_command_queue WHERE id=?").get(id);
   if(!row) throw new Error("UYAP komutu bulunamadı");
   if(row.status==="completed") return {ok:true,state:"ready",circuitUntil:0,ignored:"already_completed"};
@@ -1687,4 +1692,4 @@ function discoveryStatus(){
   const withDocs=db.prepare("SELECT count(DISTINCT case_id) n FROM uyap_remote_documents").get().n;
   return {...counts,totalCases:Number(totalCases||0),casesWithDocuments:Number(withDocs||0),rate:rateState()};
 }
-module.exports={GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,setManualDownloadPause,recoverSession,queue,cases,remoteDocuments,caseDocumentSyncStatus,caseSearchSchemaStatus,caseSearchOptions,enqueueTargetedCaseSearch,targetedCaseSearchStatus,documentDownloadPolicy,caseDownloadSummary,activeCaseDownloadCount,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,cbsPartySearchSchemaStatus,cbsUnitOptions,enqueueTargetedCbsPartySearch,targetedCbsPartySearchStatus,discoveryStatus};
+module.exports={executionHeld,GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,setManualDownloadPause,recoverSession,queue,cases,remoteDocuments,caseDocumentSyncStatus,caseSearchSchemaStatus,caseSearchOptions,enqueueTargetedCaseSearch,targetedCaseSearchStatus,documentDownloadPolicy,caseDownloadSummary,activeCaseDownloadCount,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,cbsPartySearchSchemaStatus,cbsUnitOptions,enqueueTargetedCbsPartySearch,targetedCbsPartySearchStatus,discoveryStatus};
