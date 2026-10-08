@@ -7,17 +7,24 @@ namespace BonoWebDesktop;
 
 public partial class MainWindow : Window
 {
-    // The existing local bridge serves the original web/index.html and assets.
-    // This preview never changes Core, database, extension, downloads or jobs.
-    private static readonly Uri AppUri = new("http://127.0.0.1:47831/");
+    private static readonly Uri CoreUri = new("http://127.0.0.1:47831/");
     private readonly HttpClient _probe = new() { Timeout = TimeSpan.FromSeconds(3) };
+    private LocalPreviewServer? _previewServer;
     private bool _initializing;
 
     public MainWindow()
     {
         InitializeComponent();
         Loaded += async (_, _) => await OpenAsync();
-        Closed += (_, _) => _probe.Dispose();
+        Closed += async (_, _) =>
+        {
+            _probe.Dispose();
+            if (_previewServer is not null)
+            {
+                await _previewServer.DisposeAsync();
+                _previewServer = null;
+            }
+        };
     }
 
     private async Task OpenAsync()
@@ -26,12 +33,14 @@ public partial class MainWindow : Window
         _initializing = true;
         LoadingPanel.Visibility = Visibility.Visible;
         Browser.Visibility = Visibility.Collapsed;
+        VersionWarningPanel.Visibility = Visibility.Collapsed;
         StatusText.Text = "Yerel BONO Core bağlantısı kontrol ediliyor.";
+
         try
         {
             try
             {
-                using var response = await _probe.GetAsync(new Uri(AppUri, "health"));
+                using var response = await _probe.GetAsync(new Uri(CoreUri, "health"));
                 if (response.StatusCode != HttpStatusCode.OK)
                     throw new InvalidOperationException("BONO Core sağlık kontrolü HTTP " + (int)response.StatusCode + " döndürdü.");
             }
@@ -51,31 +60,69 @@ public partial class MainWindow : Window
                 return;
             }
 
+            StatusText.Text = "Paketlenmiş BONO OS arayüzü doğrulanıyor.";
+            var identity = ReleaseIdentity.Load(AppContext.BaseDirectory);
+            var webRoot = WebBundleManager.Prepare(identity);
+
+            if (_previewServer is not null)
+            {
+                await _previewServer.DisposeAsync();
+                _previewServer = null;
+            }
+
+            _previewServer = await LocalPreviewServer.StartAsync(webRoot, CoreUri, identity);
+            var previewOrigin = _previewServer.Origin;
+
+            Title = $"BONO OS · EXE {identity.ExeShort} · UI {identity.WebShort}";
+            if (!identity.CommitsMatch)
+            {
+                Title += " · ⚠ UI SÜRÜMÜ FARKLI";
+                VersionWarningText.Text =
+                    $"Sürüm uyuşmazlığı: EXE {identity.ExeShort} / arayüz {identity.WebShort}. " +
+                    "Paket bütünlüğünü ve güncelleme kaynağını kontrol edin.";
+                VersionWarningPanel.Visibility = Visibility.Visible;
+            }
+
             var environment = await CoreWebView2Environment.CreateAsync(
                 userDataFolder: System.IO.Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "BONO OS Web Desktop", "WebView2Profile"));
             await Browser.EnsureCoreWebView2Async(environment);
+
             Browser.CoreWebView2.Settings.AreDevToolsEnabled = false;
             Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
+
+            Browser.CoreWebView2.NavigationStarting += (_, args) =>
+            {
+                if (!Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri) || !SameOrigin(uri, previewOrigin))
+                    args.Cancel = true;
+            };
+
             Browser.CoreWebView2.NewWindowRequested += (_, args) =>
             {
-                // Preserve same-origin application links; don't silently launch external URLs.
                 args.Handled = true;
-                if (Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri) &&
-                    uri.Scheme == AppUri.Scheme && uri.Host == AppUri.Host && uri.Port == AppUri.Port)
+                if (Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri) && SameOrigin(uri, previewOrigin))
                     Browser.CoreWebView2.Navigate(uri.ToString());
             };
-            Browser.Source = AppUri;
+
+            Browser.Source = new Uri(previewOrigin, "index.html");
             Browser.Visibility = Visibility.Visible;
             LoadingPanel.Visibility = Visibility.Collapsed;
         }
         catch (Exception ex)
         {
-            StatusText.Text = "WebView2 masaüstü arayüzü başlatılamadı. BONO Core sağlık kontrolü başarılıydı.\n\n" + ex.Message;
+            StatusText.Text = "WebView2 masaüstü arayüzü başlatılamadı. Canlı BONO Core veya canlı web dosyaları değiştirilmedi.\n\n" + ex.Message;
         }
-        finally { _initializing = false; }
+        finally
+        {
+            _initializing = false;
+        }
     }
+
+    private static bool SameOrigin(Uri candidate, Uri origin) =>
+        candidate.Scheme.Equals(origin.Scheme, StringComparison.OrdinalIgnoreCase) &&
+        candidate.Host.Equals(origin.Host, StringComparison.OrdinalIgnoreCase) &&
+        candidate.Port == origin.Port;
 
     private async void Retry_Click(object sender, RoutedEventArgs e) => await OpenAsync();
 }
