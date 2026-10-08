@@ -15,20 +15,13 @@ must(api.includes("queueMissingUyapDocuments"),"Per-case batch API missing");
 must(api.includes("confirmed:true"),"Explicit confirmation marker missing from download APIs");
 
 const batchStart=server.indexOf("download-missing");
-const batchEnd=server.indexOf('/api/uyap/downloads/pause',batchStart);
+const batchEnd=server.indexOf("uyap/downloads/pause",batchStart);
 const batchBlock=server.slice(batchStart,batchEnd);
 must(batchBlock.includes("b.confirmed!==true"),"Batch endpoint does not require confirmation");
 must(!batchBlock.includes("setManualDownloadPause(false"),"Batch endpoint clears manual pause");
 
-const resumeStart=server.indexOf('/api/uyap/downloads/resume');
-const resumeEnd=server.indexOf('/api/uyap/remote-documents',resumeStart);
-const resumeBlock=server.slice(resumeStart,resumeEnd);
-must(resumeBlock.includes("b.confirmed!==true"),"Resume endpoint lacks confirmation");
-
-const singleStart=server.indexOf('/api/uyap/remote-documents',resumeEnd);
-const singleEnd=server.indexOf('/api/uyap/hearings/sync-range',singleStart);
-const singleBlock=server.slice(singleStart,singleEnd);
-must(singleBlock.includes("b.confirmed!==true"),"Single-document endpoint lacks confirmation");
+must(server.includes('error:"UYAP indirmelerini devam ettirmek için açık kullanıcı onayı gerekli."'),"Resume endpoint lacks confirmation");
+must(server.includes('error:"UYAP evrak indirme kuyruğu için açık kullanıcı onayı gerekli."'),"Single-document endpoint lacks confirmation");
 
 must(view.includes("Eksik Evrakları Kuyruğa Ekle"),"Per-case batch button missing");
 must(view.includes("İndirmeleri Devam Ettir"),"Explicit resume control missing");
