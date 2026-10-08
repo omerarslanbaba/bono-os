@@ -186,23 +186,14 @@ function bindDocumentTree(){
 }
 
 async function renderCase(id){
-  const [docs,finance,cases,syncStatus]=await Promise.all([api.uyapRemoteDocuments(id),api.accountingOverview(id),api.uyapCases(),api.uyapDocumentSyncStatus(id)]);
+  const [docs,finance,cases]=await Promise.all([api.uyapRemoteDocuments(id),api.accountingOverview(id),api.uyapCases()]);
   const file=cases.find(x=>String(x.id)===String(id))||{};
   const status=v=>({discovered:'İndirilecek',download_queued:'İndirme kuyruğunda',downloaded:'İndirildi',indexed:'İndekslendi',filed:'Arşivlendi',summarized:'Nota dönüştürüldü',duplicate:'Mükerrer',skipped:'Arşiv dışı',review:'İnceleme gerekli'}[String(v||'').toLowerCase()]||v||'Keşfedildi');
 
   const counts={};for(const d of docs){const c=docCategory(d);counts[c]=(counts[c]||0)+1}
   const cats=['Tümü',...Object.keys(counts).sort((a,b)=>a.localeCompare(b,'tr'))];
   const filters=`<div class="document-categories">${cats.map((c,i)=>`<button class="category-chip ${i===0?'active':''}" data-cat="${esc(c)}">${esc(c)} <span>${c==='Tümü'?docs.length:counts[c]}</span></button>`).join('')}</div>`;
-  const syncMessage={
-    not_synced:'UYAP evrak listesi henüz sorgulanmadı.',
-    queued:'Evrak listesi sorgusu kuyrukta bekliyor.',
-    running:'UYAP’tan evrak listesi sorgulanıyor.',
-    login_required:'UYAP oturumu gerekli. Chrome üzerindeki UYAP oturumunu açın.',
-    failed:'Evrak listesi alınamadı'+(syncStatus.error?': '+syncStatus.error:'.'),
-    empty:'UYAP sorgusu tamamlandı; bu dosyada evrak bulunamadı.',
-    metadata_unbound:'UYAP evrak metadata’sı döndü ancak BONO listesine işlenemedi.'
-  }[syncStatus.state]||'Evrak listesi henüz alınmadı.';
-  const documentBody=docs.length?renderDocumentTree(docs,status):empty(syncMessage);
+  const docRows=docs.length?`<div class="evrak-scroll">${docs.map(d=>{const cat=docCategory(d);return `<div class="notice-row evrak-row" data-category="${esc(cat)}"><div><div class="doc-title">${esc(d.remote_title||d.document_type||'UYAP Evrakı')}</div><div class="doc-meta">${esc(d.document_date||'')} · ${esc(cat)} · ${esc(status(d.status))}</div></div><div class="row-actions">${d.status==='summarized'?badge('Nota dönüştürüldü','green'):(d.local_asset_id?badge('BONO’da','green'):badge(d.status==='download_queued'?'Bekliyor':'Henüz alınmadı'))}</div></div>`}).join('')}</div>`:empty('Evrak listesi henüz alınmadı.');
 
   const converted=(finance.converted||[]).map(x=>`<div class="notice-row accounting-row"><div><div class="doc-title">${esc(x.title)}</div><div class="doc-meta">${esc(extractLine(x.body,'Tarih'))} · ${esc(extractLine(x.body,'Tutar'))}</div><div class="accounting-source">${esc(extractLine(x.body,'Kaynak belge'))}</div></div>${badge('Nota dönüştürüldü','green')}</div>`).join('');
   const pending=(finance.pending||[]).map(x=>`<div class="notice-row accounting-row"><div><div class="doc-title">${esc(x.remote_title||x.document_type||x.original_file_name||'Mali evrak')}</div><div class="doc-meta">${esc(x.document_date||'Tarih yok')}</div><div class="accounting-source">${esc(x.reason||'İnceleme bekliyor')}</div></div>${badge('İnceleme bekliyor')}</div>`).join('');
@@ -223,9 +214,6 @@ async function renderCase(id){
     <div class="case-download-actions"><small id="caseDownloadStatus" role="status" aria-live="polite">İndirme durumu kontrol ediliyor…</small><button id="queueCaseDownloads" type="button" class="subtle-action" disabled>Eksik Evrakları Kuyruğa Ekle</button></div>
   </div>`;
 
-  const syncBusy=['queued','running'].includes(syncStatus.state);
-  const syncLabel=syncStatus.state==='not_synced'?"UYAP'tan Evrak Listesini Getir":(syncBusy?(syncStatus.state==='queued'?'Sorgu Bekliyor':'Sorgulanıyor…'):'Evrak Listesini Yenile');
-  const syncTone=syncStatus.state==='completed'||syncStatus.state==='empty'?'green':(syncStatus.state==='failed'||syncStatus.state==='metadata_unbound'?'red':'');
   const tabs=`<div class="case-tabs"><button class="case-tab active" data-file-tab="documents">Evraklar <span>${docs.length}</span></button><button class="case-tab" data-file-tab="finance">Tahsilat / Reddiyat <span>${(finance.counts?.converted||0)+(finance.counts?.pending||0)}</span></button></div>`;
   const related=(file.related_cases||[]).map(x=>`<a class="notice-row clickable" href="#uyap/${x.caseId}"><div><div class="doc-title">Bağlantılı Arabuluculuk Dosyası · ${esc(x.courtFileNo||'')}</div><div class="doc-meta">${esc(x.court||'')} · ${esc(x.caseType||'')} · ${esc(x.status||'')}</div></div><span>→</span></a>`).join('');
 
