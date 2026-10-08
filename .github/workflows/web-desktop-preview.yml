@@ -16,6 +16,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - name: Verify original-web calendar logic
+        run: node scripts/test_web_desktop_hearings.js
       - name: Restore
         run: dotnet restore desktop/BonoWebDesktop/BonoWebDesktop.csproj -r win-x64
       - name: Publish independent WebView2 EXE
