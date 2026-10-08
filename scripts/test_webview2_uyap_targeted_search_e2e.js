@@ -18,8 +18,8 @@ async function req(base,url,options={}){const r=await fetch(base+url,{headers:{"
   "setting(\"uyap_integration_mode\",\"browser_readonly\");setting(\"uyap_session_state\",\"ready\");setting(\"uyap_manual_download_pause\",\"1\");setting(\"uyap_document_download_state\",\"paused_manual\");",
   "db.prepare(\"insert or replace into uyap_endpoints(endpoint_key,method,host,path,purpose,enabled,min_interval_ms) values(?,?,?,?,?,?,?)\").run(\"case.search\",\"POST\",\"avukat.uyap.gov.tr\",\"/search_phrase_detayli.ajx\",\"search\",1,0);",
   "db.prepare(\"insert or replace into uyap_endpoints(endpoint_key,method,host,path,purpose,enabled,min_interval_ms) values(?,?,?,?,?,?,?)\").run(\"case.units\",\"POST\",\"avukat.uyap.gov.tr\",\"/yargiBirimleriSorgula_brd.ajx\",\"units\",1,0);",
-  "db.prepare(\"insert into uyap_endpoint_observations(method,host,path,status,content_type,sample_keys_json,sample_request_json,last_seen_at,hit_count) values(?,?,?,?,?,?,?,datetime(\\\"now\\\"),?)\").run(\"POST\",\"avukat.uyap.gov.tr\",\"/search_phrase_detayli.ajx\",200,\"application/json\",\"[]\",JSON.stringify({query:{},body:{dosyaDurumKod:0,pageSize:500,pageNumber:1,birimId:\"\",birimTuru2:\"0926\",birimTuru3:\"1\"},headers:{\"Content-Type\":\"application/json\"}}),18);",
-  "db.prepare(\"insert into uyap_command_queue(command_type,endpoint_key,payload_json,status,result_json,finished_at) values(?,?,?,?,?,datetime(\\\"now\\\"))\").run(\"fetch_json\",\"case.units\",JSON.stringify({query:{},body:{yargiTuru:\"1\"},context:{yargiTuru:1}}),\"completed\",JSON.stringify([{altSistKodu:-1,tablo:\"0926\",kod:\"İŞ MAHKEMESİ\"}]));",
+  "db.prepare(\"insert into uyap_endpoint_observations(method,host,path,status,content_type,sample_keys_json,sample_request_json,last_seen_at,hit_count) values(?,?,?,?,?,?,?,?,?)\").run(\"POST\",\"avukat.uyap.gov.tr\",\"/search_phrase_detayli.ajx\",200,\"application/json\",\"[]\",JSON.stringify({query:{},body:{dosyaDurumKod:0,pageSize:500,pageNumber:1,birimId:\"\",birimTuru2:\"0926\",birimTuru3:\"1\"},headers:{\"Content-Type\":\"application/json\"}}),18);",
+  "db.prepare(\"insert into uyap_command_queue(command_type,endpoint_key,payload_json,status,result_json,finished_at) values(?,?,?,?,?,?)\").run(\"fetch_json\",\"case.units\",JSON.stringify({query:{},body:{yargiTuru:\"1\"},context:{yargiTuru:1}}),\"completed\",JSON.stringify([{altSistKodu:-1,tablo:\"0926\",kod:\"İŞ MAHKEMESİ\"}]));",
   "try{db.close()}catch{}"
  ].join("\n");
  const seeded=spawnSync(process.execPath,["-e",seed],{cwd:process.cwd(),env,encoding:"utf8"});
@@ -32,6 +32,10 @@ async function req(base,url,options={}){const r=await fetch(base+url,{headers:{"
   must(healthy,"fixture Core did not start\n"+out+"\n"+err);
   const opts=await req(base,"/api/uyap/case-search/options");
   must(opts.status===200&&opts.body.ready===true&&opts.body.units.some(x=>x.birimTuru2==="0926"),"observed search options not ready");
+  const missingNumber=await req(base,"/api/uyap/case-search",{method:"POST",body:JSON.stringify({yargiTuru:1,birimTuru2:"0926",court:"Eskişehir Cumhuriyet Başsavcılığı",year:2026,dosyaDurumKod:0})});
+  must(missingNumber.status!==202,"numberless targeted search was incorrectly accepted");
+  const before=await req(base,"/api/uyap/queue?limit=100");
+  must(!before.body.some(x=>x.endpoint_key==="case.search"),"numberless targeted search created a command");
   const start=await req(base,"/api/uyap/case-search",{method:"POST",body:JSON.stringify({yargiTuru:1,birimTuru2:"0926",court:"Kocaeli 3. İş Mahkemesi",year:2026,baseNumber:100,dosyaDurumKod:0})});
   must(start.status===202&&start.body.accepted===true&&start.body.searchId&&start.body.commandId,"targeted search not accepted");
   const claim=await req(base,"/api/uyap/commands/next?host=avukat.uyap.gov.tr&lane=query");
