@@ -43,7 +43,7 @@ assert.match(src,/x\.command\?\.id/);
 assert.match(src,/x\.terminal/);
 assert.match(src,/x\.success/);
 assert.match(src,/serverRemoteCount!==knownVisibleRemoteCount/);
-assert.match(src,/Number\(x\.documents\?\.remoteCount\)/);
+assert.match(src,/x\.documents\?\.remoteCount==null\?NaN:Number\(x\.documents\.remoteCount\)/);
 assert.match(src,/await renderCase\(caseId\)/);
 assert.match(src,/x\.pollAfterMs/);
 assert.match(src,/result\?\.accepted!==true/);
