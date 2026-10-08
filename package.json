@@ -14,6 +14,7 @@
     "test:uyap-batch-safety": "node scripts/test_uyap_batch_safety.js",
     "test:uyap-webview-safety": "node scripts/test_uyap_webview_safety.js",
     "test:uyap-single-case-sync": "node scripts/test_uyap_single_case_sync.js",
-    "test:archive-worker-case-guard": "node scripts/test_archive_worker_case_guard.js"
+    "test:archive-worker-case-guard": "node scripts/test_archive_worker_case_guard.js",
+    "test:uyap-webview-contract": "node scripts/test_uyap_webview_contract.js"
   }
 }

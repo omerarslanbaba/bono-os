@@ -277,6 +277,7 @@ const server=http.createServer(async(req,res)=>{
       return json(res,202,{ok:true,known,discoveryCommands:discovery.commandIds.length,cbsCommandId:cbs.commandId,status:uyap.archiveStatus()});
     }
     if(req.method==="GET"&&p==="/api/uyap/cases") return json(res,200,uyap.cases());
+    if(req.method==="GET"&&p==="/api/uyap/case-search-schema") return json(res,200,uyap.caseSearchSchemaStatus());
 
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/remote-documents$/);
     if(req.method==="GET"&&m) return json(res,200,uyap.remoteDocuments(Number(m[1])));
@@ -292,7 +293,7 @@ const server=http.createServer(async(req,res)=>{
       const id=uyap.enqueueCaseDocumentSync(caseId,{priority:6,purpose:"manual_case_sync",source:"web_case_detail"});
       const sync=uyap.caseDocumentSyncStatus(caseId);
       audit("lawyer","uyap_sync_documents","case",m[1],{commandId:id,state:sync.state});
-      return json(res,202,{ok:true,id,sync});
+      return json(res,202,{ok:true,accepted:true,id,commandId:Number(id),sync});
     }
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/download-missing$/);
     if(req.method==="POST"&&m){
