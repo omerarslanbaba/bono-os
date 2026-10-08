@@ -2,6 +2,8 @@
 const crypto=require('node:crypto');
 const digest=v=>crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const cbsAdapter=require("./uyap_cbs_list_adapter");
+const caseContract=require("./uyap_case_document_contract");
 const TYPES=new Set(['document.list','case.search','case.units','cbs.provinces','cbs.units','cbs.search','case.details','case.parties','hearing.search','document.pdf','document.viewer_params']);
 const schema=`
 CREATE TABLE IF NOT EXISTS uyap_query_policy(id INTEGER PRIMARY KEY CHECK(id=1),state TEXT NOT NULL,migration_id TEXT NOT NULL);
@@ -19,7 +21,8 @@ function ready(db){return !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='
 function immutable(db){for(const t of ['uyap_query_history','uyap_query_events','uyap_command_retirements','uyap_command_grants'])for(const op of ['UPDATE','DELETE'])db.exec(`CREATE TRIGGER IF NOT EXISTS ${t}_no_${op.toLowerCase()} BEFORE ${op} ON ${t} BEGIN SELECT RAISE(ABORT,'immutable_query_audit'); END;`);}
 function event(db,id,state,error=null,ref=null,at=null){db.prepare("INSERT OR IGNORE INTO uyap_query_events(command_id,state,error_code,result_ref,occurred_at) VALUES(?,?,?,?,COALESCE(?,datetime('now')))").run(id,state,error,ref,at);}
 function target(db,p){let id=Number(p?.context?.caseId);return Number.isSafeInteger(id)&&id>0&&db.prepare('SELECT id FROM cases WHERE id=?').get(id)?id:null;}
-function migrate(db,{expectedQueued=270,backupManifest,migrationId='legacy-discovery-v1',afterRow}={}){
+function migrate(db,{expectedQueued,backupManifest,migrationId='legacy-discovery-v1',afterRow}={}){
+ if(!Number.isSafeInteger(Number(expectedQueued))||Number(expectedQueued)<0)throw Error('fresh_queue_count_required');expectedQueued=Number(expectedQueued);
  if(!backupManifest||backupManifest.schema!==1||backupManifest.verified!==true)throw Error('verified_backup_required');
  if(db.prepare("SELECT 1 FROM sqlite_master WHERE name='uyap_query_policy'").get()){
   const rows=db.prepare('SELECT r.command_id,q.status FROM uyap_command_retirements r JOIN uyap_command_queue q ON q.id=r.command_id WHERE r.migration_id=? ORDER BY r.command_id').all(migrationId);
@@ -48,6 +51,43 @@ function migrate(db,{expectedQueued=270,backupManifest,migrationId='legacy-disco
 }
 function rollbackHold(db){if(!db.prepare("SELECT 1 FROM sqlite_master WHERE name='uyap_query_policy'").get())return;db.prepare("UPDATE uyap_query_policy SET state='rollback_hold' WHERE id=1").run();}
 function identity(c){return digest([c?.id,c?.uyap_birim_id,c?.court_file_no,c?.uyap_dosya_id,c?.court,c?.case_type]);}
+
+function isCbsCase(c){return /cumhuriyet|başsavc|bassavc|savcılık|savcilik|soruşturma|sorusturma|\bcbs\b/i.test(String(c?.court||"")+" "+String(c?.case_type||""));}
+function cbsStatus(c){return /kapalı|kapali|closed|arşiv|arsiv|tamamlan|kesinleş|kesinles/i.test(String(c?.status||""))?1:0;}
+function cbsEvidence(db,c){
+ if(!isCbsCase(c))throw Error("not_cbs_case");
+ const fileNo=caseContract.normalizeFileNo(c?.court_file_no);
+ if(!/^20\d{2}\/[1-9]\d*$/.test(fileNo))throw Error("cbs_case_number_required");
+ const observationRow=db.prepare(`SELECT id,method,path,status,sample_request_json,last_seen_at FROM uyap_endpoint_observations
+   WHERE method='POST' AND path='/avukat_dosya_sorgula_cbs_brd.ajx' AND sample_request_json IS NOT NULL
+   ORDER BY last_seen_at DESC,id DESC LIMIT 1`).get();
+ if(!observationRow)throw Error("cbs_search_observation_required");
+ let request=null;try{request=JSON.parse(observationRow.sample_request_json)}catch{}
+ const observation={sourceType:"persisted live observation",reference:"observation:"+observationRow.id,method:observationRow.method,path:observationRow.path,request};
+ const unitRows=db.prepare(`SELECT id,payload_json,result_json,finished_at FROM uyap_command_queue
+   WHERE endpoint_key='cbs.units' AND status='completed' AND result_json IS NOT NULL
+   ORDER BY id DESC`).all();
+ const wanted=caseContract.normalizeCourt(c?.court);
+ let chosen=null;
+ for(const row of unitRows){
+   let payload={},data=null;try{payload=JSON.parse(row.payload_json||"{}")}catch{}try{data=JSON.parse(row.result_json||"null")}catch{}
+   if(!Array.isArray(data))continue;
+   for(const x of data){
+     const name=String(x?.birimAdi||x?.ad||"").trim(),id=String(x?.birimId??x?.id??"").trim();
+     if(!name||!id||caseContract.normalizeCourt(name)!==wanted)continue;
+     const ilKodu=Number(payload?.context?.ilKodu??payload?.body?.ilKodu);
+     if(!Number.isInteger(ilKodu)||ilKodu<1||ilKodu>81)continue;
+     chosen={sourceType:"completed cbs.units",reference:"command:"+row.id,birimId:id,birimAdi:name,ilKodu,finishedAt:row.finished_at||null};break;
+   }
+   if(chosen)break;
+ }
+ if(!chosen)throw Error("cbs_unit_evidence_required");
+ const status=cbsStatus(c);
+ const prepared=cbsAdapter.prepareCbsList({observation,unit:chosen,status,page:1});
+ const target={birimId:chosen.birimId,dosyaNo:fileNo,dosyaId:String(c?.uyap_dosya_id||"").trim()||null};
+ return {observation,unit:chosen,status,target,prepared};
+}
+function cbsScopeHash(c,e){return digest([c?.id,c?.court,c?.court_file_no,c?.status,c?.uyap_dosya_id||null,e.unit.birimId,e.unit.ilKodu,e.status,e.observation.reference,e.unit.reference]);}
 function certifyBinding(db,proof){
  if(!ready(db))throw Error('migration_required');
  const c=db.prepare('SELECT * FROM cases WHERE id=?').get(Number(proof.caseId));
