@@ -12,6 +12,17 @@ on:
       - 'scripts/test_webview2_uyap_single_case_e2e.js'
       - 'scripts/test_uyap_single_case_sync.js'
       - 'scripts/test_uyap_targeted_case_search.js'
+      - 'scripts/test_uyap_cbs_list_adapter.js'
+      - 'scripts/test_uyap_cbs_user_query_integration.js'
+      - 'scripts/test_uyap_query_capability_contract.js'
+      - 'scripts/desktop_archive_paths_selftest.js'
+      - 'scripts/test_ui_inventory.mjs'
+      - 'bridge/uyap_cbs_list_adapter.js'
+      - 'bridge/uyap_query_capability_contract.js'
+      - 'bridge/desktop_archive_paths.js'
+      - 'bridge/uyap_user_queries.js'
+      - 'web/js/inventory-state.mjs'
+      - 'web/js/views/active/user-queries.js'
       - 'scripts/test_uyap_case_document_contract.js'
       - 'bridge/uyap_case_document_contract.js'
       - 'scripts/test_uyap_targeted_cbs_party_search.js'
@@ -89,6 +100,24 @@ jobs:
 
       - name: Verify observed-schema targeted UYAP search fixture
         run: npm run test:uyap-targeted-case-search
+
+      - name: Verify user-controlled query migration and history
+        run: npm run test:uyap-user-queries
+
+      - name: Verify CBS unit-list pure adapter
+        run: npm run test:uyap-cbs-list-adapter
+
+      - name: Verify scoped CBS user-query execution
+        run: npm run test:uyap-cbs-user-query
+
+      - name: Verify UYAP capability and blocker contract
+        run: npm run test:uyap-query-capability
+
+      - name: Verify Windows archive path contract
+        run: npm run test:archive-path-contract
+
+      - name: Verify UI inventory evidence states
+        run: npm run test:ui-inventory
 
       - name: Verify fail-closed UYAP case/document identity contract
         run: npm run test:uyap-case-document-contract
