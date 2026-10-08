@@ -3,6 +3,7 @@
 const fs=require("fs");
 const path=require("path");
 const crypto=require("crypto");
+const os=require("os");
 
 function asPositiveInt(value){
   const n=Number(value);
@@ -23,6 +24,39 @@ function hashFd(fd){
     pos+=n;
   }
   return h.digest("hex");
+}
+function verifiedSnapshotFromFd(sourceFd,expectedSha256){
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),"bono-view-snapshot-"));
+  const snapshotPath=path.join(dir,"content.bin");
+  let snapshotFd=null;
+  try{
+    snapshotFd=fs.openSync(snapshotPath,fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_RDWR,0o600);
+    const h=crypto.createHash("sha256"),buf=Buffer.allocUnsafe(1024*1024);
+    let pos=0,total=0;
+    while(true){
+      const n=fs.readSync(sourceFd,buf,0,buf.length,pos);
+      if(!n)break;
+      h.update(buf.subarray(0,n));
+      let written=0;
+      while(written<n)written+=fs.writeSync(snapshotFd,buf,written,n-written,pos+written);
+      pos+=n;total+=n;
+    }
+    fs.fsyncSync(snapshotFd);
+    const actual=h.digest("hex"),expected=String(expectedSha256||"").toLowerCase();
+    if(actual!==expected)throw Object.assign(new Error("sha256_mismatch"),{code:"BONO_HASH_MISMATCH",actualSha256:actual,expectedSha256:expected});
+    const st=fs.fstatSync(snapshotFd);
+    if(Number(st.size)!==total)throw Object.assign(new Error("snapshot_size_mismatch"),{code:"BONO_SNAPSHOT_SIZE"});
+    return {fd:snapshotFd,path:snapshotPath,cleanupDir:dir,size:total,sha256:actual};
+  }catch(err){
+    if(snapshotFd!=null){try{fs.closeSync(snapshotFd)}catch{}}
+    try{fs.rmSync(dir,{recursive:true,force:true})}catch{}
+    throw err;
+  }
+}
+function disposeVerifiedContent(opened){
+  if(!opened)return;
+  if(opened.fd!=null){try{fs.closeSync(opened.fd)}catch{};opened.fd=null}
+  if(opened.cleanupDir){try{fs.rmSync(opened.cleanupDir,{recursive:true,force:true})}catch{}}
 }
 function hasSymlinkComponent(file){
   const resolved=path.resolve(file),parsed=path.parse(resolved);
@@ -74,26 +108,26 @@ function openVerifiedDocumentContent(db,caseIdValue,remoteDocumentDbIdValue){
     const st=fs.fstatSync(fd);
     if(!st.isFile())throw Object.assign(new Error("canonical_not_regular_file"),{code:"BONO_NOT_FILE"});
     if(hasSymlinkComponent(file))throw Object.assign(new Error("canonical_symlink_rejected"),{code:"BONO_SYMLINK"});
-    const actual=hashFd(fd);
-    if(actual!==expected){
-      fs.closeSync(fd);fd=null;
-      return {ok:false,statusCode:412,error:"canonical_hash_not_verified",reason:"sha256_mismatch",actualSha256:actual,expectedSha256:expected};
-    }
+    const snapshot=verifiedSnapshotFromFd(fd,expected);
+    fs.closeSync(fd);fd=null;
     const ext=path.extname(file).toLowerCase();
     const contentType=ext===".pdf"?"application/pdf":ext===".udf"?"application/octet-stream":({".jpg":"image/jpeg",".jpeg":"image/jpeg",".png":"image/png",".tif":"image/tiff",".tiff":"image/tiff",".txt":"text/plain; charset=utf-8",".html":"text/html; charset=utf-8",".htm":"text/html; charset=utf-8"})[ext]||"application/octet-stream";
     const disposition=ext===".pdf"||[".jpg",".jpeg",".png"].includes(ext)?"inline":"attachment";
     return {
-      ok:true,statusCode:200,fd,path:file,size:Number(st.size),caseId,remoteDocumentDbId,assetId:row.asset_id,
+      ok:true,statusCode:200,fd:snapshot.fd,path:snapshot.path,cleanupDir:snapshot.cleanupDir,sourcePath:file,size:snapshot.size,
+      caseId,remoteDocumentDbId,assetId:row.asset_id,
       fileName:path.basename(file),originalFileName:row.original_file_name||row.file_name||path.basename(file),
-      contentType,disposition,verifiedSha256:actual
+      contentType,disposition,verifiedSha256:snapshot.sha256
     };
   }catch(err){
     if(fd!=null){try{fs.closeSync(fd)}catch{}}
     if(err?.code==="ELOOP"||err?.code==="BONO_SYMLINK")return {ok:false,statusCode:409,error:"canonical_symlink_rejected"};
+    if(err?.code==="BONO_HASH_MISMATCH")return {ok:false,statusCode:412,error:"canonical_hash_not_verified",reason:"sha256_mismatch",actualSha256:err.actualSha256,expectedSha256:err.expectedSha256};
+    if(err?.code==="BONO_SNAPSHOT_SIZE")return {ok:false,statusCode:409,error:"verified_snapshot_failed",reason:"snapshot_size_mismatch"};
     if(err?.code==="ENOENT")return {ok:false,statusCode:409,error:"canonical_file_missing"};
     if(err?.code==="BONO_NOT_FILE")return {ok:false,statusCode:409,error:"canonical_not_regular_file"};
     return {ok:false,statusCode:409,error:"canonical_open_failed",reason:String(err?.message||err)};
   }
 }
 
-module.exports={asPositiveInt,samePath,hashFd,hasSymlinkComponent,openVerifiedDocumentContent};
+module.exports={asPositiveInt,samePath,hashFd,verifiedSnapshotFromFd,disposeVerifiedContent,hasSymlinkComponent,openVerifiedDocumentContent};
