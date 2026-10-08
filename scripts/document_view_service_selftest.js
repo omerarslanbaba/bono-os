@@ -80,7 +80,7 @@ try{
   for(const r of remotes)sql(db,"INSERT INTO uyap_remote_documents VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",...r);
 
   const pdfView=service.getDocumentView(db,1,11);
-  assert("pdf_view_metadata_is_case_scoped",pdfView.ok&&pdfView.document.caseId===1&&pdfView.document.remoteDocumentDbId===11&&pdfView.document.name==="Gerekçeli Karar"&&pdfView.document.documentDate==="2026-10-01",{document:pdfView.document});
+  assert("pdf_view_metadata_is_case_scoped",pdfView.ok&&pdfView.document.caseId===1&&pdfView.document.case?.court==="Kocaeli 1. Asliye Hukuk"&&pdfView.document.case?.courtFileNo==="2026/100"&&pdfView.document.case?.officeFileId===10&&pdfView.document.remoteDocumentDbId===11&&pdfView.document.name==="Gerekçeli Karar"&&pdfView.document.documentDate==="2026-10-01",{document:pdfView.document});
   assert("pdf_download_hash_readability_are_separate",pdfView.document.download.downloaded===true&&pdfView.document.integrity.verified===true&&pdfView.document.readability.readable===true,{download:pdfView.document.download,integrity:pdfView.document.integrity,readability:pdfView.document.readability});
   assert("pdf_viewer_is_inline",pdfView.document.viewer.mode==="pdf_inline"&&pdfView.document.viewer.contentType==="application/pdf"&&pdfView.document.viewer.openable===true,pdfView.document.viewer);
   const pdfAuth=service.authorizeDocumentContent(db,1,11);
