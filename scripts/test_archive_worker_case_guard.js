@@ -13,6 +13,9 @@ process.env.BONO_WORKER_TEST_MODE="1";
 const db=require("../bridge/db");
 const worker=require("../bridge/worker");
 
+db.prepare(`insert or replace into uyap_endpoints(endpoint_key,method,host,path,purpose,enabled,min_interval_ms)
+  values('document.pdf','GET','avukat.uyap.gov.tr','/view_document_brd.uyap','download',1,1300)`).run();
+
 const desktop=path.join(root,"OneDrive","Masaüstü");
 const archiveRoot=path.join(desktop,"Dava Dosyaları");
 const downloads=path.join(root,"Downloads");
