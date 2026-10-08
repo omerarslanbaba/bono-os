@@ -47,6 +47,7 @@ public partial class MainWindow : Window
             FooterStatus.Text = "BONO Core kontrol ediliyor…";
             await EnsureCoreAsync();
             await RefreshAllAsync();
+            await TodayView.RefreshAsync();
             timer.Start();
             FooterStatus.Text = "BONO OS hazır";
         }
@@ -156,6 +157,7 @@ public partial class MainWindow : Window
                 if (UyapDetailPage.Visibility == Visibility.Visible) await LoadUyapCaseDetailAsync(false);
                 else if (UyapPage.Visibility == Visibility.Visible) await LoadUyapAsync();
                 else if (OfficeFilesView.Visibility == Visibility.Visible) await OfficeFilesView.RefreshAsync();
+                else if (TodayView.Visibility == Visibility.Visible) await TodayView.RefreshAsync();
                 else if (HearingsPage.Visibility == Visibility.Visible || HomePage.Visibility == Visibility.Visible) await LoadHearingsAsync();
                 FooterStatus.Text = "Canlı · " + DateTime.Now.ToString("HH:mm:ss");
             }
@@ -509,6 +511,7 @@ public partial class MainWindow : Window
     void ShowPage(UIElement page, string title, string subtitle)
     {
         HomePage.Visibility = Visibility.Collapsed;
+        TodayView.Visibility = Visibility.Collapsed;
         FilesPage.Visibility = Visibility.Collapsed;
         OfficeFilesView.Visibility = Visibility.Collapsed;
         UyapPage.Visibility = Visibility.Collapsed;
@@ -516,9 +519,12 @@ public partial class MainWindow : Window
         HearingsPage.Visibility = Visibility.Collapsed;
         SystemPage.Visibility = Visibility.Collapsed;
         if (ReferenceEquals(page, FilesPage)) page = OfficeFilesView;
+        if (ReferenceEquals(page, HomePage)) page = TodayView;
         page.Visibility = Visibility.Visible;
         PageTitle.Text = title;
         PageSubtitle.Text = subtitle;
+        PageTitle.Visibility = ReferenceEquals(page, TodayView) ? Visibility.Collapsed : Visibility.Visible;
+        PageSubtitle.Visibility = ReferenceEquals(page, TodayView) ? Visibility.Collapsed : Visibility.Visible;
     }
 
     void SetActiveNav(System.Windows.Controls.Button active)
@@ -545,7 +551,7 @@ public partial class MainWindow : Window
     {
         ShowPage(HomePage, "Bugün", "Ofis ve UYAP akışının canlı özeti");
         SetActiveNav(NavHome);
-        await LoadSummaryAsync(); await LoadHearingsAsync();
+        await TodayView.RefreshAsync();
     }
     async void NavFiles_Click(object sender, RoutedEventArgs e)
     {
