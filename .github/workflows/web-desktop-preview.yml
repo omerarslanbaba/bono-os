@@ -12,6 +12,8 @@ on:
       - 'scripts/test_webview2_uyap_single_case_e2e.js'
       - 'scripts/test_uyap_single_case_sync.js'
       - 'scripts/test_uyap_targeted_case_search.js'
+      - 'scripts/test_uyap_targeted_cbs_party_search.js'
+      - 'scripts/test_uyap_batch_safety.js'
       - 'scripts/test_webview2_uyap_targeted_search_e2e.js'
       - 'scripts/document_view_service_selftest.js'
       - 'scripts/document_view_http_selftest.js'
@@ -75,6 +77,12 @@ jobs:
 
       - name: Verify observed-schema targeted UYAP search fixture
         run: npm run test:uyap-targeted-case-search
+
+      - name: Verify targeted CBS party-search privacy and safety
+        run: npm run test:uyap-targeted-cbs-party-search
+
+      - name: Verify 200-document batch and manual-pause safety
+        run: npm run test:uyap-batch-safety
 
       - name: Isolated targeted UYAP search HTTP E2E
         run: npm run test:webview2-uyap-targeted-e2e
