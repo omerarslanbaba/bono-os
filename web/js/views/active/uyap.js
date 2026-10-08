@@ -316,6 +316,9 @@ function bindCaseDocumentControls(caseId){
   const route='#uyap/'+caseId;
   let timer=null,stopped=false,busy=false,startedCommandId=null,completedHandled=false;
   let statusSupported=false,downloadCapacity=0;
+  // A document.list command may be completed by Chat-UYAP outside this page.
+  // Reconcile with BONO's persisted remote-document count without starting another request.
+  let knownVisibleRemoteCount=Number(document.querySelector('.case-document-summary strong')?.textContent||0);
   const labels={not_synced:'Evrak listesi henüz sorgulanmamış',queued:'Sorgu sırada bekliyor',running:'UYAP evrak listesi sorgulanıyor',completed:'Evrak listesi hazır',empty:'Sorgu tamamlandı: evrak bulunamadı',failed:'Sorgu başarısız',login_required:'UYAP oturumu gerekli',metadata_unbound:'Evrak bilgileri geldi ancak BONO listesine işlenemedi',unlinked:'Bu kaydın UYAP dosya bağlantısı yok'};
   const stop=()=>{stopped=true;if(timer)clearTimeout(timer)};
   const session={stop};activeCaseLifecycle=session;
@@ -348,6 +351,15 @@ function bindCaseDocumentControls(caseId){
       notice.textContent=(labels[state]||x.label||state)+(commandId?' · Komut #'+commandId:'')+(x.error&&state==='failed'?' · '+x.error:'');
       if(btn){btn.disabled=!x.canSync;btn.textContent=pending?'Sorgu devam ediyor…':'↻ UYAP\'tan Evrak Listesini Getir'}
       await refreshDownloadState();
+      const serverRemoteCount=Number(x.documents?.remoteCount);
+      if((state==='completed'||state==='empty')&&x.terminal===true&&x.success===true&&
+         Number.isSafeInteger(serverRemoteCount)&&serverRemoteCount>=0&&
+         serverRemoteCount!==knownVisibleRemoteCount){
+        knownVisibleRemoteCount=serverRemoteCount;
+        stop();
+        await renderCase(caseId);
+        return;
+      }
       if(startedCommandId!=null&&String(commandId)===String(startedCommandId)&&x.terminal&&!completedHandled){
         completedHandled=true;
         if(x.success&&(state==='completed'||state==='empty')){
