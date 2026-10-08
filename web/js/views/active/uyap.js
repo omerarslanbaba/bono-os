@@ -1,3 +1,4 @@
+import {mountUserQueries,mountGlobalQueryHistory} from './user-queries.js';
 import {api} from '../../api.js';
 import {mount,pageHero,section,empty,esc,badge} from '../../ui.js';
 import {mountCbsCaseHandoff} from './cbs-case-handoff.js';
@@ -223,9 +224,9 @@ export async function renderUyap(id){
     <div class="doc-meta">${esc(cat)} · ${esc(r.case_type||'')} · ${r.remote_count||0} evrak · ${r.indexed_count||0} BONO’da${r.related_cases?.length?' · '+r.related_cases.length+' bağlantılı arabuluculuk':''}</div><div class="doc-meta case-party-inline">${r.client_name?`Müvekkil: ${esc(r.client_name)}`:''}${r.client_name&&r.party_names?' · ':''}${r.party_names?`Taraflar: ${esc(r.party_names)}`:(!r.client_name?'Taraf bilgisi henüz kaydedilmemiş':'')}</div></div><span>→</span>
   </a>`}).join('')}</div>`:empty('Henüz dosya keşfedilmedi.');
   mount(pageHero('Dosyalarım','Dosyaları yargı türü, birimi, mahkemesi ve esas numarasıyla sorgula.')+
-    queryForm(rows)+targetedSearchForm(searchOptions)+discoveryBar(status,archive)+section('Dosya Sorgulama Sonuçları','⚖',body),'uyap');
+    queryForm(rows)+'<p>Yeni UYAP sorguları yalnız doğrulanmış dosya içindeki Sorgula/Yenile işlemiyle başlatılır. Geniş discovery kapalıdır.</p>'+section('Dosya Sorgulama Sonuçları','⚖',body),'uyap');
   bindQuery(rows);
-  mountCbsCaseHandoff(api,cbsSchema);
+  mountGlobalQueryHistory();
   bindTargetedCaseSearch();
   // Sorgulama filtreleri bindQuery tarafından yönetilir.
   document.querySelector('#syncAllUyap')?.addEventListener('click',async e=>{
@@ -303,7 +304,7 @@ async function renderCase(id){
 
   document.querySelectorAll('[data-file-tab]').forEach(b=>b.onclick=()=>{const tab=b.dataset.fileTab;document.querySelectorAll('[data-file-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('[data-file-panel]').forEach(p=>p.hidden=p.dataset.filePanel!==tab)});
   bindDocumentTree();
-  bindCaseDocumentControls(id);
+  mountUserQueries(id,()=>renderCase(id));
   bindCaseDocumentViewer(id);
 }
 

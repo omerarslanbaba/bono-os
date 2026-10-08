@@ -2,10 +2,15 @@ const http=require("http");
 const fs=require("fs");
 const path=require("path");
 const {Worker}=require("worker_threads");
+for(const lock of [".bono-query-transition.lock",".bono-package.lock"])if(fs.existsSync(path.join(__dirname,"..",lock)))throw Error("maintenance_active");
+if(process.env.BONO_OBSERVATION_ONLY==="1"){
+  require("./observation_server").start();
+}else{
 const repo=require("./repository");
 const db=require("./db");
 const jobs=require("./jobs");
 const uyap=require("./uyap");
+const userQueries=require("./uyap_user_queries").install(db,uyap);
 const v04=require("./v04");
 const udfAdapter=require("./udf_adapter");
 const deadlineEngine=require("./deadline_engine");
@@ -52,9 +57,10 @@ const server=http.createServer(async(req,res)=>{
   const u=new URL(req.url,"http://127.0.0.1:"+PORT);
   const p=u.pathname;
   try{
+    if(await require("./uyap_user_query_http")(req,res,{path:p,origin:"http://127.0.0.1:"+PORT,service:userQueries,json,readBody}))return;
     if(documentViewHttp.handleDocumentViewRequest(req,res,db)) return;
     if(req.method==="GET"&&p==="/favicon.ico"){res.writeHead(204);return res.end()}
-    if(req.method==="GET"&&p==="/health") return json(res,200,{ok:true,service:"BONO OS",port:PORT,ui:true,schema:9});
+    if(req.method==="GET"&&p==="/health") return json(res,200,{ok:true,service:"BONO OS",port:PORT,ui:true,schema:9,uyapExecutionHeld:uyap.executionHeld()});
     if(req.method==="GET"&&p==="/api/summary") return json(res,200,repo.summary());
     if(req.method==="GET"&&p==="/api/brief") return json(res,200,repo.brief());
     if(req.method==="GET"&&p==="/api/search") return json(res,200,{query:u.searchParams.get("q")||"",results:repo.search(u.searchParams.get("q")||"",Number(u.searchParams.get("limit")||25))});
@@ -454,8 +460,9 @@ const server=http.createServer(async(req,res)=>{
         const pagePath=String(d.path||"");
         if(/(^|\/)login(?:\.|\/|$)/i.test(pagePath)) uyap.setSessionLoginRequired("uyap_login_page");
       }
-      if(kind==="network_observation" && event?.payload?.data?.url){
-        const d=event.payload.data;
+      if(kind==="network_observation"){
+        const d=event?.payload?.data||{};
+        stored={payload:{kind,data:{error:'observation_rejected'}}};
         try{
           const parsed=new URL(d.url);
           stored={
@@ -468,10 +475,11 @@ const server=http.createServer(async(req,res)=>{
               status:d.status,
               contentType:d.contentType,
               durationMs:d.durationMs,
-              sampleKeys:Array.isArray(d.sampleKeys)?d.sampleKeys.slice(0,50):[],
-              error:d.error?String(d.error).slice(0,500):undefined
+              sampleKeys:Array.isArray(d.sampleKeys)?d.sampleKeys.slice(0,50).filter(k=>['errorCode','error','tumEvraklar','son20Evrak','pageTotal','status','data','rows','total'].includes(k)):[],
+              error:d.error?'network_error':undefined
             }}
           };
+          // Controlled evidence is accepted only by the observation-only bootstrap.
           uyap.observe({...stored.payload.data,request:d.request||null,responseSummary:d.responseSummary||null});
         }catch{}
       }
@@ -482,6 +490,7 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==="GET"&&staticFile(p,res)) return;
     res.writeHead(404,{"Content-Type":"text/plain; charset=utf-8"});res.end("BONO: bulunamadı");
   }catch(e){
+    if(String(req.url).split('?')[0]==='/events'){if(!res.headersSent)return json(res,400,{ok:false,error:'observation_rejected'});return res.end();}
     console.error(e);
     if(!res.headersSent) return json(res,500,{ok:false,error:e.message});
     try{res.end()}catch{}
@@ -503,3 +512,5 @@ v04.setHeartbeat("server","ok",{pid:process.pid,port:PORT});
 setInterval(()=>v04.setHeartbeat("server","ok",{pid:process.pid,port:PORT}),30000);
 
 server.listen(PORT,"127.0.0.1",()=>console.log("BONO OS http://127.0.0.1:"+PORT));
+
+}

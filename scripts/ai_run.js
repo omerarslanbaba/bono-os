@@ -12,7 +12,10 @@ const checks = [
   "bridge/server.js","bridge/worker.js","bridge/repository.js","bridge/jobs.js",
   "bridge/uyap.js","bridge/v04.js","bridge/v05.js","bridge/v06.js","bridge/v09.js",
   "bridge/workflow_engine.js","bridge/event_bus.js","bridge/udf_adapter.js",
-  "bridge/deadline_engine.js","extension/content.js","extension/page_probe.js"
+  "bridge/deadline_engine.js","extension/content.js","extension/page_probe.js",
+  "bridge/observation_server.js","bridge/observation_controller.js","bridge/observation_lease.js","bridge/observation_privacy.js",
+  "extension/background.js","extension/controlled_probe.js","extension/observation_contracts.js","extension/observation_ui.js","extension/runtime_mode.js",
+  "scripts/package_operations.js","scripts/launch_observation.js","scripts/recover_observation_lease.js","scripts/build_observation_package.js"
 ];
 
 function run(args) {

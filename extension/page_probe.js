@@ -1,6 +1,13 @@
 (() => {
-  if (window.__BONO_UYAP_PROBE__) return;
-  window.__BONO_UYAP_PROBE__ = true;
+  const scriptData=typeof document==="object"?document.currentScript?.dataset||{}:{};
+  const controlledConfig={mode:scriptData.bonoMode,buildId:scriptData.bonoBuild,documentId:scriptData.bonoDocument};
+  if (window.__BONO_UYAP_PROBE__) {window.postMessage({channel:"BONO_UYAP_PAGE",type:"probe_conflict",data:{probeVersion:2}},"*");return;}
+  window.__BONO_UYAP_PROBE__ = {version:2};
+  if(controlledConfig.mode==="observation_only"){
+    if(window.BONO_CONTROLLED_PROBE)window.BONO_CONTROLLED_PROBE.install(controlledConfig);
+    else window.postMessage({channel:"BONO_UYAP_PAGE",type:"probe_conflict",data:{reason:"controlled_helper_missing"}},"*");
+    return;
+  }
 
   const CHANNEL = "BONO_UYAP_PAGE";
   const MAX_JSON_SAMPLE = 250000;
@@ -87,25 +94,28 @@
       tumEvraklar: Array.isArray(data.tumEvraklar) ? data.tumEvraklar.length : (data.tumEvraklar == null ? null : typeof data.tumEvraklar),
       son20Evrak: Array.isArray(data.son20Evrak) ? data.son20Evrak.length : (data.son20Evrak == null ? null : typeof data.son20Evrak),
       pageTotal: data.pageTotal,
-      status: data.status
+      status: data.status,
+      applicationError: window.BONO_OBSERVATION_CONTRACTS?.applicationError(data) || null
     });
   }
 
-  async function observeResponse(method, url, response, startedAt, request = null) {
+  async function observeResponse(method, url, response, startedAt, request = null, eventId = crypto.randomUUID(), observedAt = new Date().toISOString()) {
     try {
       if (!isUyapUrl(url)) return;
       const contentType = response.headers.get("content-type") || "";
       const len = Number(response.headers.get("content-length") || 0);
-      let sampleKeys = [], responseSummaryData = null;
+      let sampleKeys = [], responseSummaryData = null, responseEvidence = null;
       if (/json/i.test(contentType) && (!len || len <= MAX_JSON_SAMPLE)) {
         try {
           const clone = response.clone();
           const data = await clone.json();
           sampleKeys = safeKeys(data);
           responseSummaryData = responseSummary(data);
+          responseEvidence = window.BONO_OBSERVATION_CONTRACTS?.responseEvidence(data) || null;
         } catch {}
       }
       post("network_observation", {
+        eventId, observedAt, responseEvidence,
         transport: "fetch",
         method: String(method || "GET").toUpperCase(),
         url: new URL(url, location.href).href,
@@ -124,15 +134,17 @@
     const url = typeof input === "string" ? input : input?.url || "";
     const method = init?.method || (typeof input !== "string" ? input?.method : null) || "GET";
     const startedAt = performance.now();
+    const eventId=crypto.randomUUID(), observedAt=new Date().toISOString(), responseEvidence=null;
     const request = requestShape(url, init?.body, init?.headers || {});
     try {
       const response = await originalFetch(input, init);
-      observeResponse(method, url, response, startedAt, request);
+      observeResponse(method, url, response, startedAt, request, eventId, observedAt);
       return response;
     } catch (e) {
       if (isUyapUrl(url)) {
         post("network_observation", {
-          transport: "fetch",
+          eventId, observedAt, responseEvidence,
+        transport: "fetch",
           method: String(method).toUpperCase(),
           url: new URL(url, location.href).href,
           status: 0,
@@ -163,12 +175,13 @@
   };
   XHR.prototype.send = function(body) {
     const startedAt = performance.now();
+    const eventId=crypto.randomUUID(), observedAt=new Date().toISOString();
     const request = requestShape(this.__bonoUrl, body, this.__bonoHeaders || {});
     const done = () => {
       try {
         if (!isUyapUrl(this.__bonoUrl)) return;
         const contentType = this.getResponseHeader("content-type") || "";
-        let sampleKeys = [], responseSummaryData = null;
+        let sampleKeys = [], responseSummaryData = null, responseEvidence = null;
         if (/json/i.test(contentType)) {
           try {
             const data = this.responseType === "json"
@@ -178,9 +191,11 @@
                 : null);
             sampleKeys = safeKeys(data);
             responseSummaryData = responseSummary(data);
+          responseEvidence = window.BONO_OBSERVATION_CONTRACTS?.responseEvidence(data) || null;
           } catch {}
         }
         post("network_observation", {
+          eventId, observedAt, responseEvidence,
           transport: "xhr",
           method: String(this.__bonoMethod || "GET").toUpperCase(),
           url: new URL(this.__bonoUrl, location.href).href,

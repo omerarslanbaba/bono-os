@@ -1,0 +1,20 @@
+'use strict';
+const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),crypto=require('node:crypto');
+const catalog=require('../extension/observation_contracts');
+let calls=0,pending=null;const hooks={},sent=[];
+const root={BONO_OBSERVATION_CONTRACTS:catalog,postMessage:x=>sent.push(x),addEventListener:(k,f)=>{hooks[k]=f;},fetch:async()=>{calls++;return pending?pending:new Response(JSON.stringify({tumEvraklar:{'2020/1(CBS Sorusturma Dosyası)':[{evrakId:'secret',name:'PRIVATE_PERSON'}]}}),{headers:{'content-type':'application/json'}});},XMLHttpRequest:function(){}};
+root.XMLHttpRequest.prototype={open(){},send(){},addEventListener(){}};
+vm.runInNewContext(fs.readFileSync(require.resolve('../extension/controlled_probe'),'utf8'),{window:root,location:{href:'https://avukat.uyap.gov.tr/',origin:'https://avukat.uyap.gov.tr'},document:{documentElement:{}},URL,URLSearchParams,crypto,TextDecoder,MutationObserver:class{observe(){}},Date});
+root.BONO_CONTROLLED_PROBE.install({documentId:'doc',buildId:'build'});
+const arm=()=>hooks.message({source:root,data:{channel:'BONO_UYAP_CONTENT',type:'observation_arm',session:{id:'session',documentId:'doc',buildId:'build',caseNo:'2020/1',expires:Date.now()+60000}}});
+const click=label=>hooks.click({isTrusted:true,composedPath:()=>[{textContent:label,isConnected:true}]});
+const url='/list_dosya_evraklar.ajx';
+(async()=>{
+ assert.equal(calls,0);arm();assert.equal(calls,0);
+ click('2020/1(CBS Sorusturma Dosyası)');await root.fetch(url,{body:'{"dosyaId":"opaque"}'});
+ const capture=sent.find(x=>x.type==='network_observation');assert(capture.data.capture.complete);assert(!JSON.stringify(capture).includes('PRIVATE_PERSON'));assert(!JSON.stringify(capture).includes('secret'));
+ arm();click('2020/2(CBS Sorusturma Dosyası)');const count=sent.filter(x=>x.type==='network_observation').length;await root.fetch(url);assert.equal(sent.filter(x=>x.type==='network_observation').length,count);
+ let resolve;pending=new Promise(r=>resolve=r);arm();click('2020/1(CBS Sorusturma Dosyası)');const late=root.fetch(url);hooks.popstate();resolve(new Response('{}',{headers:{'content-type':'application/json'}}));await late;assert.equal(sent.filter(x=>x.type==='network_observation').length,count);
+ pending=Promise.resolve(new Response('{broken',{headers:{'content-type':'application/json'}}));arm();click('2020/1(CBS Sorusturma Dosyası)');await root.fetch(url);assert.equal(sent.at(-1).data.capture.reason,'invalid_json');
+ console.log(JSON.stringify({ok:true,tests:['install_and_arm_zero_requests','trusted_target_action','private_values_omitted','same_tab_other_case_stops','late_response_after_navigation_dropped','invalid_json_incomplete']}));
+})().catch(e=>{console.error(e);process.exitCode=1;});
