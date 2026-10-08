@@ -3,7 +3,7 @@ const os=require("node:os");
 const path=require("node:path");
 const net=require("node:net");
 const crypto=require("node:crypto");
-const {spawn}=require("node:child_process");
+const {spawn,spawnSync}=require("node:child_process");
 function must(v,m){if(!v)throw new Error(m)}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 function sha(buf){return crypto.createHash("sha256").update(buf).digest("hex")}
@@ -16,19 +16,23 @@ async function jsonReq(base,url){const r=await fetch(base+url);const t=await r.t
  const pdfPath=path.join(root,"Gerekçeli Karar.pdf"),udfPath=path.join(root,"Duruşma Örneği.udf");
  const pdf=Buffer.from("%PDF-1.4\nBONO fixture PDF\n%%EOF\n"),udf=Buffer.from("BONO UDF fixture bytes");
  fs.writeFileSync(pdfPath,pdf);fs.writeFileSync(udfPath,udf);
- process.env.BONO_DB_PATH=dbPath;process.env.USERPROFILE=root;
- const db=require("../bridge/db");
- db.prepare("insert into cases(id,external_id,court,court_file_no,case_type,status,client_name) values(?,?,?,?,?,?,?)").run(1,"fixture:case:1","Eskişehir Cumhuriyet Başsavcılığı","2026/12345","Soruşturma","open","Fixture Müvekkil");
- db.prepare("insert into cases(id,external_id,court,court_file_no,case_type,status,client_name) values(?,?,?,?,?,?,?)").run(2,"fixture:case:2","Eskişehir 1. Asliye Ceza Mahkemesi","2026/77","Ceza","open","Başka Müvekkil");
- db.prepare("insert into local_assets(id,sha256,file_name,extension,size_bytes,classification,archive_path,archive_policy,source_container) values(?,?,?,?,?,?,?,?,?)").run(1001,sha(pdf),"Gerekçeli Karar.pdf",".pdf",pdf.length,"legal",pdfPath,"canonical","uyap");
- db.prepare("insert into local_assets(id,sha256,file_name,extension,size_bytes,classification,archive_path,archive_policy,source_container) values(?,?,?,?,?,?,?,?,?)").run(1002,sha(udf),"Duruşma Örneği.udf",".udf",udf.length,"legal",udfPath,"canonical","uyap");
- db.prepare("insert into asset_locations(asset_id,local_path,source_root) values(?,?,?)").run(1001,pdfPath,root);
- db.prepare("insert into asset_locations(asset_id,local_path,source_root) values(?,?,?)").run(1002,udfPath,root);
- db.prepare("insert into uyap_remote_documents(id,case_id,remote_document_id,remote_title,document_type,document_date,original_file_name,remote_hash,local_asset_id,filed_path,status) values(?,?,?,?,?,?,?,?,?,?,?)").run(201,1,"R-PDF","Gerekçeli Karar","Gerekçeli Karar","2026-10-08","Gerekçeli Karar.pdf",sha(pdf),1001,pdfPath,"filed");
- db.prepare("insert into uyap_remote_documents(id,case_id,remote_document_id,remote_title,document_type,document_date,original_file_name,remote_hash,local_asset_id,filed_path,status) values(?,?,?,?,?,?,?,?,?,?,?)").run(202,1,"R-UDF","Duruşma Tutanağı","Duruşma Zaptı","2026-10-08","Duruşma Örneği.udf",sha(udf),1002,udfPath,"filed");
- db.prepare("insert into document_analysis(asset_id,document_kind,raw_text,analysis_status,engine_version) values(?,?,?,?,?)").run(1002,"duruşma_tutanağı","Fixture UDF okunabilir metni","completed","fixture");
- try{db.close()}catch{}
- const env={...process.env,BONO_DB_PATH:dbPath,BONO_PORT:String(port),BONO_DISABLE_WORKER:"1",USERPROFILE:root};
+ const env={...process.env,BONO_DB_PATH:dbPath,BONO_PORT:String(port),BONO_DISABLE_WORKER:"1",USERPROFILE:root,FIX_ROOT:root,FIX_PDF:pdfPath,FIX_UDF:udfPath,FIX_PDF_SHA:sha(pdf),FIX_UDF_SHA:sha(udf),FIX_PDF_SIZE:String(pdf.length),FIX_UDF_SIZE:String(udf.length)};
+ const seed=[
+  "const db=require('./bridge/db');",
+  "const e=process.env;",
+  "db.prepare('insert into cases(id,external_id,court,court_file_no,case_type,status,client_name) values(?,?,?,?,?,?,?)').run(1,'fixture:case:1','Eskişehir Cumhuriyet Başsavcılığı','2026/12345','Soruşturma','open','Fixture Müvekkil');",
+  "db.prepare('insert into cases(id,external_id,court,court_file_no,case_type,status,client_name) values(?,?,?,?,?,?,?)').run(2,'fixture:case:2','Eskişehir 1. Asliye Ceza Mahkemesi','2026/77','Ceza','open','Başka Müvekkil');",
+  "db.prepare('insert into local_assets(id,sha256,file_name,extension,size_bytes,classification,archive_path,archive_policy,source_container) values(?,?,?,?,?,?,?,?,?)').run(1001,e.FIX_PDF_SHA,'Gerekçeli Karar.pdf','.pdf',Number(e.FIX_PDF_SIZE),'legal',e.FIX_PDF,'canonical','uyap');",
+  "db.prepare('insert into local_assets(id,sha256,file_name,extension,size_bytes,classification,archive_path,archive_policy,source_container) values(?,?,?,?,?,?,?,?,?)').run(1002,e.FIX_UDF_SHA,'Duruşma Örneği.udf','.udf',Number(e.FIX_UDF_SIZE),'legal',e.FIX_UDF,'canonical','uyap');",
+  "db.prepare('insert into asset_locations(asset_id,local_path,source_root) values(?,?,?)').run(1001,e.FIX_PDF,e.FIX_ROOT);",
+  "db.prepare('insert into asset_locations(asset_id,local_path,source_root) values(?,?,?)').run(1002,e.FIX_UDF,e.FIX_ROOT);",
+  "db.prepare('insert into uyap_remote_documents(id,case_id,remote_document_id,remote_title,document_type,document_date,original_file_name,remote_hash,local_asset_id,filed_path,status) values(?,?,?,?,?,?,?,?,?,?,?)').run(201,1,'R-PDF','Gerekçeli Karar','Gerekçeli Karar','2026-10-08','Gerekçeli Karar.pdf',e.FIX_PDF_SHA,1001,e.FIX_PDF,'filed');",
+  "db.prepare('insert into uyap_remote_documents(id,case_id,remote_document_id,remote_title,document_type,document_date,original_file_name,remote_hash,local_asset_id,filed_path,status) values(?,?,?,?,?,?,?,?,?,?,?)').run(202,1,'R-UDF','Duruşma Tutanağı','Duruşma Zaptı','2026-10-08','Duruşma Örneği.udf',e.FIX_UDF_SHA,1002,e.FIX_UDF,'filed');",
+  "db.prepare('insert into document_analysis(asset_id,document_kind,raw_text,analysis_status,engine_version) values(?,?,?,?,?)').run(1002,'duruşma_tutanağı','Fixture UDF okunabilir metni','completed','fixture');",
+  "try{db.close()}catch{}"
+ ].join("\n");
+ const seeded=spawnSync(process.execPath,["-e",seed],{cwd:process.cwd(),env,encoding:"utf8"});
+ if(seeded.status!==0)throw new Error("archive fixture seed failed: "+seeded.stderr);
  const server=spawn(process.execPath,["bridge/server.js"],{cwd:process.cwd(),env,stdio:["ignore","pipe","pipe"]});let out="",err="";server.stdout.on("data",d=>out+=d);server.stderr.on("data",d=>err+=d);
  const base="http://127.0.0.1:"+port;
  try{
