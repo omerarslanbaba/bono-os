@@ -175,7 +175,7 @@ function queryForm(rows){
   <label>Dosya Yıl / No<div class="case-year-row"><select id="filterYear"><option value="">Tümü</option>${options(years)}</select><input id="filterNo" placeholder="Dosya No"></div></label>
   <label>Mahkeme<select id="filterCourt"><option value="">Tümü</option></select></label>
   <label>Dosyada Ara<input id="filterQuery" placeholder="Föy no, mahkeme, esas no, müvekkil veya taraf"></label>
-  </div><p class="case-query-local-note">Bu bölüm şimdilik BONO’da kayıtlı dosyaları filtreler. UYAP’ta yeni dosya arama bağlantısı henüz etkin değil. İlçe yalnız doğrulanmış kayıt bilgisi varsa gösterilir.</p><div class="case-query-actions"><span id="filterCount"></span><button id="resetFilters" type="button" class="subtle-action">Temizle</button><button id="applyFilters" type="button" class="primary-action">⌕ Sorgula</button></div></div>`;
+  </div><p class="case-query-local-note">Bu filtreler yalnızca BONO'da kayıtlı dosyaları gösterir. UYAP'ta yeni dosya aramak için aşağıdaki ayrı sorgu alanını kullanın. İlçe yalnız doğrulanmış kayıt bilgisi varsa gösterilir.</p><div class="case-query-actions"><span id="filterCount"></span><button id="resetFilters" type="button" class="subtle-action">Temizle</button><button id="applyFilters" type="button" class="primary-action">⌕ Sorgula</button></div></div>`;
 }
 function bindQuery(rows){
  const by=id=>document.getElementById(id),t=by('filterType'),u=by('filterUnit'),c=by('filterCourt'),province=by('filterProvince'),district=by('filterDistrict');
