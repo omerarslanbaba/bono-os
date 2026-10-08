@@ -40,5 +40,19 @@ function copyVerified(source,target,{expectedSha256=null}={}){
   return {...check,action:"copied_verified",sourcePreserved:true};
 }
 function sameSha(source,target){if(!fs.existsSync(source)||!fs.existsSync(target))return false;return sha256File(source)===sha256File(target)}
+function isPathInside(file,root){
+  const f=path.resolve(file),r=path.resolve(root);
+  const rel=path.relative(r,f);
+  return rel===""||(!rel.startsWith(".."+path.sep)&&rel!==".."&&!path.isAbsolute(rel));
+}
+function assertTargetWithinCase(target,caseArchiveDir){
+  if(!caseArchiveDir)throw new Error("caseArchiveDir is required");
+  if(!isPathInside(target,caseArchiveDir))throw new Error("Canonical target is outside expected case archive directory");
+  return true;
+}
+function copyVerifiedIntoCase(source,target,{expectedSha256=null,caseArchiveDir}={}){
+  assertTargetWithinCase(target,caseArchiveDir);
+  return copyVerified(source,target,{expectedSha256});
+}
 
-module.exports={sha256File,verifySameContent,copyVerified,sameSha};
+module.exports={sha256File,verifySameContent,copyVerified,sameSha,isPathInside,assertTargetWithinCase,copyVerifiedIntoCase};
