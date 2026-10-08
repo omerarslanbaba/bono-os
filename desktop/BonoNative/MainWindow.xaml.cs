@@ -33,6 +33,13 @@ public partial class MainWindow : Window
         UyapGrid.ItemsSource = uyapCases;
         UyapDocumentsGrid.ItemsSource = uyapDocuments;
         HearingsGrid.ItemsSource = hearings;
+        HearingCalendar.DisplayDate = DateTime.Today;
+        HearingCalendarNext.DisplayDate = DateTime.Today.AddMonths(1);
+        HearingCalendarThird.DisplayDate = DateTime.Today.AddMonths(2);
+        HearingCalendarNext.DisplayDateStart = new DateTime(DateTime.Today.AddMonths(1).Year, DateTime.Today.AddMonths(1).Month, 1);
+        HearingCalendarNext.DisplayDateEnd = HearingCalendarNext.DisplayDateStart.Value.AddMonths(1).AddDays(-1);
+        HearingCalendarThird.DisplayDateStart = new DateTime(DateTime.Today.AddMonths(2).Year, DateTime.Today.AddMonths(2).Month, 1);
+        HearingCalendarThird.DisplayDateEnd = HearingCalendarThird.DisplayDateStart.Value.AddMonths(1).AddDays(-1);
         HomeHearingsGrid.ItemsSource = hearings;
         SetActiveNav(NavHome);
         Loaded += async (_, _) => await BootAsync();
@@ -271,7 +278,7 @@ public partial class MainWindow : Window
         selectedUyapCaseId = row.Id;
         selectedUyapCase = row;
         ShowPage(UyapDetailPage, "UYAP Dosyası", row.Court + " · " + row.FileNo);
-        SetActiveNav(NavUyap);
+        SetActiveNav(NavFiles);
         UyapDetailTitle.Text = row.Court;
         UyapDetailSubtitle.Text = string.Join(" · ", new[] { row.FileNo, row.CaseType, string.IsNullOrWhiteSpace(row.Foy) ? null : "FÖY " + row.Foy }.Where(x => !string.IsNullOrWhiteSpace(x)));
         await LoadUyapCaseDetailAsync(true);
