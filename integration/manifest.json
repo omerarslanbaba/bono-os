@@ -14,7 +14,13 @@
     },
     "uyap": {
       "coreCommit": "b7d438995d94a6901ba4c83d2bf68ae0ca83c702",
-      "extensionVersion": "0.3.6"
+      "extension": {
+        "packagedWithPreview": false,
+        "manifestVersion": "0.3.6",
+        "integratedRuntimeMarker": "0.3.8",
+        "latestTeamRuntimeMarker": "0.3.9",
+        "status": "version-drift-live-validation-required"
+      }
     },
     "archive": {
       "commit": "dca93cd26cf94bc2d2d379c368f6e45f7a66bf30"
@@ -60,6 +66,26 @@
       "path": "bridge/document_stream_guard.js",
       "blobSha": "e8d6e4fa77ce5d9d42541988432941dd8bf9e743",
       "owner": "CHAT-ARCHIVE"
+    },
+    {
+      "path": "extension/manifest.json",
+      "blobSha": "d9a710e7cf8d9da0e83f68efe2f231a16e17ffa9",
+      "owner": "current integration extension"
+    },
+    {
+      "path": "extension/background.js",
+      "blobSha": "0c2dae0f927bfc59b2d56d250f77cdd9be2c066d",
+      "owner": "current integration extension"
+    },
+    {
+      "path": "extension/content.js",
+      "blobSha": "110ac16af53a89e3577b69286649471d7492c53f",
+      "owner": "current integration extension"
+    },
+    {
+      "path": "extension/page_probe.js",
+      "blobSha": "7cddbec07d96ed74a8b642862fab45566961300f",
+      "owner": "CHAT-UYAP/current integration"
     }
   ],
   "verifiedCapabilities": [
@@ -82,9 +108,14 @@
     "visionDocs": {
       "pr": 14,
       "mergedToMain": false
+    },
+    "chromeExtensionAlignment": {
+      "ready": false,
+      "reason": "manifest 0.3.6, integrated runtime marker 0.3.8, latest CHAT-UYAP runtime marker 0.3.9; preview package does not install/upgrade Chrome extension."
     }
   },
   "liveBlockers": [
+    "Chrome extension version/build drift must be reconciled and live-tab behavior revalidated",
     "PR #13 queue/history migration and local-return policy not integrated",
     "live Core/Chrome/UYAP behavior not revalidated for this preview",
     "Windows archive filing E2E uses isolated synthetic canonical files, not real Downloads/UYAP"
