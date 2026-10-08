@@ -7,8 +7,12 @@ function must(ok,msg){if(!ok)throw new Error(msg)}
 function sha(file){return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex")}
 
 const root=fs.mkdtempSync(path.join(os.tmpdir(),"bono-worker-case-guard-"));
+const userRoot=process.platform==="win32"
+  ?path.join(process.env.PUBLIC||"C:\\Users\\Public","BONO-UYAP-Guard-"+process.pid+"-"+Date.now())
+  :path.join(root,"user");
+fs.mkdirSync(userRoot,{recursive:true});
 process.env.BONO_DB_PATH=path.join(root,"bono.db");
-process.env.USERPROFILE=root;
+process.env.USERPROFILE=userRoot;
 process.env.BONO_WORKER_TEST_MODE="1";
 const db=require("../bridge/db");
 const worker=require("../bridge/worker");
@@ -16,9 +20,9 @@ const worker=require("../bridge/worker");
 db.prepare(`insert or replace into uyap_endpoints(endpoint_key,method,host,path,purpose,enabled,min_interval_ms)
   values('document.pdf','GET','avukat.uyap.gov.tr','/view_document_brd.uyap','download',1,1300)`).run();
 
-const desktop=path.join(root,"OneDrive","Masaüstü");
+const desktop=path.join(userRoot,"OneDrive","Masaüstü");
 const archiveRoot=path.join(desktop,"Dava Dosyaları");
-const downloads=path.join(root,"Downloads");
+const downloads=path.join(userRoot,"Downloads");
 const caseA=path.join(archiveRoot,"Case-A"),caseB=path.join(archiveRoot,"Case-B");
 for(const p of [downloads,caseA,caseB])fs.mkdirSync(p,{recursive:true});
 
@@ -87,4 +91,5 @@ function addDownload(caseId,remoteId,fileName,bytes){
   }));
   try{db.close()}catch{}
   fs.rmSync(root,{recursive:true,force:true});
+  fs.rmSync(userRoot,{recursive:true,force:true});
 })().catch(e=>{console.error(e);process.exitCode=1});
