@@ -7,6 +7,7 @@ const http=require("http");
 const crypto=require("crypto");
 const {DatabaseSync}=require("node:sqlite");
 const adapter=require("../bridge/document_view_http");
+const streamGuard=require("../bridge/document_stream_guard");
 
 const tmp=fs.mkdtempSync(path.join(os.tmpdir(),"bono-document-http-"));
 const results=[];
@@ -127,7 +128,15 @@ try{
 
   const mutView=await req(base,"/api/cases/1/documents/14/view");
   assert("toctou_metadata_initially_verified",mutView.r.status===200&&mutView.body.document.integrity.verified===true);
-  fs.writeFileSync(mutable,Buffer.from("%PDF-1.4\nCHANGED AFTER VIEW\n"));
+  const originalMutable=fs.readFileSync(mutable);
+  const openedSnapshot=streamGuard.openVerifiedDocumentContent(db,1,14);
+  assert("verified_stream_uses_private_snapshot",openedSnapshot.ok===true&&openedSnapshot.sourcePath===mutable&&openedSnapshot.path!==mutable&&fs.existsSync(openedSnapshot.path),{openedSnapshot:{...openedSnapshot,fd:"<fd>"}});
+  const snapshotDir=openedSnapshot.cleanupDir;
+  fs.writeFileSync(mutable,Buffer.from("%PDF-1.4\nCHANGED AFTER VERIFIED OPEN\n"));
+  const snapshotBytes=fs.readFileSync(openedSnapshot.path);
+  assert("source_mutation_after_verified_open_cannot_change_stream_bytes",snapshotBytes.equals(originalMutable)&&openedSnapshot.verifiedSha256===crypto.createHash("sha256").update(originalMutable).digest("hex"),{snapshotHash:crypto.createHash("sha256").update(snapshotBytes).digest("hex")});
+  streamGuard.disposeVerifiedContent(openedSnapshot);
+  assert("verified_snapshot_is_cleaned",!fs.existsSync(snapshotDir),{snapshotDir});
   const mutContent=await req(base,"/api/cases/1/documents/14/content");
   assert("toctou_change_blocked_on_content_open",mutContent.r.status===412&&mutContent.body.error==="canonical_hash_not_verified"&&mutContent.body.reason==="sha256_mismatch",{status:mutContent.r.status,body:mutContent.body});
 
