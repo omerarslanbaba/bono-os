@@ -14,6 +14,8 @@
     "test:webview2-uyap-targeted-e2e": "node scripts/test_webview2_uyap_targeted_search_e2e.js",
     "test:document-view-service": "node scripts/document_view_service_selftest.js",
     "test:document-view-http": "node scripts/document_view_http_selftest.js",
-    "test:webview2-archive-route-e2e": "node scripts/test_webview2_archive_route_e2e.js"
+    "test:webview2-archive-route-e2e": "node scripts/test_webview2_archive_route_e2e.js",
+    "test:uyap-targeted-cbs-party-search": "node scripts/test_uyap_targeted_cbs_party_search.js",
+    "test:uyap-batch-safety": "node scripts/test_uyap_batch_safety.js"
   }
 }
