@@ -26,10 +26,12 @@ try{
   const udf=path.join(case1,"Duruşma Zaptı.udf");
   const wrong=path.join(case2,"Gerekçeli Karar.pdf");
   const mutable=path.join(case1,"Değişebilir.pdf");
+  const broken=path.join(case1,"Bozuk.pdf");
   fs.writeFileSync(pdf,Buffer.from("%PDF-1.4\nHTTP VERIFIED PDF FIXTURE\n"));
   fs.writeFileSync(udf,Buffer.from("PK\x03\x04HTTP-UDF-FIXTURE"));
   fs.writeFileSync(wrong,Buffer.from("%PDF-1.4\nOTHER CASE\n"));
   fs.writeFileSync(mutable,Buffer.from("%PDF-1.4\nORIGINAL MUTABLE\n"));
+  fs.writeFileSync(broken,Buffer.from("%PDF-broken-but-physically-stable"));
 
   db=new DatabaseSync(":memory:");
   db.exec(`
@@ -51,7 +53,8 @@ try{
     [1,sha(pdf),"Gerekçeli Karar.pdf",".pdf","karar",pdf,"keep_original",null],
     [2,sha(udf),"Duruşma Zaptı.udf",".udf","durusma_zapti",udf,"keep_udf",null],
     [3,sha(wrong),"Gerekçeli Karar.pdf",".pdf","karar",wrong,"keep_original",null],
-    [4,sha(mutable),"Değişebilir.pdf",".pdf","belge",mutable,"keep_original",null]
+    [4,sha(mutable),"Değişebilir.pdf",".pdf","belge",mutable,"keep_original",null],
+    [5,sha(broken),"Bozuk.pdf",".pdf","belge",broken,"keep_original",null]
   ];
   for(const a of assets)sql(db,"INSERT INTO local_assets VALUES(?,?,?,?,?,?,?,?)",...a);
   for(const a of assets)sql(db,"INSERT INTO asset_locations(asset_id,local_path,source_root,last_seen_at) VALUES(?,?,?,datetime('now'))",a[0],a[5],path.dirname(a[5]));
@@ -60,7 +63,8 @@ try{
     [1,"gerekceli_karar","PDF karar metni","{}","[]","completed","fixture-pdf",null],
     [2,"durusma_zapti","UDF duruşma metni","{}",JSON.stringify([{heading:"AÇIKLAMALAR",startParagraph:2,text:"UDF duruşma metni"}]),"completed","fixture-udf",null],
     [3,"gerekceli_karar","OTHER CASE TEXT","{}","[]","completed","fixture",null],
-    [4,"belge","MUTABLE TEXT","{}","[]","completed","fixture",null]
+    [4,"belge","MUTABLE TEXT","{}","[]","completed","fixture",null],
+    [5,"belge","","{}","[]","failed","fixture","pdf_parse_failed"]
   ];
   for(const a of analyses)sql(db,"INSERT INTO document_analysis VALUES(?,?,?,?,?,?,?,?)",...a);
   sql(db,"INSERT INTO knowledge_chunks(asset_id,case_id,chunk_no,heading,text,metadata_json) VALUES(1,1,0,'Sayfa 1','PDF karar metni',?)",JSON.stringify({page:1}));
@@ -72,7 +76,8 @@ try{
     [11,1,"RID-PDF","S-PDF","Gerekçeli Karar","Gerekçeli Karar","2026-10-01","Gerekçeli Karar.pdf",sha(pdf),1,null,pdf,"filed","{}","2026-10-01","2026-10-01"],
     [12,1,"RID-UDF","S-UDF","Duruşma Zaptı","Duruşma Zaptı","2026-10-02","Duruşma Zaptı.udf",sha(udf),2,null,udf,"filed","{}","2026-10-02","2026-10-02"],
     [21,2,"RID-OTHER","S-OTHER","Gerekçeli Karar","Gerekçeli Karar","2026-10-03","Gerekçeli Karar.pdf",sha(wrong),3,null,wrong,"filed","{}","2026-10-03","2026-10-03"],
-    [14,1,"RID-MUT","S-MUT","Değişebilir Evrak","Diğer Evrak","2026-10-04","Değişebilir.pdf",sha(mutable),4,null,mutable,"filed","{}","2026-10-04","2026-10-04"]
+    [14,1,"RID-MUT","S-MUT","Değişebilir Evrak","Diğer Evrak","2026-10-04","Değişebilir.pdf",sha(mutable),4,null,mutable,"filed","{}","2026-10-04","2026-10-04"],
+    [15,1,"RID-BROKEN","S-BROKEN","Bozuk Evrak","Diğer Evrak","2026-10-05","Bozuk.pdf",sha(broken),5,null,broken,"filed","{}","2026-10-05","2026-10-05"]
   ];
   for(const r of remotes)sql(db,"INSERT INTO uyap_remote_documents VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",...r);
 
@@ -105,7 +110,13 @@ try{
   const udfView=await req(base,"/api/cases/1/documents/12/view");
   assert("udf_ui_text_mode",udfView.r.status===200&&udfView.body.document.viewer.mode==="udf_text"&&udfView.body.document.readability.readable===true&&udfView.body.document.readability.text.includes("UDF duruşma"),{document:udfView.body.document});
   const udfResp=await req(base,"/api/cases/1/documents/12/content");
-  assert("udf_attachment_headers",udfResp.r.status===200&&udfResp.r.headers.get("content-type")==="application/octet-stream"&&(udfResp.r.headers.get("content-disposition")||"").startsWith("attachment;")&&udfResp.body.equals(fs.readFileSync(udf)),{headers:Object.fromEntries(udfResp.r.headers.entries())});
+  const udfDisp=udfResp.r.headers.get("content-disposition")||"";
+  assert("udf_attachment_headers",udfResp.r.status===200&&udfResp.r.headers.get("content-type")==="application/octet-stream"&&udfDisp.startsWith("attachment;")&&udfDisp.includes("filename*=UTF-8\'\'")&&udfResp.body.equals(fs.readFileSync(udf)),{headers:Object.fromEntries(udfResp.r.headers.entries())});
+
+  const brokenView=await req(base,"/api/cases/1/documents/15/view");
+  assert("broken_pdf_is_visible_but_explicitly_unreadable",brokenView.r.status===200&&brokenView.body.document.integrity.verified===true&&brokenView.body.document.integrity.streamSafe===true&&brokenView.body.document.readability.status==="failed"&&brokenView.body.document.readability.readable===false&&brokenView.body.document.viewer.openable===true,{document:brokenView.body.document});
+  const brokenContent=await req(base,"/api/cases/1/documents/15/content");
+  assert("broken_but_hash_verified_pdf_streams_as_raw_file",brokenContent.r.status===200&&brokenContent.r.headers.get("content-type")==="application/pdf"&&brokenContent.body.equals(fs.readFileSync(broken)),{status:brokenContent.r.status});
 
   const wrongView=await req(base,"/api/cases/1/documents/21/view");
   const wrongContent=await req(base,"/api/cases/1/documents/21/content");
@@ -130,6 +141,8 @@ try{
     sql(db,"INSERT INTO document_analysis VALUES(6,'karar','LINK TEXT','{}','[]','completed','fixture',NULL)");
     sql(db,"INSERT INTO knowledge_chunks(asset_id,case_id,chunk_no,heading,text,metadata_json) VALUES(6,1,0,'Sayfa 1','LINK TEXT',?)",JSON.stringify({page:1}));
     sql(db,"INSERT INTO uyap_remote_documents VALUES(16,1,'RID-LINK','S-LINK','Linked Evrak','Karar','2026-10-05','Linked.pdf',?,6,NULL,?,'filed','{}','2026-10-05','2026-10-05')",sha(wrong),linkedFile);
+    const linkView=await req(base,"/api/cases/1/documents/16/view");
+    assert("symlink_is_blocked_in_view_metadata",linkView.r.status===200&&linkView.body.document.integrity.streamSafe===false&&linkView.body.document.viewer.openable===false&&linkView.body.document.viewer.reason==="canonical_symlink_rejected"&&linkView.body.document.endpoints.content===null,{document:linkView.body.document});
     const linkContent=await req(base,"/api/cases/1/documents/16/content");
     assert("symlink_component_rejected",linkContent.r.status===409&&linkContent.body.error==="canonical_symlink_rejected",{status:linkContent.r.status,body:linkContent.body});
   }else{
@@ -141,6 +154,8 @@ try{
   sql(db,"INSERT INTO asset_locations(asset_id,local_path,source_root,last_seen_at) VALUES(7,?,?,datetime('now'))",pdf,case1);
   sql(db,"INSERT INTO document_analysis VALUES(7,'belge','UNBOUND','{}','[]','completed','fixture',NULL)");
   sql(db,"INSERT INTO uyap_remote_documents VALUES(17,1,'RID-UNBOUND','S-UNBOUND','Unbound','Belge','2026-10-06','Unbound.pdf',?,7,NULL,?,'filed','{}','2026-10-06','2026-10-06')",sha(unbound),unbound);
+  const unboundView=await req(base,"/api/cases/1/documents/17/view");
+  assert("unbound_canonical_is_blocked_in_view",unboundView.r.status===200&&unboundView.body.document.integrity.streamSafe===false&&unboundView.body.document.viewer.openable===false&&unboundView.body.document.viewer.reason==="canonical_asset_location_mismatch",{document:unboundView.body.document});
   const unboundResp=await req(base,"/api/cases/1/documents/17/content");
   assert("canonical_must_be_bound_to_asset_location",unboundResp.r.status===409&&unboundResp.body.error==="canonical_asset_location_mismatch",{status:unboundResp.r.status,body:unboundResp.body});
 
