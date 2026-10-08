@@ -77,9 +77,10 @@ function cleanObservation(input){
   const u=new URL(input.url);
   if(!isUyapHost(u.hostname)) throw new Error("UYAP dışı host reddedildi");
   const method=String(input.method||"GET").toUpperCase();
-  const sampleKeys=Array.isArray(input.sampleKeys)?input.sampleKeys.slice(0,50).map(String):[];
-  const request=sanitizeObservedRequest(input.request||null);
-  const responseSummary=sanitizeObservedRequest(input.responseSummary||null);
+  const safeKeys=new Set(['errorCode','error','tumEvraklar','son20Evrak','pageTotal','status','data','rows','total']);
+  const sampleKeys=Array.isArray(input.sampleKeys)?input.sampleKeys.slice(0,50).map(String).filter(k=>safeKeys.has(k)):[];
+  const request=require('./observation_privacy').request(input.request);
+  const responseSummary=require('./observation_privacy').response(input.responseSummary);
   return {
     method,host:u.hostname.toLowerCase(),path:u.pathname,
     status:Number(input.status||0)||null,

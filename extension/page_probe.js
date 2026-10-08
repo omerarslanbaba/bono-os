@@ -1,6 +1,13 @@
 (() => {
-  if (window.__BONO_UYAP_PROBE__) return;
-  window.__BONO_UYAP_PROBE__ = true;
+  const scriptData=typeof document==="object"?document.currentScript?.dataset||{}:{};
+  const controlledConfig={mode:scriptData.bonoMode,buildId:scriptData.bonoBuild,documentId:scriptData.bonoDocument};
+  if (window.__BONO_UYAP_PROBE__) {window.postMessage({channel:"BONO_UYAP_PAGE",type:"probe_conflict",data:{probeVersion:2}},"*");return;}
+  window.__BONO_UYAP_PROBE__ = {version:2};
+  if(controlledConfig.mode==="observation_only"){
+    if(window.BONO_CONTROLLED_PROBE)window.BONO_CONTROLLED_PROBE.install(controlledConfig);
+    else window.postMessage({channel:"BONO_UYAP_PAGE",type:"probe_conflict",data:{reason:"controlled_helper_missing"}},"*");
+    return;
+  }
 
   const CHANNEL = "BONO_UYAP_PAGE";
   const MAX_JSON_SAMPLE = 250000;

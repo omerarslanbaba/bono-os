@@ -14,7 +14,7 @@ function cleanEvent(input,source={}){
     }
   }
   const evidence=input.responseEvidence||{};
-  const groups=Array.isArray(evidence.groups)?evidence.groups.slice(0,100).map(g=>({label:/^20\d{2}\/\d+(?:\([^\r\n]{1,80}\))?$/.test(g.label||'')?g.label:'unknown',shape:['array','object'].includes(g.shape)?g.shape:'unknown',count:Number.isSafeInteger(g.count)?g.count:null})):[];
+  const groups=Array.isArray(evidence.groups)?evidence.groups.slice(0,100).map(g=>({label:catalog.groupLabel(g.label).label,shape:['array','object'].includes(g.shape)?g.shape:'unknown',count:Number.isSafeInteger(g.count)?g.count:null})):[];
   const code=input.responseSummary?.applicationError?.code||evidence.applicationError?.code;
   return {schema:'uyap.observation-event.v1',catalogVersion:catalog.version,eventId:input.eventId,
     observedAt:Number.isFinite(Date.parse(input.observedAt))?input.observedAt:null,

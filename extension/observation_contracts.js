@@ -19,18 +19,46 @@
     return null;
   }
   // Deliberately no general response parser. Group shapes are evidence, not ownership.
+  function groupLabel(value){
+    const m=String(value||'').match(/^(20\d{2}\/\d{1,10})(?:\(([^()]*)\))?$/);
+    if(!m)return {label:'unknown',caseNo:null,type:'unknown'};
+    const types={'CBS Sorusturma Dosyası':'cbs_investigation','CBS Soruşturma Dosyası':'cbs_investigation','Talimat Dosyası':'instruction'};
+    return {label:m[1],caseNo:m[1],type:types[m[2]]||'unknown'};
+  }
+  function structure(data,{maxNodes=800,maxDepth=10,maxChildren=100}={}){
+    const nodes=[],reasons=new Set();let skipped=0,privacyOmitted=0;
+    const keys=new Set(['tumEvraklar','son20Evrak','pageTotal','status','errorCode','evrakId','dosyaId','tur','tip','onaylandigiTarih']);
+    function visit(value,parent,edge,depth){
+      if(nodes.length>=maxNodes){skipped++;reasons.add('node_limit');return;}
+      const type=value===null?'null':Array.isArray(value)?'array':typeof value;
+      const id=nodes.length;nodes.push({id,parent,edge,type,...(type==='array'?{length:value.length}:{})});
+      if(value===null||typeof value!=='object')return;
+      if(depth>=maxDepth){reasons.add('depth_limit');skipped+=Object.keys(value).length;return;}
+      const entries=Object.entries(value);if(entries.length>maxChildren){reasons.add('children_limit');skipped+=entries.length-maxChildren;}
+      for(const [key,child] of entries.slice(0,maxChildren)){
+        // No scalar values or arbitrary property names are retained, even as errors.
+        if(/token|cookie|auth|session|csrf|password|secret|content|text|name|aciklama/i.test(key)){privacyOmitted++;continue;}
+        const group=groupLabel(key);
+        const safeEdge=Array.isArray(value)?{index:Number(key)}:group.caseNo?{group}:{field:keys.has(key)?key:'unknown'};
+        visit(child,id,safeEdge,depth+1);
+      }
+    }
+    visit(data,null,{field:'root'},0);
+    return {nodes,complete:reasons.size===0,reasons:[...reasons],skipped,privacyOmitted,semantics:'unknown',valuesRetained:false};
+  }
   function responseEvidence(data){
     if(!data||typeof data!=='object')return null;
     const groups=data.tumEvraklar;
     return {applicationError:applicationError(data),pageTotal:Number.isSafeInteger(data.pageTotal)?data.pageTotal:null,
       recentCount:Array.isArray(data.son20Evrak)?data.son20Evrak.length:null,
       groupShape:Array.isArray(groups)?'array':groups&&typeof groups==='object'?'object':'unknown',
-      groups:groups&&!Array.isArray(groups)&&typeof groups==='object'?Object.entries(groups).slice(0,100).map(([label,items])=>({label:/^20\d{2}\/\d+(?:\([^\r\n]{1,80}\))?$/.test(label)?label:'unknown',shape:Array.isArray(items)?'array':typeof items,count:Array.isArray(items)?items.length:null})):[],
+      groups:groups&&!Array.isArray(groups)&&typeof groups==='object'?Object.entries(groups).slice(0,100).map(([label,items])=>({...groupLabel(label),shape:Array.isArray(items)?'array':typeof items,count:Array.isArray(items)?items.length:null})):[],
+      structure:structure(data),
       ownership:'unknown'};
   }
   function assertImportAllowed(caseRow){
     if(!caseRow)throw new Error('case_not_found');
     if(/cbs|savc|soru.turma/i.test(String(caseRow.case_type||'')+' '+String(caseRow.court||'')))throw new Error('cbs_document_ownership_unverified');
   }
-  return {version,contracts,contract,responseEvidence,applicationError,assertImportAllowed};
+  return {version,contracts,contract,responseEvidence,applicationError,assertImportAllowed,groupLabel,structure};
 });
