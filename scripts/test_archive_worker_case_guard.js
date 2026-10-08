@@ -22,7 +22,6 @@ for(const p of [downloads,caseA,caseB])fs.mkdirSync(p,{recursive:true});
 function addCase(id,dirName){
   db.prepare("insert into cases(id,external_id,court,court_file_no,status,uyap_dosya_id) values(?,?,?,?,?,?)")
     .run(id,"uyap:guard:"+id,"Fixture Mahkemesi","2026/"+id,"open","DOSYA-"+id);
-  db.prepare("insert into archive_folders(root_path,relative_path,court_category,folder_name,confidence,status) values(?,?,?,?,?,?)");
   const f=db.prepare("insert into archive_folders(root_path,relative_path,court_category,folder_name,file_count) values(?,?,?,?,0)")
     .run(archiveRoot,dirName,"Fixture",dirName);
   db.prepare("insert into archive_case_links(case_id,archive_folder_id,confidence,status,reasons_json) values(?,?,1,'verified','[]')")
