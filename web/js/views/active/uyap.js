@@ -351,7 +351,7 @@ function bindCaseDocumentControls(caseId){
       notice.textContent=(labels[state]||x.label||state)+(commandId?' · Komut #'+commandId:'')+(x.error&&state==='failed'?' · '+x.error:'');
       if(btn){btn.disabled=!x.canSync;btn.textContent=pending?'Sorgu devam ediyor…':'↻ UYAP\'tan Evrak Listesini Getir'}
       await refreshDownloadState();
-      const serverRemoteCount=Number(x.documents?.remoteCount);
+      const serverRemoteCount=x.documents?.remoteCount==null?NaN:Number(x.documents.remoteCount);
       if((state==='completed'||state==='empty')&&x.terminal===true&&x.success===true&&
          Number.isSafeInteger(serverRemoteCount)&&serverRemoteCount>=0&&
          serverRemoteCount!==knownVisibleRemoteCount){
