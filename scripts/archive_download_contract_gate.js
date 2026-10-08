@@ -5,8 +5,12 @@ const {spawnSync}=require("child_process");
 
 const ROOT=path.resolve(__dirname,"..");
 const SELFTEST=path.join(ROOT,"scripts","archive_download_integration_selftest.js");
+function argValue(name,fallback=null){const i=process.argv.indexOf(name);return i>=0&&process.argv[i+1]?process.argv[i+1]:fallback}
+const uyapModule=argValue("--uyap-module",process.env.BONO_UYAP_MODULE||null);
+const childArgs=[SELFTEST];
+if(uyapModule)childArgs.push("--uyap-module",uyapModule);
 
-const cp=spawnSync(process.execPath,[SELFTEST],{
+const cp=spawnSync(process.execPath,childArgs,{
   cwd:ROOT,
   encoding:"utf8",
   windowsHide:true,
@@ -41,6 +45,7 @@ const childFailed=Number(report?.failed||0)>0||cp.status!==0;
 const result={
   ok:!childFailed&&missingPasses.length===0&&presentBlockingRisks.length===0,
   fixtureOnly:true,
+  uyapModule:report?.uyapModule||uyapModule||null,
   childStatus:cp.status,
   childFailed,
   requiredPasses,
