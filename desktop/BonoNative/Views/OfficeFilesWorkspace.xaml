@@ -1,6 +1,7 @@
 <UserControl x:Class="BonoNative.Views.OfficeFilesWorkspace"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:BonoNative.Views"
              Background="#121317">
   <UserControl.Resources>
     <SolidColorBrush x:Key="Surface" Color="#181A1E"/>
@@ -104,5 +105,6 @@
         </DataGrid>
       </Grid>
     </Border>
+    <local:OfficeFileDetailView x:Name="DetailView" Grid.RowSpan="5" Visibility="Collapsed" BackRequested="DetailBack_Click"/>
   </Grid>
 </UserControl>
