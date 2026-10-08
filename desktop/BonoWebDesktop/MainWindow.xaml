@@ -6,6 +6,9 @@
  WindowStartupLocation="CenterScreen" Background="#121317">
  <Grid>
   <wv2:WebView2 x:Name="Browser" Visibility="Collapsed"/>
+  <Border x:Name="VersionWarningPanel" Visibility="Collapsed" VerticalAlignment="Top" Background="#8A341B" BorderBrush="#F0A24A" BorderThickness="0,0,0,1" Padding="12,7" Panel.ZIndex="20">
+   <TextBlock x:Name="VersionWarningText" Foreground="White" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap"/>
+  </Border>
   <Border x:Name="LoadingPanel" Background="#121317">
    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="440">
     <TextBlock Text="BONO OS" HorizontalAlignment="Center" Foreground="#F4F6F7" FontSize="32" FontWeight="Bold"/>
