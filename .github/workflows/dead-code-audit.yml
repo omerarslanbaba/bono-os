@@ -1,0 +1,196 @@
+name: BONO OS Dead Code Audit
+
+on:
+  push:
+    branches: [chore/dead-code-audit]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dead-code-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit-and-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Guard cleanup diff
+        shell: pwsh
+        run: |
+          git fetch origin integration/webview2-uyap-single-case --depth=1
+          $allowed = @(
+            'docs/dead-code-audit.md',
+            '.github/workflows/dead-code-audit.yml',
+            'scripts/cleanup_old_integration_jobs.js',
+            'scripts/cleanup_regression_jobs.js',
+            'scripts/cleanup_v05_temp.js',
+            'scripts/screens_v05.js'
+          )
+          $rows = @(git diff --name-status origin/integration/webview2-uyap-single-case...HEAD)
+          $bad = @()
+          foreach ($row in $rows) {
+            $parts = $row -split "`t"
+            $status = $parts[0]
+            $path = $parts[-1]
+            if ($allowed -notcontains $path) { $bad += $row; continue }
+            if ($path -like 'scripts/cleanup_*' -or $path -eq 'scripts/screens_v05.js') {
+              if ($status -notmatch '^D') { $bad += $row }
+            }
+          }
+          if ($bad.Count) {
+            $bad | ForEach-Object { Write-Host $_ }
+            throw 'Unexpected cleanup diff detected.'
+          }
+          $protected = $rows | Where-Object { $_ -match "`t(bridge|extension|desktop|web)/" -or $_ -match 'web_desktop_updater\.ps1' }
+          if ($protected) {
+            $protected | ForEach-Object { Write-Host $_ }
+            throw 'Protected runtime/UI/updater file changed during cleanup.'
+          }
+          Write-Host 'PASS cleanup diff allowlist'
+
+      - name: Verify removed helpers are absent
+        shell: pwsh
+        run: |
+          $removed = @(
+            'scripts/cleanup_old_integration_jobs.js',
+            'scripts/cleanup_regression_jobs.js',
+            'scripts/cleanup_v05_temp.js',
+            'scripts/screens_v05.js'
+          )
+          foreach ($p in $removed) { if (Test-Path $p) { throw "Expected removed file still exists: $p" } }
+          Write-Host 'PASS audited removals absent'
+
+      - name: Node syntax and extension checks
+        run: npm run check
+
+      - name: Current web UI regressions
+        shell: pwsh
+        run: |
+          node scripts/test_web_desktop_hearings.js
+          node scripts/test_web_desktop_case_ui.js
+
+      - name: UYAP integration regressions
+        shell: pwsh
+        run: |
+          npm run test:uyap-single-case-sync
+          npm run test:webview2-uyap-e2e
+          npm run test:uyap-targeted-case-search
+          npm run test:uyap-targeted-cbs-party-search
+          npm run test:uyap-batch-safety
+          npm run test:webview2-uyap-targeted-e2e
+
+      - name: Archive regressions
+        shell: pwsh
+        run: |
+          npm run test:document-view-service
+          npm run test:document-view-http
+          npm run test:webview2-archive-route-e2e
+
+      - name: Restore WebView2 projects
+        shell: pwsh
+        run: |
+          dotnet restore desktop/BonoWebDesktop/BonoWebDesktop.csproj -r win-x64
+          dotnet restore desktop/BonoWebDesktop.Smoke/BonoWebDesktop.Smoke.csproj
+
+      - name: Build WebView2 and smoke project
+        shell: pwsh
+        run: |
+          dotnet build desktop/BonoWebDesktop/BonoWebDesktop.csproj -c Release --no-restore
+          dotnet build desktop/BonoWebDesktop.Smoke/BonoWebDesktop.Smoke.csproj -c Release --no-restore
+
+      - name: Same-origin bundled UI smoke
+        run: dotnet run --project desktop/BonoWebDesktop.Smoke/BonoWebDesktop.Smoke.csproj -c Release --no-restore -- web
+
+      - name: Compute cleanup preview version
+        id: ver
+        shell: pwsh
+        run: |
+          $short = $env:GITHUB_SHA.Substring(0,8)
+          $version = "0.1.0-webpreview-cleanup.$env:GITHUB_RUN_NUMBER"
+          "short=$short" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Publish WebView2 cleanup preview
+        shell: pwsh
+        run: |
+          dotnet publish desktop/BonoWebDesktop/BonoWebDesktop.csproj -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:IncludeAllContentForSelfExtract=true `
+            -p:DebugType=None -p:DebugSymbols=false `
+            -p:Version="${{ steps.ver.outputs.version }}" `
+            -p:InformationalVersion="${{ steps.ver.outputs.version }}+${{ steps.ver.outputs.short }}" `
+            -o dist/package
+
+      - name: Create versioned web bundle and integrity manifest
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'dist/web-source' | Out-Null
+          Copy-Item 'web/*' 'dist/web-source/' -Recurse -Force
+          [ordered]@{
+            product='BONO OS Web UI'
+            commit='${{ github.sha }}'
+            shortCommit='${{ steps.ver.outputs.short }}'
+            builtAtUtc=(Get-Date).ToUniversalTime().ToString('o')
+          } | ConvertTo-Json | Set-Content 'dist/web-source/__bono_web_version.json' -Encoding utf8
+          Compress-Archive -Path 'dist/web-source/*' -DestinationPath 'dist/package/web-bundle.zip'
+          $exe='dist/package/BONO OS Web Desktop.exe'
+          $web='dist/package/web-bundle.zip'
+          $exeHash=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $webHash=(Get-FileHash $web -Algorithm SHA256).Hash.ToLowerInvariant()
+          [xml]$proj=Get-Content 'desktop/BonoWebDesktop/BonoWebDesktop.csproj'
+          $sdk=($proj.Project.ItemGroup.PackageReference | Where-Object { $_.Include -eq 'Microsoft.Web.WebView2' }).Version
+          [ordered]@{
+            schemaVersion=1
+            product='BONO OS Web Desktop Preview'
+            version='${{ steps.ver.outputs.version }}'
+            commit='${{ github.sha }}'
+            shortCommit='${{ steps.ver.outputs.short }}'
+            webCommit='${{ github.sha }}'
+            builtAtUtc=(Get-Date).ToUniversalTime().ToString('o')
+            executable='BONO OS Web Desktop.exe'
+            sha256=$exeHash
+            webBundle='web-bundle.zip'
+            webSha256=$webHash
+            webView2Runtime='Evergreen required'
+            webView2Sdk=$sdk
+            coreHealthUri='http://127.0.0.1:47831/health'
+            previewOrigin='loopback ephemeral same-origin proxy'
+            channel='preview-cleanup'
+          } | ConvertTo-Json | Set-Content 'dist/package/release-manifest.json' -Encoding utf8
+          @("$exeHash  BONO OS Web Desktop.exe","$webHash  web-bundle.zip") | Set-Content 'dist/package/SHA256SUMS.txt' -Encoding ascii
+          Write-Host "EXE_SHA256=$exeHash"
+          Write-Host "WEB_SHA256=$webHash"
+
+      - name: Updater plan and rollback tests
+        shell: pwsh
+        run: |
+          ./scripts/web_desktop_updater.ps1 -Mode Plan -PackagePath 'dist/package' -RootPath (Join-Path $env:RUNNER_TEMP 'bono-cleanup-plan') -SkipCoreProbe | Format-List
+          ./scripts/test_web_desktop_updater.ps1
+
+      - name: Package cleanup preview
+        shell: pwsh
+        run: |
+          $name="BONO-OS-WebView2-Cleanup-${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.short }}.zip"
+          Compress-Archive -Path 'dist/package/*' -DestinationPath ("dist/"+$name)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bono-os-webview2-cleanup-${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.short }}
+          path: |
+            dist/package/BONO OS Web Desktop.exe
+            dist/package/web-bundle.zip
+            dist/package/release-manifest.json
+            dist/package/SHA256SUMS.txt
+            dist/BONO-OS-WebView2-Cleanup-*.zip
+          retention-days: 14
