@@ -11,9 +11,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ExeName = "BONO OS Web Desktop.exe"
+$WebBundleName = "web-bundle.zip"
 $ManifestName = "release-manifest.json"
 $CurrentDir = Join-Path $RootPath "current"
 $CurrentExe = Join-Path $CurrentDir $ExeName
+$CurrentWebBundle = Join-Path $CurrentDir $WebBundleName
 $CurrentManifest = Join-Path $CurrentDir $ManifestName
 $BackupsDir = Join-Path $RootPath "backups"
 $StagingDir = Join-Path $RootPath "staging"
@@ -27,16 +29,26 @@ function Read-Manifest([string]$dir) {
     if ($m.schemaVersion -ne 1) { throw "Unsupported manifest schema: $($m.schemaVersion)" }
     if ($m.product -ne "BONO OS Web Desktop Preview") { throw "Unexpected product: $($m.product)" }
     if ($m.executable -ne $ExeName) { throw "Unexpected executable: $($m.executable)" }
+    if ($m.webBundle -ne $WebBundleName) { throw "Unexpected web bundle: $($m.webBundle)" }
+    if (-not $m.webSha256) { throw "Manifest webSha256 is missing." }
     return $m
 }
 
-function Assert-Hash([string]$dir, $manifest) {
+function File-Hash([string]$path) {
+    if (-not (Test-Path $path)) { throw "File missing: $path" }
+    return (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+function Assert-PackageIntegrity([string]$dir, $manifest) {
     $exe = Join-Path $dir $manifest.executable
-    if (-not (Test-Path $exe)) { throw "Executable missing: $exe" }
-    $actual = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-    $expected = ([string]$manifest.sha256).ToLowerInvariant()
-    if ($actual -ne $expected) { throw "SHA-256 mismatch. expected=$expected actual=$actual" }
-    return $actual
+    $web = Join-Path $dir $manifest.webBundle
+    $exeActual = File-Hash $exe
+    $webActual = File-Hash $web
+    $exeExpected = ([string]$manifest.sha256).ToLowerInvariant()
+    $webExpected = ([string]$manifest.webSha256).ToLowerInvariant()
+    if ($exeActual -ne $exeExpected) { throw "EXE SHA-256 mismatch. expected=$exeExpected actual=$exeActual" }
+    if ($webActual -ne $webExpected) { throw "Web bundle SHA-256 mismatch. expected=$webExpected actual=$webActual" }
+    return [pscustomobject]@{ ExeSha256 = $exeActual; WebSha256 = $webActual }
 }
 
 function Test-CoreHealth {
@@ -68,45 +80,34 @@ function Test-TargetUnlocked {
     }
 }
 
-function Write-FallbackManifest([string]$dir) {
-    $exe = Join-Path $dir $ExeName
-    $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-    [ordered]@{
-        schemaVersion = 1
-        product = "BONO OS Web Desktop Preview"
-        version = "legacy"
-        commit = "unknown"
-        shortCommit = "unknown"
-        executable = $ExeName
-        sha256 = $hash
-        webView2Runtime = "Evergreen required"
-    } | ConvertTo-Json | Set-Content (Join-Path $dir $ManifestName) -Encoding utf8
-}
-
 function Backup-Current {
     if (-not (Test-Path $CurrentExe)) { return $null }
+    if (-not (Test-Path $CurrentManifest) -or -not (Test-Path $CurrentWebBundle)) {
+        throw "Current fixed preview is missing manifest or web bundle; refusing unsafe backup."
+    }
+
     New-Item -ItemType Directory -Force -Path $BackupsDir | Out-Null
     $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssfffZ")
     $dir = Join-Path $BackupsDir $stamp
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     Copy-Item $CurrentExe (Join-Path $dir $ExeName)
-    if (Test-Path $CurrentManifest) {
-        Copy-Item $CurrentManifest (Join-Path $dir $ManifestName)
-    } else {
-        Write-FallbackManifest $dir
-    }
-    Assert-Hash $dir (Read-Manifest $dir) | Out-Null
+    Copy-Item $CurrentWebBundle (Join-Path $dir $WebBundleName)
+    Copy-Item $CurrentManifest (Join-Path $dir $ManifestName)
+    Assert-PackageIntegrity $dir (Read-Manifest $dir) | Out-Null
     return $dir
 }
 
 function Restore-From([string]$dir) {
     $m = Read-Manifest $dir
-    Assert-Hash $dir $m | Out-Null
+    Assert-PackageIntegrity $dir $m | Out-Null
     New-Item -ItemType Directory -Force -Path $CurrentDir | Out-Null
+
     Copy-Item (Join-Path $dir $ExeName) ($CurrentExe + ".restore") -Force
+    Copy-Item (Join-Path $dir $WebBundleName) ($CurrentWebBundle + ".restore") -Force
     Move-Item ($CurrentExe + ".restore") $CurrentExe -Force
+    Move-Item ($CurrentWebBundle + ".restore") $CurrentWebBundle -Force
     Copy-Item (Join-Path $dir $ManifestName) $CurrentManifest -Force
-    Assert-Hash $CurrentDir (Read-Manifest $CurrentDir) | Out-Null
+    Assert-PackageIntegrity $CurrentDir (Read-Manifest $CurrentDir) | Out-Null
 }
 
 function Write-State($manifest,[string]$action) {
@@ -116,22 +117,28 @@ function Write-State($manifest,[string]$action) {
         action = $action
         version = $manifest.version
         commit = $manifest.commit
+        webCommit = $manifest.webCommit
         sha256 = $manifest.sha256
+        webSha256 = $manifest.webSha256
         updatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
         executablePath = $CurrentExe
+        webBundlePath = $CurrentWebBundle
     } | ConvertTo-Json | Set-Content $StateFile -Encoding utf8
 }
 
 if ($Mode -eq "Plan") {
     if (-not $PackagePath) { throw "PackagePath is required for Plan." }
     $m = Read-Manifest $PackagePath
-    $hash = Assert-Hash $PackagePath $m
+    $hashes = Assert-PackageIntegrity $PackagePath $m
     [pscustomobject]@{
         Action = "Plan"
         Product = $m.product
         Version = $m.version
-        Commit = $m.commit
-        Sha256 = $hash
+        ExeCommit = $m.commit
+        WebCommit = $m.webCommit
+        CommitsMatch = ([string]$m.commit -eq [string]$m.webCommit)
+        ExeSha256 = $hashes.ExeSha256
+        WebSha256 = $hashes.WebSha256
         WebView2Runtime = $m.webView2Runtime
         CoreHealth = (Test-CoreHealth)
         FixedExecutablePath = $CurrentExe
@@ -151,26 +158,33 @@ New-Item -ItemType Directory -Force -Path $RootPath,$CurrentDir,$BackupsDir,$Sta
 if ($Mode -eq "Install") {
     if (-not $PackagePath) { throw "PackagePath is required for Install." }
     $sourceManifest = Read-Manifest $PackagePath
-    Assert-Hash $PackagePath $sourceManifest | Out-Null
+    Assert-PackageIntegrity $PackagePath $sourceManifest | Out-Null
+
     $stage = Join-Path $StagingDir ([Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $stage | Out-Null
     Copy-Item (Join-Path $PackagePath $ExeName) (Join-Path $stage $ExeName)
+    Copy-Item (Join-Path $PackagePath $WebBundleName) (Join-Path $stage $WebBundleName)
     Copy-Item (Join-Path $PackagePath $ManifestName) (Join-Path $stage $ManifestName)
-    Assert-Hash $stage (Read-Manifest $stage) | Out-Null
+    Assert-PackageIntegrity $stage (Read-Manifest $stage) | Out-Null
 
     $backup = Backup-Current
     try {
         Copy-Item (Join-Path $stage $ExeName) ($CurrentExe + ".new") -Force
-        if (Test-Path $CurrentExe) { Remove-Item $CurrentExe -Force }
+        Copy-Item (Join-Path $stage $WebBundleName) ($CurrentWebBundle + ".new") -Force
+
+        Remove-Item $CurrentExe,$CurrentWebBundle -Force -ErrorAction SilentlyContinue
         Move-Item ($CurrentExe + ".new") $CurrentExe -Force
+        Move-Item ($CurrentWebBundle + ".new") $CurrentWebBundle -Force
         Copy-Item (Join-Path $stage $ManifestName) $CurrentManifest -Force
-        Assert-Hash $CurrentDir (Read-Manifest $CurrentDir) | Out-Null
+
+        Assert-PackageIntegrity $CurrentDir (Read-Manifest $CurrentDir) | Out-Null
         if ($TestSimulateFailureAfterSwap) { throw "Simulated post-swap failure." }
+
         Write-State $sourceManifest "install"
         Write-Host "Installed $($sourceManifest.version) at $CurrentExe"
     } catch {
         if ($backup) {
-            Remove-Item $CurrentExe,$CurrentManifest -Force -ErrorAction SilentlyContinue
+            Remove-Item $CurrentExe,$CurrentWebBundle,$CurrentManifest -Force -ErrorAction SilentlyContinue
             Restore-From $backup
         }
         throw
@@ -188,8 +202,9 @@ if ($Mode -eq "Rollback") {
             Select-Object -First 1 -ExpandProperty FullName
     }
     if (-not $target) { throw "No WebView2 preview backup available for rollback." }
+
     $targetManifest = Read-Manifest $target
-    Assert-Hash $target $targetManifest | Out-Null
+    Assert-PackageIntegrity $target $targetManifest | Out-Null
     $recovery = Backup-Current
     try {
         Restore-From $target
@@ -197,7 +212,7 @@ if ($Mode -eq "Rollback") {
         Write-Host "Rolled back to $($targetManifest.version) at $CurrentExe"
     } catch {
         if ($recovery) {
-            Remove-Item $CurrentExe,$CurrentManifest -Force -ErrorAction SilentlyContinue
+            Remove-Item $CurrentExe,$CurrentWebBundle,$CurrentManifest -Force -ErrorAction SilentlyContinue
             Restore-From $recovery
         }
         throw
