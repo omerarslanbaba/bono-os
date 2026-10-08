@@ -1,0 +1,11 @@
+const db=require("../bridge/db"),v05=require("../bridge/v05"),bus=require("../bridge/event_bus"),wf=require("../bridge/workflow_engine");
+function ok(x,m){if(!x)throw new Error(m)}
+const c=db.prepare("SELECT id,office_file_id FROM cases WHERE office_file_id IS NOT NULL LIMIT 1").get();ok(c,"case");
+db.prepare("INSERT OR IGNORE INTO uyap_sync_profiles(case_id,sync_mode,auto_download_new) VALUES(?,'delta',1)").run(c.id);db.prepare("UPDATE uyap_sync_profiles SET sync_mode='delta',auto_download_new=1 WHERE case_id=?").run(c.id);
+const remote="V08-"+Date.now();let rid;
+try{const x=v05.ingestRemoteManifest(c.id,[{remoteDocumentId:remote,title:"Kapalı Tebligat Mazbatası",fileName:"evrak_123.udf"}],{manifestType:"delta",source:"regression"});ok(x.newCount===1&&x.eventsEmitted===1,"manifest event");rid=db.prepare("SELECT id FROM uyap_remote_documents WHERE case_id=? AND remote_document_id=?").get(c.id,remote).id;
+const ev=db.prepare("SELECT * FROM domain_events WHERE entity_id=? AND event_type='uyap.document.new'").get(String(rid));ok(ev,"event");bus.dispatch(ev.id);
+const run=db.prepare("SELECT * FROM workflow_runs WHERE trigger_ref=?").get(ev.event_key);ok(run,"workflow");wf.run(run.id);const done=db.prepare("SELECT * FROM workflow_runs WHERE id=?").get(run.id);ok(done.status==="completed","workflow completed");
+const wait=db.prepare("SELECT * FROM domain_events WHERE entity_id=? AND event_type='uyap.document.download_waiting'").get(String(rid));ok(wait,"download waiting");bus.dispatch(wait.id);const radar=db.prepare("SELECT * FROM work_radar_items WHERE fingerprint=?").get("uyap-download-wait:"+rid);ok(radar,"radar");
+console.log(JSON.stringify({ok:true,newDocumentEvent:true,workflow:done.status,downloadWaiting:true,radar:true,bus:bus.status()}))}
+finally{if(rid){db.prepare("DELETE FROM postal_shipments WHERE remote_document_id=?").run(rid);db.prepare("DELETE FROM work_radar_items WHERE source_entity_type='uyap_remote_document' AND source_entity_id=?").run(String(rid));db.prepare("DELETE FROM document_workflow_events WHERE remote_document_id=?").run(rid);db.prepare("DELETE FROM domain_events WHERE entity_id=?").run(String(rid));db.prepare("DELETE FROM uyap_remote_documents WHERE id=?").run(rid)}db.prepare("DELETE FROM workflow_runs WHERE trigger_ref LIKE 'uyap.document.new:%' AND input_json LIKE ?").run("%"+String(rid||"NO")+"%");}

@@ -1,0 +1,19 @@
+import {api} from '../api.js';
+import {mount,pageHero,section,empty,esc,badge,kpi} from '../ui.js';
+
+const labels={read_local_data:'Yerel veriyi oku',draft_document:'Taslak oluştur',suggest_data_change:'Veri değişikliği öner',write_data:'Veri yaz',approve_deadline:'Hukuki süre onayla',send_uyap:'UYAP gönderimi',sign_document:'Belge imzala',send_message:'Mesaj gönder'};
+export async function renderAi(){
+ const [s,perms,comm,merges]=await Promise.all([api.intelligenceStatus(),api.aiPermissions(),api.communicationStatus(),api.mergeCandidates()]);
+ const permRows=perms.map(p=>`<div class="permission-row"><div><div class="doc-title">${esc(labels[p.capability]||p.capability)}</div><div class="doc-meta">${esc(p.capability)}${p.requires_approval?' · insan onayı gerekli':''}</div></div><select class="perm-select" data-cap="${esc(p.capability)}"><option value="allow" ${p.level==='allow'?'selected':''}>İzin ver</option><option value="suggest" ${p.level==='suggest'?'selected':''}>Sadece öner</option><option value="deny" ${p.level==='deny'?'selected':''}>Yasak</option></select></div>`).join('');
+ const wa=comm.whatsapp||{};
+ const mergeBody=merges.length?merges.slice(0,8).map(m=>`<div class="notice-row"><div><div class="doc-title">${esc(m.left_name)} ↔ ${esc(m.right_name)}</div><div class="doc-meta">Benzerlik ${Math.round(m.score*100)}% · otomatik birleştirilmez</div></div>${badge('İncele')}</div>`).join(''):empty('Şu anda bekleyen müvekkil eşleştirme adayı yok.');
+ mount(pageHero('BONO AI','Yerel hukuk hafızasında kanıt ara; AI yetkilerini açık ve geri alınabilir tut.')+
+ `<div class="kpis">${kpi('▤','Analiz edilmiş UDF',s.analyzed)}${kpi('◫','Kanıt parçaları',s.chunks)}${kpi('✎','Şablon adayı',s.templates)}${kpi('⚖','AI modu','Yerel Kanıt')}</div>`+
+ `<div class="grid"><div class="section-stack">${section('Dosya / UDF Hafızasında Ara','⌕',`<div class="evidence-search"><input id="aiSearch" placeholder="Örn: bilirkişi kusur oranı, zamanaşımı, son talep…"><button id="aiSearchBtn" class="primary-action">Kanıt Ara</button></div><div id="aiResults">${empty('Soru veya anahtar kelime yaz. BONO önce kendi evraklarından kanıt getirir.')}</div>`)}`+
+ `${section('AI İzinleri','⚙',permRows)}</div><div class="section-stack">${section('WhatsApp Adaptörü','✉',`<div class="connector-card"><strong>WhatsApp Business Cloud API</strong><span>Durum: ${esc(wa.status||'not_connected')}</span><span>Relay: ${esc(wa.relay||'not_configured')}</span><p>Web otomasyonu kullanılmaz. Gelen/giden mesajlar bağlandığında müvekkil ve föy iletişim geçmişine düşer.</p></div>`)}`+
+ `${section('Olası Müvekkil Eşleşmeleri','♙',mergeBody,'<button id="refreshMerges" class="subtle-action">Yeniden Tara</button>')}</div></div>`,'ai');
+ document.querySelector('#aiSearchBtn').onclick=doSearch;document.querySelector('#aiSearch').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch()});
+ document.querySelectorAll('.perm-select').forEach(s=>s.onchange=async e=>{const el=e.target;const approval=!['read_local_data','draft_document'].includes(el.dataset.cap);await api.setAiPermission(el.dataset.cap,{level:el.value,requiresApproval:approval});renderAi()});
+ document.querySelector('#refreshMerges').onclick=async()=>{await api.refreshMergeCandidates();renderAi()};
+}
+async function doSearch(){const q=document.querySelector('#aiSearch').value.trim(),box=document.querySelector('#aiResults');if(q.length<2)return;box.innerHTML='<div class="empty">Aranıyor…</div>';try{const d=await api.knowledgeSearch(q);box.innerHTML=d.results.length?d.results.map(r=>`<a class="evidence-hit" href="#documents/${r.asset_id}"><div><strong>${esc(r.file_name)}</strong><span>${esc(r.document_kind||'UDF')} · ${esc(r.heading||'')}</span></div><p>${esc(r.preview)}</p></a>`).join(''):empty('Yerel evrak hafızasında eşleşme bulunamadı.')}catch(e){box.innerHTML=empty(e.message)}}
