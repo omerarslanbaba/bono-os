@@ -227,10 +227,11 @@ export async function renderUyap(id){
   bindTargetedCaseSearch();
   // Sorgulama filtreleri bindQuery tarafından yönetilir.
   document.querySelector('#syncAllUyap')?.addEventListener('click',async e=>{
-    e.currentTarget.disabled=true;e.currentTarget.textContent='Senkronizasyon başlatılıyor…';
+    if(!confirm('UYAP dosya listelerinin (CBS dahil) sorgusu başlatılsın mı? Bu işlem evrak indirmez ve indirme duraklatmasını kaldırmaz.'))return;
+    e.currentTarget.disabled=true;e.currentTarget.textContent='UYAP dosya keşfi kuyruğa alınıyor…';
     try{
-      await api.startUyapArchive();
-      e.currentTarget.textContent='Senkronizasyon arka planda çalışıyor';
+      await api.startUyapDiscovery({statuses:[0,1],syncDocuments:false});
+      e.currentTarget.textContent='Dosya listesi sorgusu kuyruğa alındı';
     }catch(err){alert(err.message);e.currentTarget.disabled=false}
   });
 }
