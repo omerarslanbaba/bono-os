@@ -28,7 +28,8 @@
       <Setter Property="Cursor" Value="Hand"/>
     </Style>
   </UserControl.Resources>
-  <Grid Margin="24,20">
+  <Grid>
+  <Grid x:Name="OfficePanel" Margin="24,66,24,20" Visibility="Collapsed">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="16"/>
@@ -107,4 +108,10 @@
     </Border>
     <local:OfficeFileDetailView x:Name="DetailView" Grid.RowSpan="5" Visibility="Collapsed" BackRequested="DetailBack_Click"/>
   </Grid>
+  <local:UyapCaseResultsView x:Name="UyapResults" Margin="24,66,24,20" CaseOpened="UyapResults_CaseOpened"/>
+  <StackPanel Orientation="Horizontal" Margin="24,16,0,0" VerticalAlignment="Top" HorizontalAlignment="Left">
+   <Button x:Name="UyapTab" Content="UYAP Dosyaları" Click="ShowUyapTab_Click" Background="#183645" Foreground="#64D0F7" BorderBrush="#19AEE6" Margin="0,0,10,0" Padding="15,8"/>
+   <Button x:Name="OfficeTab" Content="Ofis FÖY'leri" Click="ShowOfficeTab_Click" Background="#23262A" Margin="0,0,10,0" Padding="15,8"/>
+  </StackPanel>
+ </Grid>
 </UserControl>
