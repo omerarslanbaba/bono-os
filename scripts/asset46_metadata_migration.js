@@ -13,8 +13,12 @@ const DB_PATH=path.resolve(arg("--db",path.join(ROOT,"data","bono.db")));
 const ASSET_ID=Number(arg("--asset-id","46"));
 const REMOTE_ID=Number(arg("--remote-id","74"));
 const SOURCE=path.resolve(arg("--source",path.join(USER,"Downloads","(2)CevapDilekcesi.pdf")));
-const TARGET=path.resolve(arg("--target",path.join(USER,"OneDrive","Masaüstü","Dava Dosyaları","Asliye Hukuk Mahkemesi","Körfez 2. Asliye Hukuk Mahkemesi - 2026-218","Cevap Dilekçesi - 2026-09-14.pdf")));
-const ARCHIVE_ROOT=path.resolve(arg("--archive-root",path.join(USER,"OneDrive","Masaüstü","Dava Dosyaları")));
+const TARGET_ARG=arg("--target",null);
+const ARCHIVE_ROOT_ARG=arg("--archive-root",null);
+const CANONICAL_NAME=String(arg("--canonical-name","Cevap Dilekcesi - 2026-09-14.pdf"));
+let TARGET=TARGET_ARG?path.resolve(TARGET_ARG):null;
+let ARCHIVE_ROOT=ARCHIVE_ROOT_ARG?path.resolve(ARCHIVE_ROOT_ARG):null;
+let resolvedArchiveLink=null;
 const EXPECTED=String(arg("--expected-sha","5c620fb763693933fc27cab5c56141eb8f20d57360f9534338427aa7d6357a0c")).toLowerCase();
 const APPLY=has("--apply");
 const ROLLBACK=arg("--rollback",null);
@@ -38,6 +42,25 @@ function verifyIdentity(state){
   const dbSha=String(state.asset.sha256||"").toLowerCase();
   if(dbSha!==EXPECTED)throw new Error("DB asset SHA-256 differs from expected value");
 }
+function resolveCanonicalTarget(db,state){
+  if(TARGET){
+    if(!ARCHIVE_ROOT)ARCHIVE_ROOT=path.dirname(TARGET);
+    return null;
+  }
+  const rows=db.prepare("SELECT l.status,l.confidence,f.root_path,f.relative_path,f.folder_name FROM archive_case_links l JOIN archive_folders f ON f.id=l.archive_folder_id WHERE l.case_id=? ORDER BY l.status='verified' DESC,l.status='auto' DESC,l.confidence DESC,l.id DESC").all(state.remote.case_id);
+  const verified=rows.filter(x=>x.status==="verified");
+  let chosen=verified[0]||null;
+  if(!chosen){
+    const autos=rows.filter(x=>x.status==="auto"&&Number(x.confidence)>=0.999999);
+    if(autos.length!==1)throw new Error("Canonical archive target is ambiguous; pass --target explicitly");
+    chosen=autos[0];
+  }
+  if(!chosen?.root_path||!chosen?.relative_path)throw new Error("Trusted archive link missing");
+  ARCHIVE_ROOT=ARCHIVE_ROOT||path.resolve(chosen.root_path);
+  TARGET=path.join(chosen.root_path,chosen.relative_path,CANONICAL_NAME);
+  resolvedArchiveLink=chosen;
+  return chosen;
+}
 function verifyFiles(){
   const source=fileState(SOURCE),target=fileState(TARGET);
   if(!source.exists)throw new Error("Source file missing");
@@ -55,6 +78,7 @@ const writeMode=APPLY||!!ROLLBACK;
 const db=new DatabaseSync(DB_PATH,{readOnly:!writeMode});
 const before=rowState(db);
 verifyIdentity(before);
+resolveCanonicalTarget(db,before);
 const files=verifyFiles();
 
 const plan={
@@ -66,6 +90,7 @@ const plan={
   expectedSha256:EXPECTED,
   source:files.source,
   canonical:files.target,
+  resolvedArchiveLink,
   before,
   operations:[
     "preserve existing Downloads asset_location",
