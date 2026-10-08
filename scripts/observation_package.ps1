@@ -2,7 +2,7 @@ param([Parameter(Mandatory=$true)][string]$TargetRoot,[ValidateSet('Verify','App
 $ErrorActionPreference='Stop'
 try {
  if($Mode -ne 'Verify') {
-  $cores=Get-CimInstance Win32_Process | Where-Object {($_.Name -match '^BONO.*\.exe$') -or ($_.Name -eq 'node.exe' -and (-not $_.CommandLine -or $_.CommandLine -match 'bridge[\\/]server\.js'))}
+  $cores=Get-CimInstance Win32_Process | Where-Object {($_.Name -match '^BONO.*\.exe$') -or ($_.Name -eq 'node.exe' -and (-not $_.CommandLine -or $_.CommandLine -match 'bridge[\\/](server|worker)\.js'))}
   if($cores){throw 'BONO desktop/Core active; approved maintenance must stop them first'}
  }
  & $NodeExe (Join-Path $PSScriptRoot 'package_operations.js') $PSScriptRoot ([IO.Path]::GetFullPath($TargetRoot)) $Mode $CorePort
