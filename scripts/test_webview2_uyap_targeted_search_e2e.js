@@ -55,7 +55,7 @@ async function req(base,url,options={}){const r=await fetch(base+url,{headers:{"
   const q=await req(base,"/api/uyap/queue?limit=100");must(!q.body.some(x=>x.endpoint_key==="document.list"||x.command_type==="download_document"),"targeted search triggered document/download work");
   const ui=fs.readFileSync(path.join(process.cwd(),"web","js","views","active","uyap.js"),"utf8");
   must(ui.includes("api.uyapCaseSearchStatus(searchId)")&&ui.includes("a.href='#uyap/'+id"),"UI does not link completed targeted search to BONO detail");
-  must(ui.includes("Soruşturma / esas numarası bilinmiyorsa")||ui.includes("numarası bilinmiyorsa"),"unknown-number limitation warning missing from UI");
+  must(ui.includes("Soruşturma numarasını bilmiyor musun?")&&ui.includes("Bu hedefli arama numara gerektirir"),"unknown-number limitation warning missing from UI");
   console.log(JSON.stringify({ok:true,observedSchema:true,targetedHttp:true,exactMatchOnly:true,foundCasePersisted:true,detailRouteReady:true,noDocumentOrDownloadSideEffect:true,unknownNumberNotAssumed:true}));
  }finally{if(server.exitCode==null)server.kill();await sleep(100);fs.rmSync(root,{recursive:true,force:true})}
 })().catch(e=>{console.error(e);process.exit(1)});
