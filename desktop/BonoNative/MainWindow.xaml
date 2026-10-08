@@ -126,7 +126,7 @@
                 </ScrollViewer>
 
                 <!-- OFFICE FILES: independent workspace managed by Chat-UI -->
-                <views:OfficeFilesWorkspace x:Name="OfficeFilesView" Visibility="Collapsed" FileOpened="OfficeFilesView_FileOpened"/>
+                <views:OfficeFilesWorkspace x:Name="OfficeFilesView" Visibility="Collapsed" FileOpened="OfficeFilesView_FileOpened" UyapRequested="OfficeFilesView_UyapRequested"/>
 
                 <!-- FILES (legacy compatibility) -->
                 <Grid x:Name="FilesPage" Visibility="Collapsed">
