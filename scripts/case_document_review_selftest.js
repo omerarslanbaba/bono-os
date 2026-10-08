@@ -51,12 +51,14 @@ async function main(){
     const udf=path.join(case1Dir,"Duruşma Tutanağı.udf");
     const blank=path.join(case1Dir,"Tarama.pdf");
     const corrupt=path.join(case1Dir,"Bozuk.pdf");
+    const unverified=path.join(case1Dir,"Unverified.pdf");
     makePdf(pdf1,"PDF FIXTURE METNI DOSYA BIR SAYFA BIR UZUN OKUNABILIR BELGE ICERIGI");
     makePdf(pdf2,"PDF IKINCI EVRAK AYNI ISIM FARKLI ICERIK VE YETERLI UZUNLUKTA METIN");
     makePdf(pdfWrong,"WRONG CASE SECRET CONTENT SHOULD NEVER ENTER REQUESTED CASE REVIEW");
     makeBlankPdf(blank);
     makeUdf(udf,"DURUŞMA ZAPTI\n\nAÇIKLAMALAR\nUDF FIXTURE METNI VE TANIK BEYANI\n\nSONUÇ VE İSTEM\nTalep sonucu.");
     fs.writeFileSync(corrupt,Buffer.from("%PDF-corrupt"));
+    fs.copyFileSync(pdf1,unverified);
 
     const pdfExtract=await review.runExtractor(pdf1);
     const pdf2Extract=await review.runExtractor(pdf2);
@@ -90,7 +92,8 @@ async function main(){
       [2,sha(pdf2),"Beyan.pdf",".pdf","dilekce",pdf2,"keep_original",null],
       [3,sha(udf),"Duruşma Tutanağı.udf",".udf","durusma_zapti",udf,"keep_udf",null],
       [4,sha(corrupt),"Bozuk.pdf",".pdf","belge",corrupt,"keep_original",null],
-      [5,sha(pdfWrong),"Beyan.pdf",".pdf","dilekce",pdfWrong,"keep_original",null]
+      [5,sha(pdfWrong),"Beyan.pdf",".pdf","dilekce",pdfWrong,"keep_original",null],
+      [6,"0".repeat(64),"Unverified.pdf",".pdf","dilekce",unverified,"keep_original",null]
     ];
     for(const a of assets)sql(db,"INSERT INTO local_assets VALUES(?,?,?,?,?,?,?,?)",...a);
     for(const a of assets)sql(db,"INSERT INTO asset_locations(asset_id,local_path,source_root,last_seen_at) VALUES(?,?,?,datetime('now'))",a[0],a[5],path.dirname(a[5]));
@@ -100,7 +103,8 @@ async function main(){
       [2,"beyan_dilekcesi",pdf2Extract.rawText,"{}",JSON.stringify([]),"completed",pdf2Extract.engine,null],
       [3,"durusma_zapti",udfExtract.rawText,"{}",JSON.stringify(udfExtract.sections||[]),"completed",udfExtract.engine,null],
       [4,"belge","","{}","[]","failed",corruptExtract.engine,corruptExtract.error||"pdf_parse_failed"],
-      [5,"beyan_dilekcesi","WRONG CASE SECRET CONTENT","{}","[]","completed","fixture",null]
+      [5,"beyan_dilekcesi","WRONG CASE SECRET CONTENT","{}","[]","completed","fixture",null],
+      [6,"beyan_dilekcesi","UNVERIFIED CONTENT MUST NOT ENTER DRAFTING","{}","[]","completed","fixture",null]
     ];
     for(const a of analysis)sql(db,"INSERT INTO document_analysis VALUES(?,?,?,?,?,?,?,?)",...a);
 
@@ -108,21 +112,24 @@ async function main(){
     sql(db,"INSERT INTO knowledge_chunks(asset_id,case_id,chunk_no,heading,text,metadata_json) VALUES(2,1,0,'Sayfa 1',?,?)",pdf2Extract.rawText,JSON.stringify({page:1,fileName:"Beyan.pdf"}));
     sql(db,"INSERT INTO knowledge_chunks(asset_id,case_id,chunk_no,heading,text,metadata_json) VALUES(3,1,0,'AÇIKLAMALAR',?,?)","UDF FIXTURE METNI VE TANIK BEYANI",JSON.stringify({fileName:"Duruşma Tutanağı.udf"}));
     sql(db,"INSERT INTO knowledge_chunks(asset_id,case_id,chunk_no,heading,text,metadata_json) VALUES(5,2,0,'Sayfa 1','WRONG CASE SECRET CONTENT',?)",JSON.stringify({page:1}));
+    sql(db,"INSERT INTO knowledge_chunks(asset_id,case_id,chunk_no,heading,text,metadata_json) VALUES(6,1,0,'Sayfa 1','UNVERIFIED CONTENT MUST NOT ENTER DRAFTING',?)",JSON.stringify({page:1}));
 
     const remotes=[
       [11,1,"RID-11","S-11","Beyan Dilekçesi","Beyan Dilekçesi","2026-10-01","Beyan.pdf",sha(pdf1),1,null,pdf1,"filed","{}", "2026-10-01","2026-10-01"],
       [12,1,"RID-12","S-12","Beyan Dilekçesi","Beyan Dilekçesi","2026-10-02","Beyan.pdf",sha(pdf2),2,null,pdf2,"filed","{}", "2026-10-02","2026-10-02"],
       [13,1,"RID-13","S-13","Duruşma Zaptı","Duruşma Zaptı","2026-10-03","Duruşma Tutanağı.udf",sha(udf),3,null,udf,"filed","{}", "2026-10-03","2026-10-03"],
       [14,1,"RID-14","S-14","Bozuk Evrak","Diğer Evrak","2026-10-04","Bozuk.pdf",sha(corrupt),4,null,corrupt,"filed","{}", "2026-10-04","2026-10-04"],
-      [21,2,"RID-21","S-21","Beyan Dilekçesi","Beyan Dilekçesi","2026-10-05","Beyan.pdf",sha(pdfWrong),5,null,pdfWrong,"filed","{}", "2026-10-05","2026-10-05"]
+      [15,1,"RID-15","S-15","Doğrulanmamış Beyan","Beyan Dilekçesi","2026-10-05","Unverified.pdf","0".repeat(64),6,null,unverified,"filed","{}", "2026-10-05","2026-10-05"],
+      [21,2,"RID-21","S-21","Beyan Dilekçesi","Beyan Dilekçesi","2026-10-06","Beyan.pdf",sha(pdfWrong),5,null,pdfWrong,"filed","{}", "2026-10-06","2026-10-06"]
     ];
     for(const r of remotes)sql(db,"INSERT INTO uyap_remote_documents VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",...r);
 
     const caseReview=review.loadCaseReview(db,1,{verifyFiles:true,includeText:true});
-    assert("case_review_contains_only_requested_case",caseReview.documents.length===4&&caseReview.documents.every(x=>x.caseId===1),{count:caseReview.documents.length,ids:caseReview.documents.map(x=>x.remoteDocumentDbId)});
+    assert("case_review_contains_only_requested_case",caseReview.documents.length===5&&caseReview.documents.every(x=>x.caseId===1),{count:caseReview.documents.length,ids:caseReview.documents.map(x=>x.remoteDocumentDbId)});
     assert("same_name_different_documents_remain_distinct",caseReview.documents.filter(x=>x.name==="Beyan Dilekçesi").length===2&&new Set(caseReview.documents.filter(x=>x.name==="Beyan Dilekçesi").map(x=>x.sourceId)).size===2,{sourceIds:caseReview.documents.filter(x=>x.name==="Beyan Dilekçesi").map(x=>x.sourceId)});
     assert("document_metadata_matches_uyap_source",caseReview.documents.some(x=>x.remoteDocumentDbId===11&&x.documentDate==="2026-10-01"&&x.uyap.dosyaId==="UYAP-CASE-1"&&x.uyap.remoteDocumentId==="RID-11"));
-    assert("canonical_hash_is_verified",caseReview.documents.filter(x=>x.remoteDocumentDbId!==14).every(x=>x.canonical.verified===true),{canonical:caseReview.documents.map(x=>({id:x.remoteDocumentDbId,verified:x.canonical.verified}))});
+    assert("canonical_hash_is_verified",caseReview.documents.filter(x=>[11,12,13,14].includes(x.remoteDocumentDbId)).every(x=>x.canonical.verified===true)&&caseReview.documents.find(x=>x.remoteDocumentDbId===15)?.canonical.verified===false,{canonical:caseReview.documents.map(x=>({id:x.remoteDocumentDbId,verified:x.canonical.verified}))});
+    assert("unverified_canonical_is_not_review_ready",caseReview.unreadable.some(x=>x.sourceId==="uyap-remote:15"&&x.status==="unverified"),{unreadable:caseReview.unreadable});
     assert("corrupt_document_remains_reported_unreadable",caseReview.unreadable.some(x=>x.sourceId==="uyap-remote:14"&&x.status==="failed"),{unreadable:caseReview.unreadable});
     const pdfDoc=caseReview.documents.find(x=>x.remoteDocumentDbId===11);
     const udfDoc=caseReview.documents.find(x=>x.remoteDocumentDbId===13);
@@ -132,6 +139,7 @@ async function main(){
     const corpus=review.buildDraftingCorpus(caseReview);
     assert("drafting_corpus_keeps_source_identity",corpus.sourceUnits.every(x=>x.sourceRef&&x.sourceId)&&new Set(corpus.sourceDocuments.map(x=>x.sourceId)).size===corpus.sourceDocuments.length,{units:corpus.sourceUnits.length});
     assert("wrong_case_content_is_excluded",!JSON.stringify(corpus).includes("WRONG CASE SECRET CONTENT"));
+    assert("unverified_content_is_excluded_from_drafting",!corpus.sourceUnits.some(x=>x.sourceId==="uyap-remote:15")&&corpus.unreadableDocuments.some(x=>x.sourceId==="uyap-remote:15"&&x.status==="unverified"));
     assert("unreadable_content_is_not_inferred",corpus.unreadableDocuments.some(x=>x.sourceId==="uyap-remote:14")&&!corpus.sourceUnits.some(x=>x.sourceId==="uyap-remote:14"));
     assert("petition_groups_are_structured",corpus.sourceUnits.some(x=>x.group==="pleadings")&&corpus.sourceUnits.some(x=>x.group==="hearing_minutes"),{groups:[...new Set(corpus.sourceUnits.map(x=>x.group))]});
 
