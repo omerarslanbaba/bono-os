@@ -7,6 +7,8 @@ const Module=require("module");
 const {DatabaseSync}=require("node:sqlite");
 const {copyVerified,sha256File}=require("../bridge/archive_safety");
 
+function argValue(name,fallback=null){const i=process.argv.indexOf(name);return i>=0&&process.argv[i+1]?process.argv[i+1]:fallback}
+
 const tmp=fs.mkdtempSync(path.join(os.tmpdir(),"bono-download-archive-selftest-"));
 const fakeUser=path.join(tmp,"user");
 const downloads=path.join(fakeUser,"Downloads");
@@ -44,7 +46,7 @@ for(const [k,v] of [
 db.prepare("INSERT INTO uyap_endpoints(endpoint_key,method,host,path,purpose,enabled,min_interval_ms) VALUES(?,?,?,?,?,?,?)")
   .run("document.pdf","GET","avukat.uyap.gov.tr","/view_document_brd.uyap","document",1,1300);
 
-const originalUyap=path.join(__dirname,"..","bridge","uyap.js");
+const originalUyap=path.resolve(argValue("--uyap-module",process.env.BONO_UYAP_MODULE||path.join(__dirname,"..","bridge","uyap.js")));
 const tempBridge=path.join(tmp,"bridge");
 fs.mkdirSync(tempBridge,{recursive:true});
 const tempUyap=path.join(tempBridge,"uyap.js");
@@ -190,5 +192,5 @@ const failed=results.filter(x=>x.status==="fail").length;
 const risks=results.filter(x=>x.status==="risk").length;
 try{db.close()}catch{}
 try{fs.rmSync(tmp,{recursive:true,force:true})}catch{}
-console.log(JSON.stringify({ok:failed===0,failed,risks,tempCleaned:!fs.existsSync(tmp),results},null,2));
+console.log(JSON.stringify({ok:failed===0,failed,risks,uyapModule:originalUyap,tempCleaned:!fs.existsSync(tmp),results},null,2));
 if(failed)process.exitCode=1;
