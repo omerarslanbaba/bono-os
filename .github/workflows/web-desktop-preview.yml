@@ -11,6 +11,16 @@ on:
       - 'scripts/test_web_desktop_hearings.js'
       - 'scripts/test_webview2_uyap_single_case_e2e.js'
       - 'scripts/test_uyap_single_case_sync.js'
+      - 'scripts/test_uyap_targeted_case_search.js'
+      - 'scripts/test_webview2_uyap_targeted_search_e2e.js'
+      - 'scripts/document_view_service_selftest.js'
+      - 'scripts/document_view_http_selftest.js'
+      - 'scripts/test_webview2_archive_route_e2e.js'
+      - 'bridge/document_view_service.js'
+      - 'bridge/document_view_http.js'
+      - 'bridge/document_stream_guard.js'
+      - 'bridge/case_document_review.js'
+      - 'bridge/archive_safety.js'
       - 'package.json'
       - 'bridge/server.js'
       - 'bridge/uyap.js'
@@ -62,6 +72,21 @@ jobs:
 
       - name: Isolated single-case UYAP lifecycle E2E
         run: npm run test:webview2-uyap-e2e
+
+      - name: Verify observed-schema targeted UYAP search fixture
+        run: npm run test:uyap-targeted-case-search
+
+      - name: Isolated targeted UYAP search HTTP E2E
+        run: npm run test:webview2-uyap-targeted-e2e
+
+      - name: Archive document view service contract
+        run: npm run test:document-view-service
+
+      - name: Archive document view HTTP security contract
+        run: npm run test:document-view-http
+
+      - name: Core route PDF UDF ownership and SHA E2E
+        run: npm run test:webview2-archive-route-e2e
 
       - name: Verify web API URLs stay same-origin
         shell: pwsh
