@@ -1,0 +1,16 @@
+const fs=require('node:fs');
+const vm=require('node:vm');
+const assert=require('node:assert/strict');
+const source=fs.readFileSync('web/js/views/active/hearings.js','utf8');
+const withoutImports=source.replace(/^import .*;\s*$/gm,'').replace(/export async function renderHearings/,'async function renderHearings');
+new vm.Script(withoutImports,{filename:'hearings.js'});
+assert.match(source,/id="viewMonth"/);
+assert.match(source,/id="viewWeek"/);
+assert.match(source,/id="prevPeriod"/);
+assert.match(source,/id="nextPeriod"/);
+assert.match(source,/id="thisPeriod"/);
+assert.match(source,/hearingCockpit\(id\)/);
+assert.match(source,/api\.syncHearings/);
+const style=fs.readFileSync('web/styles-active.css','utf8');
+assert.match(style,/bono-calendar-full\.week-view/);
+console.log('PASS: hearings syntax, original detail route, week/month controls, calendar styling');
