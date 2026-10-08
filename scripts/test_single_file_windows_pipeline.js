@@ -55,7 +55,7 @@ async function req(base,url,options={}){const r=await fetch(base+url,{headers:{"
     "const db=require(\"./bridge/db\");const e=process.env;",
     "db.prepare(\"insert into local_assets(id,sha256,file_name,extension,size_bytes,classification,archive_path,archive_policy,source_container) values(?,?,?,?,?,?,?,?,?)\").run(2001,e.PIPE_SHA,\"Gerekçeli Karar.pdf\",\".pdf\",Number(e.PIPE_SIZE),\"karar\",e.PIPE_ARCHIVE,\"keep_original\",\"synthetic-ci-handoff\");",
     "db.prepare(\"insert into asset_locations(asset_id,local_path,source_root) values(?,?,?)\").run(2001,e.PIPE_ARCHIVE,e.PIPE_ARCHIVE_ROOT);",
-    "db.prepare(\"update uyap_remote_documents set local_asset_id=?,filed_path=?,remote_hash=?,status=\\\"filed\\\",filed_at=datetime(\\\"now\\\") where id=?\").run(2001,e.PIPE_ARCHIVE,e.PIPE_SHA,Number(e.PIPE_REMOTE));",
+    "db.prepare(\"update uyap_remote_documents set local_asset_id=?,filed_path=?,remote_hash=?,status='filed',filed_at=datetime('now') where id=?\").run(2001,e.PIPE_ARCHIVE,e.PIPE_SHA,Number(e.PIPE_REMOTE));",
     "try{db.close()}catch{}"
   ].join("\n");
   const handEnv={...env,PIPE_SHA:sha(pdf),PIPE_SIZE:String(pdf.length),PIPE_ARCHIVE:archiveFile,PIPE_ARCHIVE_ROOT:archiveRoot,PIPE_REMOTE:String(remoteId)};
