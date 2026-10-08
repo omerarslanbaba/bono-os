@@ -97,8 +97,8 @@ if (apiRoot.GetProperty("method").GetString() != "POST")
     throw new InvalidOperationException("API method was not proxied.");
 if (apiRoot.GetProperty("query").GetString() != "?source=preview")
     throw new InvalidOperationException("API query string was not proxied.");
-if (!string.IsNullOrEmpty(apiRoot.GetProperty("origin").GetString()))
-    throw new InvalidOperationException("Browser Origin leaked to BONO Core.");
+if (apiRoot.GetProperty("origin").GetString() != coreUri.GetLeftPart(UriPartial.Authority))
+    throw new InvalidOperationException("Proxy did not normalize Origin to BONO Core origin.");
 if (!apiRoot.GetProperty("body").GetString()!.Contains("world", StringComparison.Ordinal))
     throw new InvalidOperationException("API request body was not proxied.");
 
