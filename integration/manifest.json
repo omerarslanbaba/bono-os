@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "product": "BONO OS Unified Windows Preview",
+  "channel": "integration-preview",
+  "integrationBranch": "integration/webview2-uyap-single-case",
+  "reality": "isolated-tested-not-live-installed",
+  "components": {
+    "core": {
+      "packageVersion": "0.9.0"
+    },
+    "webview2": {
+      "sdk": "1.0.3405.78",
+      "uiCommit": "313cd1261cc9570b5b7b867bae70b28877bcc2f2"
+    },
+    "uyap": {
+      "coreCommit": "b7d438995d94a6901ba4c83d2bf68ae0ca83c702",
+      "extensionVersion": "0.3.6"
+    },
+    "archive": {
+      "commit": "dca93cd26cf94bc2d2d379c368f6e45f7a66bf30"
+    }
+  },
+  "sourceProof": [
+    {
+      "path": "web/js/api.js",
+      "blobSha": "8cce6042ff74cce4699b4a794cb7757e83d36841",
+      "owner": "CHAT-UI"
+    },
+    {
+      "path": "web/js/views/active/uyap.js",
+      "blobSha": "7a60ae6e36ae6c2bd4fcd8b0ddc2e6a4e31be9ed",
+      "owner": "CHAT-UI"
+    },
+    {
+      "path": "web/js/views/active/cbs-case-handoff.js",
+      "blobSha": "d2db6386661b70f0e389aee4de3918252656ae27",
+      "owner": "CHAT-UI"
+    },
+    {
+      "path": "web/styles-active.css",
+      "blobSha": "4d09ac02d62a519e8c1f28618b41557fe87de93b",
+      "owner": "CHAT-UI"
+    },
+    {
+      "path": "bridge/uyap.js",
+      "blobSha": "ea4d9f405043750c4ead3c0c58334a8aa70a3f87",
+      "owner": "CHAT-UYAP"
+    },
+    {
+      "path": "bridge/document_view_service.js",
+      "blobSha": "9bbb7a31922ace9846909b51c60b84b7e08a7f07",
+      "owner": "CHAT-ARCHIVE"
+    },
+    {
+      "path": "bridge/document_view_http.js",
+      "blobSha": "4621991dc32cf989b3db731da0adf2df47f68195",
+      "owner": "CHAT-ARCHIVE"
+    },
+    {
+      "path": "bridge/document_stream_guard.js",
+      "blobSha": "e8d6e4fa77ce5d9d42541988432941dd8bf9e743",
+      "owner": "CHAT-ARCHIVE"
+    }
+  ],
+  "verifiedCapabilities": [
+    "single-case document.list lifecycle",
+    "targeted case search",
+    "CBS party search with privacy/safety fixture",
+    "case parties and BONO case handoff",
+    "case-scoped PDF/UDF view contract",
+    "wrong-case rejection and stream-time SHA verification",
+    "month-only hearing calendar",
+    "same-origin bundled WebView2 UI",
+    "EXE + web-bundle integrity and rollback updater"
+  ],
+  "pendingDependencies": {
+    "queueMigration": {
+      "pr": 13,
+      "integrated": false,
+      "reason": "Do not revive or migrate the historical queued commands until Codex queue/history work is explicitly ready."
+    },
+    "visionDocs": {
+      "pr": 14,
+      "mergedToMain": false
+    }
+  },
+  "liveBlockers": [
+    "PR #13 queue/history migration and local-return policy not integrated",
+    "live Core/Chrome/UYAP behavior not revalidated for this preview",
+    "Windows archive filing E2E uses isolated synthetic canonical files, not real Downloads/UYAP"
+  ]
+}
