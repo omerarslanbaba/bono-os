@@ -48,9 +48,10 @@ function authenticatedObservation(data) {
   try {
     const u = new URL(data?.url||"");
     const okStatus = Number(data?.status||0) >= 200 && Number(data?.status||0) < 400;
-    return okStatus && /json/i.test(String(data?.contentType||"")) && AUTH_PATHS.has(u.pathname);
+    return !data?.responseSummary?.applicationError && okStatus && /json/i.test(String(data?.contentType||"")) && AUTH_PATHS.has(u.pathname);
   } catch { return false; }
 }
+const probedActions=new Set();
 async function senderCanExecute(sender) {
   if (!sender?.tab?.id || Number(sender.frameId||0)!==0) return false;
   const tabId = Number(sender.tab.id);
@@ -58,32 +59,14 @@ async function senderCanExecute(sender) {
     await setExecutor(tabId);
     return true;
   }
+  try {
+    const r=await fetch(LOCAL+"/api/uyap/user-query-state",{cache:"no-store"});
+    const action=r.ok?await r.json():{};
+    if(sender.tab.active&&action.pending&&action.actionId&&!probedActions.has(action.actionId)){probedActions.add(action.actionId);await chrome.tabs.sendMessage(tabId,{type:"BONO_AUTH_PROBE"},{frameId:0});}
+  } catch {}
   return false;
 }
-async function wakeUyapTabs() {
-  if(OBSERVATION_ONLY)return;
-  try {
-    const tabs = await chrome.tabs.query({url:["https://*.uyap.gov.tr/*"]});
-    const active = tabs.find(t=>t.active) || null;
-    if(active?.id){
-      try{await chrome.tabs.sendMessage(active.id,{type:"BONO_AUTH_PROBE"},{frameId:0})}catch{}
-      await new Promise(r=>setTimeout(r,700));
-    }
-    let chosen = null;
-    if(active?.id && await isTabAuth(active.id)) chosen=active;
-    if(!chosen){
-      const executor=await getExecutor();
-      const t=executor?tabs.find(x=>x.id===executor):null;
-      if(t && await isTabAuth(t.id)) chosen=t;
-    }
-    if(!chosen){
-      for(const t of tabs) if(await isTabAuth(t.id)){chosen=t;break}
-    }
-    if (!chosen?.id || !chosen.url) { await setExecutor(null); return; }
-    await setExecutor(chosen.id);
-    try{await chrome.tabs.sendMessage(chosen.id,{type:"BONO_AUTH_PROBE"},{frameId:0})}catch{}
-  } catch {}
-}
+async function wakeUyapTabs() { /* No automatic portal requests. */ }
 function ensureAlarm() { if(OBSERVATION_ONLY)return; chrome.alarms.create("bono-uyap-poll",{periodInMinutes:0.5}); }
 
 chrome.runtime.onInstalled.addListener(()=>{ensureAlarm();wakeUyapTabs();});
@@ -94,7 +77,7 @@ chrome.tabs.onActivated.addListener(async info=>{
   const tab=await chrome.tabs.get(info.tabId).catch(()=>null);
   if(tab?.url?.includes(".uyap.gov.tr/")){
     await setExecutor(null);
-    try{await chrome.tabs.sendMessage(tab.id,{type:"BONO_AUTH_PROBE"},{frameId:0})}catch{}
+    /* Auth probes require a pending explicit user action. */
     setTimeout(wakeUyapTabs,800);
   }
 });
@@ -166,18 +149,7 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
     return true;
   }
 });
-async function migrateBridgeRuntime(){
-  if(OBSERVATION_ONLY)return;
-  try{
-    const key="bonoBridgeRuntimeVersion",version="0.3.8";
-    const old=await chrome.storage.local.get(key);
-    if(old[key]===version)return;
-    await chrome.storage.local.set({[key]:version});
-    const tabs=await chrome.tabs.query({url:["https://*.uyap.gov.tr/*"]});
-    const active=tabs.find(t=>t.active)||tabs.find(t=>looksLikeApp(t));
-    if(active?.id)await chrome.tabs.reload(active.id);
-  }catch{}
-}
+async function migrateBridgeRuntime(){ /* Never reload a portal tab automatically. */ }
 migrateBridgeRuntime();
 
 let observationSession=null;

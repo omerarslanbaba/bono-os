@@ -33,6 +33,10 @@ db.prepare(`insert into cases(id,external_id,court,court_file_no,case_type,statu
  values(1,'uyap:fixture:1','Kocaeli 1. Asliye Hukuk Mahkemesi','2026/101','Hukuk','open','Beraat Cengiz',1,'DOSYA-FIXTURE-1')`).run();
 db.prepare("insert into parties(case_id,name,role,is_client) values(1,'Beraat Cengiz','Davacı',1)").run();
 db.prepare("insert into parties(case_id,name,role,is_client) values(1,'Fixture Karşı Taraf','Davalı',0)").run();
+db.prepare("UPDATE cases SET uyap_birim_id='unit1' WHERE id=1").run();
+const policy=require('../bridge/uyap_user_queries'),crypto=require('node:crypto');
+policy.migrate(db,{expectedQueued:0,backupManifest:{schema:1,verified:true,queueIdDigest:policy.digest([])}});
+policy.certifyBinding(db,{kind:'verified_portal_binding',caseId:1,unitId:'unit1',caseNo:'2026/101',dosyaId:'DOSYA-FIXTURE-1',evidenceRef:'observation:'+crypto.randomUUID(),adapter:'court_documents_v1'});
 db.close();
 
 const cp=spawn(process.execPath,[path.join(__dirname,"..","bridge","server.js")],{
@@ -45,7 +49,7 @@ cp.stdout.on("data",d=>childOut+=d);
 cp.stderr.on("data",d=>childErr+=d);
 
 async function req(url,options){
-  const r=await fetch(base+url,{headers:{"Content-Type":"application/json"},...options});
+  const r=await fetch(base+url,{headers:{"Content-Type":"application/json","X-Bono-User-Action":"1"},...options});
   const text=await r.text();
   let body=null;try{body=text?JSON.parse(text):null}catch{body=text}
   return {status:r.status,body};
@@ -73,7 +77,7 @@ async function main(){
   let st=await req("/api/uyap/cases/1/document-sync-status");
   must(st.body.state==="not_synced","initial lifecycle should be not_synced: "+JSON.stringify(st.body));
 
-  const queued=await req("/api/uyap/cases/1/sync-documents",{method:"POST",body:"{}"});
+  const queued=await req("/api/uyap/cases/1/sync-documents",{method:"POST",body:JSON.stringify({requestKey:crypto.randomUUID(),refresh:true})});
   must(queued.status===202&&queued.body.commandId>0,"sync did not enqueue");
   const commandId=Number(queued.body.commandId);
   st=await req("/api/uyap/cases/1/document-sync-status");
@@ -104,15 +108,15 @@ async function main(){
   must(!q.body.some(x=>x.command_type==="download_document"),"document.list automatically queued a PDF/UDF download");
 
   const remoteId=Number(docs.body[0].id);
-  const noApproval=await req("/api/uyap/remote-documents/"+remoteId+"/download",{method:"POST",body:"{}"});
+  const noApproval=await req("/api/uyap/remote-documents/"+remoteId+"/download",{method:"POST",body:JSON.stringify({requestKey:crypto.randomUUID(),refresh:true})});
   must(noApproval.status===409,"download endpoint accepted request without explicit approval");
 
-  const approved=await req("/api/uyap/remote-documents/"+remoteId+"/download",{method:"POST",body:JSON.stringify({confirmed:true})});
+  const approved=await req("/api/uyap/cases/1/approved-downloads",{method:"POST",body:JSON.stringify({confirmed:true,documentIds:[remoteId],requestKey:crypto.randomUUID()})});
   must(approved.status===202,"approved download was not queueable in fixture");
   const pausedDownload=await req("/api/uyap/commands/next?host=vatandas.uyap.gov.tr&lane=download");
   must(pausedDownload.status===204,"manual download pause did not block fake download execution");
 
-  const second=await req("/api/uyap/cases/1/sync-documents",{method:"POST",body:"{}"});
+  const second=await req("/api/uyap/cases/1/sync-documents",{method:"POST",body:JSON.stringify({requestKey:crypto.randomUUID(),refresh:true})});
   must(second.status===202&&second.body.commandId>0,"second sync did not enqueue");
   const failId=Number(second.body.commandId);
   const direct=new DatabaseSync(dbPath);

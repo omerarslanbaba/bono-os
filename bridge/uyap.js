@@ -1,3 +1,5 @@
+let runtimePolicy=null;
+function setRuntimePolicy(policy){if(runtimePolicy)throw Error("runtime_policy_already_installed");runtimePolicy=policy;}
 // Process-scoped maintenance hold; no HTTP or database setting can release it.
 const UYAP_EXECUTION_HELD=process.env.BONO_UYAP_EXECUTION_HOLD==="1";
 function executionHeld(){return UYAP_EXECUTION_HELD;}
@@ -107,7 +109,7 @@ function observe(input){
       last_seen_at=datetime('now'),
       hit_count=uyap_endpoint_observations.hit_count+1`)
     .run(x.method,x.host,x.path,x.status,x.contentType,JSON.stringify(x.sampleKeys),requestJson,responseJson);
-  const explicitErrorObservation=x.sampleKeys.some(k=>["errorcode","error"].includes(String(k).toLowerCase()));
+  const explicitErrorObservation=!!x.responseSummary?.applicationError||x.sampleKeys.some(k=>["errorcode","error"].includes(String(k).toLowerCase()));
   if(AUTHENTICATED_OBSERVATION_PATHS.has(x.path)&&(x.status===401||x.status===403)){
     setSessionLoginRequired("auth_probe_http_"+x.status+":"+x.path);
   }else if(sessionState().state==="login_required"&&!explicitErrorObservation&&x.status>=200&&x.status<400&&/json/i.test(String(x.contentType||""))&&(READ_ONLY_ENDPOINTS.has(x.path)||AUTHENTICATED_OBSERVATION_PATHS.has(x.path))){
@@ -145,6 +147,7 @@ function setEndpointEnabled(endpointKey,enabled){
   return db.prepare("SELECT * FROM uyap_endpoints WHERE endpoint_key=?").get(endpointKey);
 }
 function enqueue({commandType,endpointKey,payload,priority=100,notBeforeMs=0}){
+  runtimePolicy?.beforeEnqueue({commandType,endpointKey,payload});
   if(integrationMode()!=="browser_readonly") throw new Error("UYAP entegrasyonu salt-okuma tarayıcı modunda değil; komut kuyruğu kapalı");
   const ep=db.prepare("SELECT * FROM uyap_endpoints WHERE endpoint_key=? AND enabled=1").get(endpointKey);
   if(!ep) throw new Error("Endpoint onaylı/aktif değil");
@@ -154,7 +157,7 @@ function enqueue({commandType,endpointKey,payload,priority=100,notBeforeMs=0}){
   if(commandType==="fetch_json" && ep.path==="/view_document_brd.uyap") throw new Error("PDF endpointi JSON okuma için kullanılamaz");
   const r=db.prepare(`INSERT INTO uyap_command_queue(command_type,endpoint_key,payload_json,priority,not_before_ms)
     VALUES(?,?,?,?,?)`).run(commandType,endpointKey,JSON.stringify(payload||{}),Number(priority)||100,Number(notBeforeMs)||0);
-  return Number(r.lastInsertRowid);
+  const id=Number(r.lastInsertRowid);runtimePolicy?.onEnqueue(id);return id;
 }
 function setting(key,defaultValue=null){
   const r=db.prepare("SELECT value FROM app_settings WHERE key=?").get(key);
@@ -208,6 +211,7 @@ function setSessionLoginRequired(reason="uyap_session_expired"){
   return sessionState();
 }
 function recoverSession(source="network_observation"){
+  if(runtimePolicy?.automaticRecoveryAllowed===false){if(runtimePolicy.allowSessionRecovery?.(source)){setSetting("uyap_session_state","ready");setSetting("uyap_session_reason","");}return sessionState();}
   const current=sessionState();
   if(current.state!=="login_required"&&(current.documentDownloadState==="ready"||current.manualDownloadPaused))return current;
   setSetting("uyap_session_state","ready");
@@ -281,6 +285,7 @@ function rateState(){
   return {...state,integration_mode:integrationMode()};
 }
 function claimNext(host,lane="any"){
+  const blocked=runtimePolicy?.beforeClaim();if(blocked)return blocked;
   if(executionHeld())return {wait:true,reason:"local_return_hold",retryAfterMs:60000};
   if(integrationMode()!=="browser_readonly") return {wait:true,reason:"observe_only",retryAfterMs:60000};
   if(sessionState().state==="login_required") return {wait:true,reason:"uyap_login_required",retryAfterMs:5000};
@@ -321,6 +326,7 @@ function claimNext(host,lane="any"){
       FROM uyap_command_queue q
       JOIN uyap_endpoints e ON e.endpoint_key=q.endpoint_key
       WHERE q.status='queued' AND q.attempts<q.max_attempts AND q.not_before_ms<=? AND e.enabled=1
+      ${runtimePolicy?.selectionSql||''}
       ${documentDownloadsPaused?"AND q.command_type!='download_document'":""}
       ${laneFilter}
       ${host?"AND e.host=?":""}`;
@@ -344,6 +350,7 @@ function claimNext(host,lane="any"){
     const spacing=Math.max(GLOBAL_MIN_INTERVAL_MS,Number(row.min_interval_ms)||0);
     const jitter=Math.floor(Math.random()*(JITTER_MAX_MS+1));
     db.prepare(`UPDATE uyap_command_queue SET status='running',attempts=attempts+1,dispatched_at=datetime('now'),error=NULL WHERE id=?`).run(row.id);
+    runtimePolicy?.onClaim(row.id);
     if(lane!=="any")LANE_NEXT_ALLOWED_MS[lane]=now+spacing+jitter;
     db.prepare(`UPDATE uyap_rate_state SET last_dispatch_ms=?,next_allowed_ms=?,state='ready',updated_at=datetime('now') WHERE id=1`)
       .run(now,now+spacing+jitter);
@@ -362,6 +369,14 @@ function claimNext(host,lane="any"){
   }catch(e){db.exec("ROLLBACK");throw e}
 }
 function reportResult(id,result={}){
+  if(executionHeld())return {ok:false,reason:"local_return_hold"};
+  if(!runtimePolicy)return reportResultUnchecked(id,result);
+  db.exec('BEGIN IMMEDIATE');
+  try{const denied=runtimePolicy.beforeResult(id,result);if(denied){db.exec('COMMIT');return denied;}
+    const out=reportResultUnchecked(id,result);runtimePolicy.afterResult(id,result);db.exec('COMMIT');return out;
+  }catch{db.exec('ROLLBACK');runtimePolicy.resultFailure(id);return {ok:false,reason:'query_processing_failed'};}
+}
+function reportResultUnchecked(id,result={}){
   if(executionHeld())return {ok:false,reason:"local_return_hold"};
   const row=db.prepare("SELECT * FROM uyap_command_queue WHERE id=?").get(id);
   if(!row) throw new Error("UYAP komutu bulunamadı");
@@ -1692,4 +1707,4 @@ function discoveryStatus(){
   const withDocs=db.prepare("SELECT count(DISTINCT case_id) n FROM uyap_remote_documents").get().n;
   return {...counts,totalCases:Number(totalCases||0),casesWithDocuments:Number(withDocs||0),rate:rateState()};
 }
-module.exports={executionHeld,GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,setManualDownloadPause,recoverSession,queue,cases,remoteDocuments,caseDocumentSyncStatus,caseSearchSchemaStatus,caseSearchOptions,enqueueTargetedCaseSearch,targetedCaseSearchStatus,documentDownloadPolicy,caseDownloadSummary,activeCaseDownloadCount,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,cbsPartySearchSchemaStatus,cbsUnitOptions,enqueueTargetedCbsPartySearch,targetedCbsPartySearchStatus,discoveryStatus};
+module.exports={setRuntimePolicy,executionHeld,GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,setManualDownloadPause,recoverSession,queue,cases,remoteDocuments,caseDocumentSyncStatus,caseSearchSchemaStatus,caseSearchOptions,enqueueTargetedCaseSearch,targetedCaseSearchStatus,documentDownloadPolicy,caseDownloadSummary,activeCaseDownloadCount,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,cbsPartySearchSchemaStatus,cbsUnitOptions,enqueueTargetedCbsPartySearch,targetedCbsPartySearchStatus,discoveryStatus};

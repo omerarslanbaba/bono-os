@@ -69,7 +69,7 @@
   }
 
   function dispatchCommand(command, laneHint = null) {
-    if(observationOnly)return false;
+    if(observationOnly||!probeStatus.ready)return false;
     if (!command?.id) return false;
     const lane = laneHint || laneOf(command);
     if (active.has(lane)) return false;
@@ -95,7 +95,7 @@
       if(message.type==='BONO_OBSERVATION_DISARM'){window.postMessage({channel:'BONO_UYAP_CONTENT',type:'observation_disarm'},'*');reply({ok:true});return;}
       if(observationOnly)return;
       if (message?.type === "BONO_EXECUTE") dispatchCommand(message.command);
-      if (message?.type === "BONO_AUTH_PROBE") window.postMessage({channel:"BONO_UYAP_CONTENT",type:"auth_probe"},"*");
+      if (message?.type === "BONO_AUTH_PROBE" && probeStatus.ready) window.postMessage({channel:"BONO_UYAP_CONTENT",type:"auth_probe"},"*");
     });
   } catch {}
 
@@ -124,7 +124,7 @@
   });
 
   async function pollLane(lane) {
-    if(observationOnly)return;
+    if(observationOnly||!probeStatus.ready)return;
     if (active.has(lane)) return;
     try {
       const reply = await chrome.runtime.sendMessage({ type: "BONO_POLL", host: location.hostname, lane });
