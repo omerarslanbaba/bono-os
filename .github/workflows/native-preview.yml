@@ -1,0 +1,33 @@
+name: Native UI Preview (isolated)
+on:
+  push:
+    branches: [feature/native-ui]
+    paths:
+      - 'desktop/BonoNative/**'
+      - '.github/workflows/native-preview.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-preview:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore desktop/BonoNative/BonoNative.csproj -r win-x64
+      - name: Publish
+        run: dotnet publish desktop/BonoNative/BonoNative.csproj -c Release -r win-x64 --self-contained true --no-restore -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist
+      - name: Hash
+        shell: pwsh
+        run: |
+          (Get-FileHash 'dist/BONO OS Native.exe' -Algorithm SHA256).Hash.ToLowerInvariant() + '  BONO OS Native.exe' | Set-Content 'dist/SHA256SUMS.txt' -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bono-os-native-ui-preview
+          path: |
+            dist/BONO OS Native.exe
+            dist/SHA256SUMS.txt
+          retention-days: 7
