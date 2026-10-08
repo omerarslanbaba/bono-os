@@ -7,7 +7,7 @@ function discoveryBar(s,a){
   const c=a.cbs||{};
   const cbsUnits=(c.units?.queued||0)+(c.units?.running||0);
   const cbsSearch=(c.search?.queued||0)+(c.search?.running||0);
-  const state=active?'Tam arşiv senkronizasyonu çalışıyor':'Tam arşiv senkronizasyonu hazır';
+  const state=active?'UYAP dosya listesi sorguları çalışıyor':'UYAP dosya keşfi durumu';
   const detail=`Keşif: ${d.completed||0} tamamlandı · ${d.queued||0} bekliyor · CBS birim: ${cbsUnits} · CBS dosya: ${cbsSearch} · Hata: ${a.failedCommands||0}`;
   return `<div class="uyap-discovery">
     <div class="uyap-discovery-stats">
@@ -20,7 +20,7 @@ function discoveryBar(s,a){
     </div>
     <div class="uyap-discovery-actions">
       <span class="discovery-state">${esc(state)}<small>${esc(detail)}</small></span>
-      <button id="syncAllUyap" class="primary-action" ${active?'disabled':''}>Tam UYAP Arşivini Başlat</button>
+      <button id="syncAllUyap" class="primary-action" ${active?'disabled':''}>Tüm UYAP Dosya Listelerini Sorgula</button>
     </div>
   </div>`;
 }
@@ -107,6 +107,65 @@ function caseProvince(r){
  return PROVINCES.find(p=>court.toLocaleLowerCase('tr-TR').startsWith(p.toLocaleLowerCase('tr-TR')+' '))||'';
 }
 function caseDistrict(r){return String(r.district||r.court_district||'').trim()}
+function targetedSearchForm(o){
+ const units=(o?.contractVersion==='uyap.case-search-options.v1'&&o.ready&&Array.isArray(o.units))?o.units:[];
+ const items=units.map(x=>'<option value="'+esc(String(x.yargiTuru)+'|'+String(x.birimTuru2))+'">'+esc(x.label)+'</option>').join('');
+ const disabled=units.length?'':'disabled';
+ return `<div class="case-targeted-search">
+   <div class="case-targeted-head"><div><strong>UYAP'ta Dosyayı Bul</strong><p>BONO'da bulunmayan, mahkemesi ve dosya numarası bilinen kayıtlar için gerçek UYAP araması.</p></div><span class="case-targeted-tag">Ayrı UYAP sorgusu</span></div>
+   <div class="case-query-grid">
+    <label>Yargı Birimi Türü<select id="remoteUnit" ${disabled}><option value="">Yargı birimi seçin</option>${items}</select></label>
+    <label>Dosya Durumu<select id="remoteStatus" ${disabled}><option value="0">Açık</option><option value="1">Kapalı</option></select></label>
+    <label>Mahkeme / Başsavcılık<input id="remoteCourt" placeholder="Örn. Eskişehir Cumhuriyet Başsavcılığı" ${disabled}></label>
+    <label>Dosya Yılı / Dosya Numarası<div class="case-year-row"><input id="remoteYear" inputmode="numeric" placeholder="Yıl" ${disabled}><input id="remoteBaseNo" inputmode="numeric" placeholder="Esas / soruşturma no" ${disabled}></div></label>
+   </div>
+   <div class="case-targeted-actions"><small id="remoteSearchState" role="status" aria-live="polite">${units.length?'UYAP arama parametreleri doğrulandı. Bu işlem PDF/UDF indirmez.':'UYAP arama hizmeti henüz kullanılamıyor veya yargı birimi gözlemi eksik.'}</small><button type="button" id="remoteSearchButton" class="primary-action" ${disabled}>⌕ UYAP'ta Dosyayı Bul</button></div>
+   <p class="case-targeted-notice"><strong>Soruşturma numarasını bilmiyor musun?</strong> Bu hedefli arama numara gerektirir. Önce genel CBS dosya keşfi tamamlanmalı veya soruşturma numarası UYAP Avukat Portal'dan öğrenilmelidir. Bu alan tüm CBS soruşturmalarını isme göre taramaz.</p>
+  </div>`;
+}
+function bindTargetedCaseSearch(){
+ const button=document.getElementById('remoteSearchButton'),note=document.getElementById('remoteSearchState');
+ if(!button||!note||button.disabled)return;
+ let stopped=false,timeoutId=null;
+ const stop=()=>{stopped=true;if(timeoutId)clearTimeout(timeoutId)};
+ window.addEventListener('hashchange',stop,{once:true});
+ async function poll(searchId){
+   if(stopped||location.hash!=='#uyap'||!note.isConnected)return;
+   try{
+     const r=await api.uyapCaseSearchStatus(searchId);
+     if(stopped||!note.isConnected)return;
+     note.textContent=r.label||r.state||'Sorgu durumu okunuyor';
+     if(r.state==='completed'&&r.match?.caseId){
+       const id=Number(r.match.caseId);
+       if(Number.isSafeInteger(id)&&id>0){
+         const a=document.createElement('a');a.href='#uyap/'+id;
+         a.textContent=String(r.match.court||'UYAP dosyası')+' · '+String(r.match.fileNo||'');
+         note.textContent='Dosya bulundu: ';note.appendChild(a);
+       }
+     }
+     if(r.terminal===true||r.state==='login_required'){
+       button.disabled=false;return;
+     }
+     timeoutId=setTimeout(()=>poll(searchId),Math.max(1000,Math.min(15000,Number(r.pollAfterMs)||2500)));
+   }catch(e){note.textContent='Dosya araması izlenemedi: '+e.message;button.disabled=false}
+ }
+ button.onclick=async()=>{
+   const u=String(document.getElementById('remoteUnit').value||'').split('|');
+   const court=String(document.getElementById('remoteCourt').value||'').trim();
+   const year=Number(document.getElementById('remoteYear').value);
+   const baseNumber=Number(document.getElementById('remoteBaseNo').value);
+   const yargiTuru=Number(u[0]),birimTuru2=u[1];
+   if(!u[0]||!birimTuru2||!court||!Number.isInteger(year)||year<1900||year>2200||!Number.isInteger(baseNumber)||baseNumber<1){
+     note.textContent='Gerçek UYAP araması için birim türü, mahkeme/başsavcılık, yıl ve dosya numarası zorunludur.';return;
+   }
+   button.disabled=true;note.textContent='Dosya sorgusu kuyruğa alınıyor. Evrak indirilmez.';
+   try{
+     const result=await api.searchUyapCase({yargiTuru,birimTuru2,court,year,baseNumber,dosyaDurumKod:Number(document.getElementById('remoteStatus').value)});
+     if(result?.accepted!==true||!result.searchId)throw new Error('UYAP arama kimliği alınamadı');
+     await poll(result.searchId);
+   }catch(e){note.textContent='Arama başlatılamadı: '+e.message;button.disabled=false}
+ };
+}
 function queryForm(rows){
   const years=rows.map(r=>String(r.court_file_no||'').match(/(20\d{2})\//)?.[1]);
   return `<div class="case-query"><div class="case-query-grid">
@@ -116,7 +175,7 @@ function queryForm(rows){
   <label>Dosya Yıl / No<div class="case-year-row"><select id="filterYear"><option value="">Tümü</option>${options(years)}</select><input id="filterNo" placeholder="Dosya No"></div></label>
   <label>Mahkeme<select id="filterCourt"><option value="">Tümü</option></select></label>
   <label>Dosyada Ara<input id="filterQuery" placeholder="Föy no, mahkeme, esas no, müvekkil veya taraf"></label>
-  </div><p class="case-query-local-note">Bu bölüm şimdilik BONO’da kayıtlı dosyaları filtreler. UYAP’ta yeni dosya arama bağlantısı henüz etkin değil. İlçe yalnız doğrulanmış kayıt bilgisi varsa gösterilir.</p><div class="case-query-actions"><span id="filterCount"></span><button id="resetFilters" type="button" class="subtle-action">Temizle</button><button id="applyFilters" type="button" class="primary-action">⌕ Sorgula</button></div></div>`;
+  </div><p class="case-query-local-note">Bu filtreler yalnızca BONO'da kayıtlı dosyaları gösterir. UYAP'ta yeni dosya aramak için aşağıdaki ayrı sorgu alanını kullanın. İlçe yalnız doğrulanmış kayıt bilgisi varsa gösterilir.</p><div class="case-query-actions"><span id="filterCount"></span><button id="resetFilters" type="button" class="subtle-action">Temizle</button><button id="applyFilters" type="button" class="primary-action">⌕ Sorgula</button></div></div>`;
 }
 function bindQuery(rows){
  const by=id=>document.getElementById(id),t=by('filterType'),u=by('filterUnit'),c=by('filterCourt'),province=by('filterProvince'),district=by('filterDistrict');
@@ -153,7 +212,7 @@ function bindQuery(rows){
 
 export async function renderUyap(id){
   if(id)return renderCase(id);
-  const [rows,status,archive]=await Promise.all([api.uyapCases(),api.uyapDiscoveryStatus(),api.uyapArchiveStatus()]);
+  const [rows,status,archive,searchOptions]=await Promise.all([api.uyapCases(),api.uyapDiscoveryStatus(),api.uyapArchiveStatus(),api.uyapCaseSearchOptions().catch(()=>({ready:false,units:[]}))]);
   const counts={};for(const r of rows){const c=caseCategory(r);counts[c]=(counts[c]||0)+1}
   const order=['Ceza','Hukuk','İş','Aile','İcra','Tüketici','İdare','Diğer'];
   const cats=['Tümü',...order.filter(x=>counts[x])];
@@ -163,14 +222,16 @@ export async function renderUyap(id){
     <div class="doc-meta">${esc(cat)} · ${esc(r.case_type||'')} · ${r.remote_count||0} evrak · ${r.indexed_count||0} BONO’da${r.related_cases?.length?' · '+r.related_cases.length+' bağlantılı arabuluculuk':''}</div><div class="doc-meta case-party-inline">${r.client_name?`Müvekkil: ${esc(r.client_name)}`:''}${r.client_name&&r.party_names?' · ':''}${r.party_names?`Taraflar: ${esc(r.party_names)}`:(!r.client_name?'Taraf bilgisi henüz kaydedilmemiş':'')}</div></div><span>→</span>
   </a>`}).join('')}</div>`:empty('Henüz dosya keşfedilmedi.');
   mount(pageHero('Dosyalarım','Dosyaları yargı türü, birimi, mahkemesi ve esas numarasıyla sorgula.')+
-    queryForm(rows)+discoveryBar(status,archive)+section('Dosya Sorgulama Sonuçları','⚖',body),'uyap');
+    queryForm(rows)+targetedSearchForm(searchOptions)+discoveryBar(status,archive)+section('Dosya Sorgulama Sonuçları','⚖',body),'uyap');
   bindQuery(rows);
+  bindTargetedCaseSearch();
   // Sorgulama filtreleri bindQuery tarafından yönetilir.
   document.querySelector('#syncAllUyap')?.addEventListener('click',async e=>{
-    e.currentTarget.disabled=true;e.currentTarget.textContent='Senkronizasyon başlatılıyor…';
+    if(!confirm('UYAP dosya listelerinin (CBS dahil) sorgusu başlatılsın mı? Bu işlem evrak indirmez ve indirme duraklatmasını kaldırmaz.'))return;
+    e.currentTarget.disabled=true;e.currentTarget.textContent='UYAP dosya keşfi kuyruğa alınıyor…';
     try{
-      await api.startUyapArchive();
-      e.currentTarget.textContent='Senkronizasyon arka planda çalışıyor';
+      await api.startUyapDiscovery({statuses:[0,1],syncDocuments:false});
+      e.currentTarget.textContent='Dosya listesi sorgusu kuyruğa alındı';
     }catch(err){alert(err.message);e.currentTarget.disabled=false}
   });
 }
