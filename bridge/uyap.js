@@ -362,7 +362,20 @@ function reportResult(id,result={}){
   if(row.status==="completed") return {ok:true,state:"ready",circuitUntil:0,ignored:"already_completed"};
   if(row.status==="cancelled") return {ok:false,state:"ready",circuitUntil:0,ignored:"already_cancelled"};
   const status=Number(result.status||0)||0;
+  const applicationError=require("../extension/observation_contracts").applicationError(result.data);
+  if(applicationError){
+    db.prepare("UPDATE uyap_command_queue SET status='failed',finished_at=datetime('now'),error=?,result_meta_json=? WHERE id=?").run(applicationError.category,JSON.stringify({httpStatus:status,applicationError:applicationError.code,retryable:false}),id);
+    return {ok:false,state:applicationError.category,retryable:false};
+  }
   const ok=!!result.ok && status>=200 && status<400;
+  if(ok&&row.endpoint_key==="document.list"){
+    const context=JSON.parse(row.payload_json||"{}").context||{};
+    try{ require("../extension/observation_contracts").assertImportAllowed(db.prepare("SELECT court,case_type FROM cases WHERE id=?").get(Number(context.caseId))); }
+    catch(e){
+      db.prepare("UPDATE uyap_command_queue SET status='failed',finished_at=datetime('now'),error=? WHERE id=?").run(e.message,id);
+      return {ok:false,state:e.message,retryable:false};
+    }
+  }
   const now=Date.now();
   let state="ready",circuitUntil=0,failures=0;
   const current=rateState();
@@ -918,6 +931,7 @@ function mergeRemoteDocumentRows(targetId,sourceId){
   return target.id;
 }
 function upsertRemoteList(caseId,data,{baseline=false}={}){
+  require("../extension/observation_contracts").assertImportAllowed(db.prepare("SELECT court,case_type FROM cases WHERE id=?").get(Number(caseId)));
   const docs=documentListDocs(data);
   const ins=db.prepare(`INSERT INTO uyap_remote_documents(case_id,remote_document_id,stable_key,remote_title,document_type,document_date,original_file_name,status,is_baseline,metadata_json)
     VALUES(?,?,?,?,?,?,?,'discovered',?,?)`);
