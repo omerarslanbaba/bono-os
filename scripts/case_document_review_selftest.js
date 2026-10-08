@@ -39,6 +39,9 @@ function makeUdf(file,text){
   const cp=spawnSync("py",["-3",path.join(ROOT,"scripts","udf_engine.py"),"build",input,file],{cwd:ROOT,encoding:"utf8",windowsHide:true,timeout:120000});
   if(cp.status!==0)throw new Error(cp.stderr||cp.stdout||"udf build failed");
 }
+function makeContainer(file){
+  runPy("import sys,zipfile;z=zipfile.ZipFile(sys.argv[1],'w',zipfile.ZIP_DEFLATED);z.writestr('docs/sample.udf',b'UDF');z.writestr('docs/sample.pdf',b'%PDF');z.close()",[file]);
+}
 function sql(db,statement,...args){db.prepare(statement).run(...args)}
 
 async function main(){
@@ -52,6 +55,8 @@ async function main(){
     const blank=path.join(case1Dir,"Tarama.pdf");
     const corrupt=path.join(case1Dir,"Bozuk.pdf");
     const unverified=path.join(case1Dir,"Unverified.pdf");
+    const eyp=path.join(case1Dir,"Paket.eyp");
+    const tif=path.join(case1Dir,"Tarama.tif");
     makePdf(pdf1,"PDF FIXTURE METNI DOSYA BIR SAYFA BIR UZUN OKUNABILIR BELGE ICERIGI");
     makePdf(pdf2,"PDF IKINCI EVRAK AYNI ISIM FARKLI ICERIK VE YETERLI UZUNLUKTA METIN");
     makePdf(pdfWrong,"WRONG CASE SECRET CONTENT SHOULD NEVER ENTER REQUESTED CASE REVIEW");
@@ -59,17 +64,23 @@ async function main(){
     makeUdf(udf,"DURUŞMA ZAPTI\n\nAÇIKLAMALAR\nUDF FIXTURE METNI VE TANIK BEYANI\n\nSONUÇ VE İSTEM\nTalep sonucu.");
     fs.writeFileSync(corrupt,Buffer.from("%PDF-corrupt"));
     fs.copyFileSync(pdf1,unverified);
+    makeContainer(eyp);
+    fs.writeFileSync(tif,Buffer.from("TIFF-FIXTURE"));
 
     const pdfExtract=await review.runExtractor(pdf1);
     const pdf2Extract=await review.runExtractor(pdf2);
     const udfExtract=await review.runExtractor(udf);
     const blankExtract=await review.runExtractor(blank);
     const corruptExtract=await review.runExtractor(corrupt);
+    const eypExtract=await review.runExtractor(eyp);
+    const tifExtract=await review.runExtractor(tif);
 
     assert("pdf_text_extraction",pdfExtract.status==="extracted"&&pdfExtract.rawText.includes("PDF FIXTURE METNI")&&pdfExtract.references.some(x=>x.page===1),{status:pdfExtract.status,refs:pdfExtract.references.length});
     assert("udf_text_extraction",udfExtract.status==="extracted"&&udfExtract.rawText.includes("UDF FIXTURE METNI")&&udfExtract.references.length>0,{status:udfExtract.status,refs:udfExtract.references.length,kind:udfExtract.documentKind});
     assert("scanned_or_blank_pdf_is_not_guessed",blankExtract.status==="no_text"&&blankExtract.reason==="no_embedded_text_or_scan_requires_ocr",blankExtract);
     assert("corrupt_pdf_reported_failed",corruptExtract.status==="failed"&&corruptExtract.reason==="pdf_parse_failed",{status:corruptExtract.status,reason:corruptExtract.reason});
+    assert("eyp_is_container_manifest_not_guessed_text",eypExtract.status==="container"&&Array.isArray(eypExtract.members)&&eypExtract.members.length===2&&!String(eypExtract.rawText||"").trim(),{status:eypExtract.status,members:eypExtract.members});
+    assert("tiff_requires_ocr_in_review_layer",tifExtract.status==="no_text"&&tifExtract.reason==="image_requires_ocr",tifExtract);
 
     const db=new DatabaseSync(":memory:");
     db.exec(`
