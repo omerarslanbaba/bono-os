@@ -44,14 +44,11 @@ function normalizeKind(row){
   return row.document_kind||row.classification||row.document_type||"belge";
 }
 function canonicalState(row,locations,{verifyFiles=true}={}){
-  const candidates=[
-    row.filed_path,
-    row.archive_path,
-    ...(locations||[]).map(x=>x.local_path)
-  ].filter(Boolean);
+  const declared=[row.filed_path,row.archive_path].filter(Boolean);
   let p=null;
-  for(const c of candidates){if(fileExists(c)){p=path.resolve(c);break}}
-  if(!p)return {path:null,exists:false,verified:false,sha256:null,expectedSha256:row.sha256||row.remote_hash||null,reason:"canonical_file_not_found"};
+  for(const c of declared){if(fileExists(c)){p=path.resolve(c);break}}
+  if(!declared.length)return {path:null,exists:false,verified:false,sha256:null,expectedSha256:row.sha256||row.remote_hash||null,reason:"canonical_path_not_declared"};
+  if(!p)return {path:path.resolve(declared[0]),exists:false,verified:false,sha256:null,expectedSha256:row.sha256||row.remote_hash||null,reason:"canonical_file_not_found"};
   const expected=String(row.sha256||row.remote_hash||"").toLowerCase()||null;
   if(!verifyFiles)return {path:p,exists:true,verified:null,sha256:null,expectedSha256:expected,reason:"verification_not_requested"};
   const actual=sha256File(p);
@@ -133,12 +130,14 @@ function buildDocument(row,locations,chunks,opts={}){
       remoteDocumentId:row.remote_document_id||null,
       stableKey:row.stable_key||null,
       portalUrl:null,
+      internalCaseDocumentsEndpoint:"/api/uyap/cases/"+row.case_id+"/remote-documents",
       referenceStatus:row.uyap_dosya_id||row.remote_document_id?"identifier_available":"missing_identifier"
     },
     contentEndpoint:row.asset_id?"/api/assets/"+row.asset_id+"/content":null,
     canonical,
     downloadStatus:row.status||null,
     sourceContainer:row.source_container||metadata.derivedFrom||null,
+    reviewReady:contentReadable&&canonical.verified===true,
     extraction:{
       ...extraction,
       readable:contentReadable,
@@ -171,10 +170,11 @@ function loadCaseReview(db,caseId,{verifyFiles=true,includeText=true}={}){
     const chunks=row.asset_id?db.prepare("SELECT chunk_no,heading,text,metadata_json FROM knowledge_chunks WHERE asset_id=? AND (case_id=? OR case_id IS NULL) ORDER BY chunk_no").all(row.asset_id,caseId):[];
     documents.push(buildDocument(row,locations,chunks,{verifyFiles,includeText}));
   }
-  const readable=documents.filter(x=>x.extraction.readable&&x.canonical.verified!==false);
-  const unreadable=documents.filter(x=>!x.extraction.readable).map(x=>({
+  const readable=documents.filter(x=>x.reviewReady);
+  const unreadable=documents.filter(x=>!x.reviewReady).map(x=>({
     sourceId:x.sourceId,name:x.name,documentType:x.documentType,documentDate:x.documentDate,
-    status:x.extraction.status,reason:x.extraction.error||x.canonical.reason||"unreadable"
+    status:x.extraction.readable?(x.canonical.verified===false?"unverified":"verification_pending"):x.extraction.status,
+    reason:x.extraction.readable?(x.canonical.reason||"canonical_not_verified"):(x.extraction.error||x.canonical.reason||"unreadable")
   }));
   return {
     case:{id:c.id,officeFileId:c.office_file_id,court:c.court,courtFileNo:c.court_file_no,caseType:c.case_type,status:c.status,clientName:c.client_name,uyapDosyaId:c.uyap_dosya_id},
@@ -208,8 +208,13 @@ function buildDraftingCorpus(review){
       verifiedSha256:doc.canonical.verified===true?doc.canonical.sha256:null,
       uyap:doc.uyap
     });
-    if(!doc.extraction.readable){
-      unreadable.push({sourceId:doc.sourceId,name:doc.name,status:doc.extraction.status,reason:doc.extraction.error||doc.canonical.reason||"unreadable"});
+    if(!doc.reviewReady){
+      unreadable.push({
+        sourceId:doc.sourceId,
+        name:doc.name,
+        status:doc.extraction.readable?(doc.canonical.verified===false?"unverified":"verification_pending"):doc.extraction.status,
+        reason:doc.extraction.readable?(doc.canonical.reason||"canonical_not_verified"):(doc.extraction.error||doc.canonical.reason||"unreadable")
+      });
       continue;
     }
     for(const ref of doc.extraction.references||[]){
