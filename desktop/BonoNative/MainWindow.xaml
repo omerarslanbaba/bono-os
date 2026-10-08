@@ -238,18 +238,7 @@
                 <Grid x:Name="HearingsPage" Visibility="Collapsed">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <TextBlock Text="DURUŞMA TAKVİMİ · 3 AY" FontWeight="SemiBold" FontSize="15" Foreground="{StaticResource Text}" Margin="0,0,0,14"/>
-                    <Grid Grid.Row="1">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <Border Grid.Column="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="12" VerticalAlignment="Top">
-                            <Viewbox Stretch="Uniform" StretchDirection="UpOnly"><Calendar x:Name="HearingCalendar" Width="355" Height="340" SelectedDatesChanged="HearingCalendar_SelectedDatesChanged" Background="{StaticResource Panel}"/></Viewbox>
-                        </Border>
-                        <Border Grid.Column="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="12" VerticalAlignment="Top">
-                            <Viewbox Stretch="Uniform" StretchDirection="UpOnly"><Calendar x:Name="HearingCalendarNext" Width="355" Height="340" Background="{StaticResource Panel}"/></Viewbox>
-                        </Border>
-                        <Border Grid.Column="4" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="12" VerticalAlignment="Top">
-                            <Viewbox Stretch="Uniform" StretchDirection="UpOnly"><Calendar x:Name="HearingCalendarThird" Width="355" Height="340" Background="{StaticResource Panel}"/></Viewbox>
-                        </Border>
-                    </Grid>
+                    <views:ThreeMonthHearingCalendar x:Name="LargeHearingCalendar" Grid.Row="1" HearingOpened="LargeHearingCalendar_HearingOpened"/>
                     <DataGrid x:Name="HearingsGrid" Visibility="Collapsed" Height="0" Width="0" IsHitTestVisible="False"/>
                 </Grid>
 
