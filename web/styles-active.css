@@ -402,3 +402,21 @@ a.search-hit:hover,
 .uyap-session-alert[hidden]{display:none!important}
 .sync.session-error{color:#ffb8b8}
 .sync.session-error .dot{background:#ff6b6b!important;box-shadow:0 0 0 4px rgba(255,107,107,.12)}
+
+
+/* Desktop WebView2 calendar: preserves the original BONO OS design tokens. */
+.bono-calendar-controls{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:14px 2px;}
+.bono-calendar-controls .subtle-action,.bono-calendar-controls .uyap-filter{padding:9px 13px;font-size:12px;}
+.bono-calendar-heading{font-size:17px;color:#f1f4f6;margin:0 8px;min-width:190px;text-align:center;}
+.bono-calendar-modes{display:flex;gap:7px;margin-left:auto;}
+.bono-calendar-full{border:1px solid #34383d;border-radius:5px;overflow:hidden;background:#17191d;}
+.bono-calendar-full .cal-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));}
+.bono-calendar-full .cal-weekdays span{font-size:11px;padding:12px 3px;}
+.bono-calendar-full .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));}
+.bono-calendar-full .cal-day{min-height:138px;padding:9px;overflow:hidden;}
+.bono-calendar-full .cal-no{font-size:12px;margin-bottom:8px;}
+.bono-calendar-full .cal-event{font-size:11px;line-height:1.4;white-space:normal;overflow-wrap:anywhere;padding:6px 7px;}
+.bono-calendar-full .cal-event span{white-space:normal;}
+.bono-calendar-full .cal-day.muted{opacity:.4;}
+.bono-calendar-full.week-view .cal-day{min-height:440px;}
+@media(max-width:1100px){.bono-calendar-full .cal-day{min-height:100px;padding:5px}.bono-calendar-full .cal-event{font-size:9px;padding:4px}.bono-calendar-full.week-view .cal-day{min-height:300px}}
