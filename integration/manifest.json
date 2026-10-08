@@ -1,29 +1,82 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "product": "BONO OS Unified Windows Preview",
   "channel": "integration-preview",
   "integrationBranch": "integration/webview2-uyap-single-case",
   "reality": "isolated-tested-not-live-installed",
+  "deliveries": {
+    "pr13": {
+      "head": "b5ac6d42de3ffcf97fb92cdaa62b72f132ba8845",
+      "name": "user-controlled queries, durable history, queue migration",
+      "codeIntegrated": true,
+      "liveMigrationApplied": false
+    },
+    "pr19": {
+      "head": "d31e48fe35625ac0b9df029b18b300cbd70f1344",
+      "name": "CBS unit/status exact-number adapter",
+      "codeIntegrated": true,
+      "runtimeGateIntegrated": true
+    },
+    "pr17": {
+      "head": "9559738f22f8939e05cb956be3f3538ac94f9136",
+      "name": "case identity and document ownership",
+      "codeIntegrated": true
+    },
+    "pr18": {
+      "head": "00b6cf24ae821a533e840a24121c802a2e46f032",
+      "name": "query capability and blocker diagnostics",
+      "codeIntegrated": true
+    },
+    "pr15": {
+      "head": "1c52830df75ab38e405070bc1830b1ccdcde9bf3",
+      "name": "case inventory and detail usability",
+      "codeIntegrated": true
+    },
+    "pr16": {
+      "head": "1a303fe52c4078c214872404adf2484ec558af44",
+      "name": "Windows archive path contract",
+      "codeIntegrated": true
+    },
+    "pr14": {
+      "head": "cd41e228fda621da4110167772b801df7d85aba4",
+      "name": "VISION and AGENTS",
+      "codeIntegrated": true,
+      "mergedToMain": false
+    },
+    "chatUi": {
+      "head": "313cd1261cc9570b5b7b867bae70b28877bcc2f2"
+    },
+    "chatArchive": {
+      "head": "dca93cd26cf94bc2d2d379c368f6e45f7a66bf30"
+    }
+  },
   "components": {
     "core": {
-      "packageVersion": "0.9.0"
+      "packageVersion": "0.9.0",
+      "queryPolicy": "user_controlled_after_verified_migration"
     },
     "webview2": {
       "sdk": "1.0.3405.78",
-      "uiCommit": "313cd1261cc9570b5b7b867bae70b28877bcc2f2"
+      "uiBaseCommit": "313cd1261cc9570b5b7b867bae70b28877bcc2f2"
     },
     "uyap": {
-      "coreCommit": "9559738f22f8939e05cb956be3f3538ac94f9136",
       "extension": {
         "packagedWithPreview": false,
-        "manifestVersion": "0.3.6",
-        "integratedRuntimeMarker": "0.3.8",
-        "latestTeamRuntimeMarker": "0.3.9",
-        "status": "version-drift-live-validation-required"
+        "sourceManifestVersion": "0.3.7",
+        "releaseBundleVersion": "0.4.0",
+        "sourceRuntimeMode": "normal-development",
+        "liveInstalledVerified": false
+      },
+      "cbs": {
+        "adapter": "cbs_unit_status_exact_v1",
+        "flowId": "unit_status_list_local_exact_match",
+        "directNumberEndpointClaimed": false,
+        "documentBindingOnIdentityLookup": false
       }
     },
     "archive": {
-      "commit": "dca93cd26cf94bc2d2d379c368f6e45f7a66bf30"
+      "sourceCommit": "dca93cd26cf94bc2d2d379c368f6e45f7a66bf30",
+      "physicalMutationInCi": false
     }
   },
   "sourceProof": [
@@ -34,23 +87,53 @@
     },
     {
       "path": "web/js/views/active/uyap.js",
-      "blobSha": "7a60ae6e36ae6c2bd4fcd8b0ddc2e6a4e31be9ed",
-      "owner": "CHAT-UI"
+      "blobSha": "660210cbbe81c428542c17c1158269ab72cd92a5",
+      "owner": "CHAT-UI + integration merge"
     },
     {
-      "path": "web/js/views/active/cbs-case-handoff.js",
-      "blobSha": "d2db6386661b70f0e389aee4de3918252656ae27",
-      "owner": "CHAT-UI"
+      "path": "web/js/views/active/user-queries.js",
+      "blobSha": "dff7549f8ca48ea27369467f362951065cd84849",
+      "owner": "PR13 + integration status labels"
     },
     {
-      "path": "web/styles-active.css",
-      "blobSha": "4d09ac02d62a519e8c1f28618b41557fe87de93b",
-      "owner": "CHAT-UI"
+      "path": "web/js/inventory-state.mjs",
+      "blobSha": "a4cabe2ceed082f0b3df86cc8425d37886842ef2",
+      "owner": "PR15"
     },
     {
       "path": "bridge/uyap.js",
-      "blobSha": "ea4d9f405043750c4ead3c0c58334a8aa70a3f87",
-      "owner": "CHAT-UYAP"
+      "blobSha": "044a800f3b9ffdeee95a93e875c439a120e12023",
+      "owner": "PR13/CHAT-UYAP + scoped CBS integration"
+    },
+    {
+      "path": "bridge/uyap_user_queries.js",
+      "blobSha": "20c2a789bb21cd82932e81a2f6ee77ba20483aff",
+      "owner": "PR13 + scoped CBS integration"
+    },
+    {
+      "path": "bridge/uyap_user_query_http.js",
+      "blobSha": "1233c40e2ff533d0fe97b415fd2c2dcfe719d6a1",
+      "owner": "PR13"
+    },
+    {
+      "path": "bridge/uyap_cbs_list_adapter.js",
+      "blobSha": "9d49715968bea5ebfc77b039c0a790769cabf525",
+      "owner": "PR19"
+    },
+    {
+      "path": "bridge/uyap_case_document_contract.js",
+      "blobSha": "536bc6fe3682a3fc0eeca0c870d24fe7a70a58eb",
+      "owner": "PR17"
+    },
+    {
+      "path": "bridge/uyap_query_capability_contract.js",
+      "blobSha": "39a386fddb62e8da33608d421d26437592a8ab76",
+      "owner": "PR18"
+    },
+    {
+      "path": "bridge/desktop_archive_paths.js",
+      "blobSha": "46025b1a82e4009946ab2073a7b84bd798e9adfa",
+      "owner": "PR16"
     },
     {
       "path": "bridge/document_view_service.js",
@@ -69,67 +152,72 @@
     },
     {
       "path": "extension/manifest.json",
-      "blobSha": "d9a710e7cf8d9da0e83f68efe2f231a16e17ffa9",
-      "owner": "current integration extension"
+      "blobSha": "795d1164d1fc7120afa4d6462fff0b754c354b99",
+      "owner": "PR13"
     },
     {
       "path": "extension/background.js",
-      "blobSha": "0c2dae0f927bfc59b2d56d250f77cdd9be2c066d",
-      "owner": "current integration extension"
+      "blobSha": "13116da3a70edfe39f30c356d55767d934993941",
+      "owner": "PR13"
     },
     {
       "path": "extension/content.js",
-      "blobSha": "110ac16af53a89e3577b69286649471d7492c53f",
-      "owner": "current integration extension"
+      "blobSha": "c9e75a9de0e58bb9f680273165b78963535136f2",
+      "owner": "PR13"
     },
     {
       "path": "extension/page_probe.js",
-      "blobSha": "7cddbec07d96ed74a8b642862fab45566961300f",
-      "owner": "CHAT-UYAP/current integration"
+      "blobSha": "f74720680bfbd69f8cc3e8b3c2f61f6d7445d5c4",
+      "owner": "PR13"
     },
     {
-      "path": "bridge/uyap_case_document_contract.js",
-      "blobSha": "536bc6fe3682a3fc0eeca0c870d24fe7a70a58eb",
-      "owner": "CHAT-UYAP"
+      "path": "extension/runtime_mode.js",
+      "blobSha": "00caf02c81d2a192856edfe27356ea2be04e5a44",
+      "owner": "PR13"
+    },
+    {
+      "path": "VISION.md",
+      "blobSha": "bebcec347939e655378ea96b91919c236f5bb6e3",
+      "owner": "PR14"
+    },
+    {
+      "path": "AGENTS.md",
+      "blobSha": "2469a1560c8f7d129bf8d5056523409edba61f44",
+      "owner": "PR14"
     }
   ],
   "verifiedCapabilities": [
-    "single-case document.list lifecycle",
-    "targeted case search",
-    "CBS party search with privacy/safety fixture",
-    "case parties and BONO case handoff",
-    "case-scoped PDF/UDF view contract",
-    "wrong-case rejection and stream-time SHA verification",
+    "file inventory and evidence-separated case detail",
+    "user-controlled case query and durable history",
+    "retired legacy commands cannot revive after verified migration",
+    "court document.list under certified binding",
+    "CBS unit/status list plus local exact investigation-number match under explicit grant",
+    "CBS identity lookup does not bind/import documents",
+    "case/document identity fail-closed contract",
+    "query capability and blocker contract",
+    "manual download pause independent from query execution",
+    "case-scoped PDF/UDF viewing with wrong-case rejection and stream-time SHA verification",
+    "Windows archive path naming contract",
     "month-only hearing calendar",
     "same-origin bundled WebView2 UI",
-    "EXE + web-bundle integrity and rollback updater",
-    "fail-closed UYAP case/document identity contract"
+    "EXE/web/integration-manifest integrity and rollback updater"
   ],
-  "pendingDependencies": {
-    "queueMigration": {
-      "pr": 13,
-      "head": "b5ac6d42de3ffcf97fb92cdaa62b72f132ba8845",
-      "status": "implementation-tested-draft-not-integrated",
-      "historicalCommandCount": 270,
-      "integrated": false,
-      "reason": "PR #13 is based on an older integration head and is not mergeable with the current integration branch. Reconcile conflicts first; preserve durable retirement records and never replay the 270 historical commands implicitly."
-    },
-    "visionDocs": {
-      "pr": 14,
-      "head": "cd41e228fda621da4110167772b801df7d85aba4",
-      "status": "docs-only-draft-mergeable",
-      "mergedToMain": false,
-      "recommendation": "Suitable for separate human-approved merge to main; no runtime code is changed."
-    },
-    "chromeExtensionAlignment": {
-      "ready": false,
-      "reason": "manifest 0.3.6, integrated runtime marker 0.3.8, latest CHAT-UYAP runtime marker 0.3.9; preview package does not install/upgrade Chrome extension."
-    }
+  "migration": {
+    "implementationIntegrated": true,
+    "liveApplied": false,
+    "requiresFreshQueueInventory": true,
+    "historicalSnapshotOnly": 270,
+    "historicalSnapshotIsCurrentInvariant": false,
+    "requiresVerifiedDbWalShmBackup": true,
+    "requiresNoRunningOrDispatchedCommands": true,
+    "rollbackMode": "rollback_hold_preserves_history_and_retirements"
   },
   "liveBlockers": [
-    "Chrome extension version/build drift must be reconciled and live-tab behavior revalidated",
-    "PR #13 queue/history migration and local-return policy not integrated",
-    "live Core/Chrome/UYAP behavior not revalidated for this preview",
-    "Windows archive filing E2E uses isolated synthetic canonical files, not real Downloads/UYAP"
+    "fresh live queue count and ID digest have not yet been collected",
+    "PR13 migration has not been applied to the live DB",
+    "compatible 0.4.0 Bridge release bundle has not yet been installed/reloaded in Chrome",
+    "live Core source/preimage and running process state have not yet been verified for update",
+    "existing archive and case inventory preservation has not yet been verified after installation",
+    "no real UYAP query has been executed by this integration task"
   ]
 }
