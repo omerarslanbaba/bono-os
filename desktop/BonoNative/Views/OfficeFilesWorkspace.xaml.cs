@@ -29,6 +29,12 @@ public partial class OfficeFilesWorkspace : UserControl
         Unloaded += (_, _) => { /* Keep data when navigating between pages. */ };
     }
 
+    public void SetSearch(string value)
+    {
+        QueryBox.Text = value ?? "";
+        ApplyFilter();
+    }
+
     public async Task RefreshAsync()
     {
         if (_loading) return;
