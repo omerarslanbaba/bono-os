@@ -13,7 +13,7 @@ function loadRow(db,caseId,remoteDocumentDbId){
   return db.prepare(`SELECT
       rd.id remote_db_id,rd.case_id,rd.remote_document_id,rd.stable_key,rd.remote_title,rd.document_type,rd.document_date,
       rd.original_file_name,rd.remote_hash,rd.local_asset_id asset_id,rd.staging_path,rd.filed_path,rd.status,rd.metadata_json,
-      c.uyap_dosya_id,
+      c.uyap_dosya_id,c.office_file_id,c.court,c.court_file_no,c.case_type,c.status case_status,c.client_name,
       a.sha256,a.file_name,a.extension,a.classification,a.archive_path,a.archive_policy,a.source_container,
       da.document_kind,da.raw_text,da.extracted_json,da.sections_json,da.analysis_status,da.engine_version,da.error
     FROM uyap_remote_documents rd
@@ -27,21 +27,9 @@ function loadDocument(db,caseId,remoteDocumentDbId,{verifyFiles=true,includeText
   if(!row)return null;
   const locations=row.asset_id?db.prepare("SELECT local_path,source_root,last_seen_at FROM asset_locations WHERE asset_id=? ORDER BY id").all(row.asset_id):[];
   const chunks=row.asset_id?db.prepare("SELECT chunk_no,heading,text,metadata_json FROM knowledge_chunks WHERE asset_id=? AND (case_id=? OR case_id IS NULL) ORDER BY chunk_no").all(row.asset_id,Number(caseId)):[];
-  return review.buildDocument(row,locations,chunks,{verifyFiles,includeText});
-}
-function downloadState(doc){
-  const stagingPresent=fileExists(doc?._stagingPath);
-  const canonicalPresent=!!doc?.canonical?.exists;
-  const indexed=!!doc?.assetId;
-  const remoteStatus=String(doc?.downloadStatus||"");
-  const downloaded=canonicalPresent||stagingPresent||indexed||["downloaded","indexed","filed","summarized"].includes(remoteStatus);
-  return {
-    downloaded,
-    remoteStatus:remoteStatus||null,
-    localAssetIndexed:indexed,
-    stagingPresent,
-    canonicalPresent
-  };
+  const doc=review.buildDocument(row,locations,chunks,{verifyFiles,includeText});
+  doc._case={officeFileId:row.office_file_id||null,court:row.court||null,courtFileNo:row.court_file_no||null,caseType:row.case_type||null,status:row.case_status||null,clientName:row.client_name||null};
+  return doc;
 }
 function viewerState(doc){
   const ext=extOf(doc);
@@ -98,6 +86,15 @@ function getDocumentView(db,caseId,remoteDocumentDbId,{verifyFiles=true,includeT
     document:{
       sourceId:doc.sourceId,
       caseId:doc.caseId,
+      case:{
+        id:doc.caseId,
+        officeFileId:doc._case?.officeFileId||null,
+        court:doc._case?.court||null,
+        courtFileNo:doc._case?.courtFileNo||null,
+        caseType:doc._case?.caseType||null,
+        status:doc._case?.status||null,
+        clientName:doc._case?.clientName||null
+      },
       remoteDocumentDbId:doc.remoteDocumentDbId,
       remoteDocumentId:doc.remoteDocumentId,
       assetId:doc.assetId,
