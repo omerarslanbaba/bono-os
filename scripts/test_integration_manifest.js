@@ -30,7 +30,11 @@ const pkg=JSON.parse(fs.readFileSync(path.join(root,"package.json"),"utf8"));
 must(pkg.version===manifest.components.core.packageVersion,"Core package version drift");
 
 const ext=JSON.parse(fs.readFileSync(path.join(root,"extension","manifest.json"),"utf8"));
-must(ext.version===manifest.components.uyap.extensionVersion,"Chrome extension version drift");
+must(ext.version===manifest.components.uyap.extension.manifestVersion,"Chrome extension manifest version drift");
+const background=fs.readFileSync(path.join(root,"extension","background.js"),"utf8");
+const runtimeMarker=(background.match(/bonoBridgeRuntimeVersion",version="([^"]+)/)||[])[1]||null;
+must(runtimeMarker===manifest.components.uyap.extension.integratedRuntimeMarker,"Chrome extension runtime marker drift");
+must(manifest.components.uyap.extension.status==="version-drift-live-validation-required","Extension drift must stay explicit until reconciled");
 
 const csproj=fs.readFileSync(path.join(root,"desktop","BonoWebDesktop","BonoWebDesktop.csproj"),"utf8");
 const sdk=(csproj.match(/Microsoft\.Web\.WebView2\" Version=\"([^\"]+)/)||[])[1];
@@ -66,6 +70,8 @@ console.log(JSON.stringify({
   sourceProofCount:manifest.sourceProof.length,
   queueMigrationIntegrated:false,
   visionDocsMerged:false,
-  extensionVersion:ext.version,
+  extensionManifestVersion:ext.version,
+  extensionRuntimeMarker:runtimeMarker,
+  extensionStatus:manifest.components.uyap.extension.status,
   webView2Sdk:sdk
 }));
