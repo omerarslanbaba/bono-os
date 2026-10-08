@@ -10,6 +10,7 @@ const workflow=require("./workflow_engine");
 const eventBus=require("./event_bus");
 const v09=require("./v09");
 const uyap=require("./uyap");
+const {planCaseCanonical,executeCaseCanonicalPlan}=require("./archive_case_guard");
 
 const ROOT=path.join(__dirname,"..");
 const DATA=path.join(ROOT,"data");
@@ -183,6 +184,40 @@ function reusableAssetPath(assetId){
   }
   return null;
 }
+async function guardedArchiveIntoCaseDir(file,destDir,preferredName=null){
+  if(!fs.existsSync(file))return {archived:false,reason:"source_missing"};
+  fs.mkdirSync(destDir,{recursive:true});
+  const sha=await hashFile(file);
+  const asset=db.prepare("SELECT id FROM local_assets WHERE sha256=?").get(sha);
+  const locations=asset?db.prepare("SELECT local_path FROM asset_locations WHERE asset_id=? ORDER BY id").all(asset.id):[];
+  const plan=planCaseCanonical({
+    source:file,
+    caseArchiveDir:destDir,
+    preferredName:preferredName||path.basename(file),
+    assetLocations:locations,
+    expectedSha256:sha
+  });
+  const executed=executeCaseCanonicalPlan(plan);
+  if(plan.action!=="reuse_case_location"){
+    await scanDocuments({roots:[destDir]});
+  }
+  const loc=db.prepare("SELECT asset_id FROM asset_locations WHERE local_path=?").get(executed.path);
+  const assetId=loc?.asset_id||asset?.id||null;
+  if(!assetId)throw new Error("Canonical archive copy was not indexed: "+executed.path);
+  cleanupTransientAssetLocations(assetId,executed.path);
+  try{
+    if(path.resolve(file)!==path.resolve(executed.path)&&fs.existsSync(file))fs.unlinkSync(file);
+  }catch{}
+  return {
+    archived:true,
+    dedup:!!executed.dedup,
+    path:executed.path,
+    assetId,
+    caseGuardAction:plan.action,
+    sourceSha256:executed.sourceSha256||sha,
+    targetSha256:executed.targetSha256||sha
+  };
+}
 async function archiveOneFile(file,caseId,preferredName=null){
   const destDir=archiveFolderForCase(caseId);
   if(!destDir||!fs.existsSync(file))return {archived:false,reason:"archive_unmatched"};
@@ -191,25 +226,7 @@ async function archiveOneFile(file,caseId,preferredName=null){
     db.prepare("DELETE FROM asset_locations WHERE local_path=?").run(file);
     return {archived:false,reason:"uyap_portal_login_html"};
   }
-  fs.mkdirSync(destDir,{recursive:true});
-  const sha=await hashFile(file);
-  const asset=db.prepare("SELECT id FROM local_assets WHERE sha256=?").get(sha);
-  if(asset){
-    const existingPath=reusableAssetPath(asset.id);
-    if(existingPath){
-      try{if(path.resolve(file)!==path.resolve(existingPath)&&fs.existsSync(file))fs.unlinkSync(file)}catch{}
-      cleanupTransientAssetLocations(asset.id,existingPath);
-      return {archived:true,dedup:true,path:existingPath,assetId:asset.id};
-    }
-  }
-  const finalPath=uniqueArchiveName(destDir,preferredName||path.basename(file));
-  fs.copyFileSync(file,finalPath);
-  await scanDocuments({roots:[destDir]});
-  const loc=db.prepare("SELECT asset_id FROM asset_locations WHERE local_path=?").get(finalPath);
-  const assetId=loc?.asset_id||asset?.id||null;
-  try{if(path.resolve(file)!==path.resolve(finalPath)&&fs.existsSync(file))fs.unlinkSync(file)}catch{}
-  cleanupTransientAssetLocations(assetId,finalPath);
-  return {archived:true,dedup:false,path:finalPath,assetId};
+  return await guardedArchiveIntoCaseDir(file,destDir,preferredName||path.basename(file));
 }
 async function extractContainer(file,commandId){
   const token=String(commandId||Date.now())+"-"+crypto.randomBytes(4).toString("hex");
@@ -313,26 +330,12 @@ async function archiveWithFormatPolicy(file,caseId,preferredName=null,sourceCont
 }
 async function copyIntoArchiveDir(file,destDir,preferredName=null,{originalExt=null,policy="keep_original",sourceContainer=null}={}){
   if(!fs.existsSync(file))return {archived:false,reason:"source_missing"};
-  fs.mkdirSync(destDir,{recursive:true});
-  const sha=await hashFile(file);
-  const asset=db.prepare("SELECT id FROM local_assets WHERE sha256=?").get(sha);
-  if(asset){
-    const existingPath=reusableAssetPath(asset.id);
-    if(existingPath){
-      try{if(path.resolve(file)!==path.resolve(existingPath)&&fs.existsSync(file))fs.unlinkSync(file)}catch{}
-      cleanupTransientAssetLocations(asset.id,existingPath);
-      setArchiveMeta(asset.id,{originalExt:originalExt||path.extname(file).toLowerCase(),archiveExt:path.extname(existingPath).toLowerCase(),policy,archivePath:existingPath,sourceContainer});
-      return {archived:true,dedup:true,path:existingPath,assetId:asset.id};
-    }
+  const sourceExt=originalExt||path.extname(file).toLowerCase();
+  const saved=await guardedArchiveIntoCaseDir(file,destDir,preferredName||path.basename(file));
+  if(saved.archived){
+    setArchiveMeta(saved.assetId,{originalExt:sourceExt,archiveExt:path.extname(saved.path).toLowerCase(),policy,archivePath:saved.path,sourceContainer});
   }
-  const finalPath=uniqueArchiveName(destDir,preferredName||path.basename(file));
-  fs.copyFileSync(file,finalPath);
-  await scanDocuments({roots:[destDir]});
-  const loc=db.prepare("SELECT asset_id FROM asset_locations WHERE local_path=?").get(finalPath);
-  const assetId=loc?.asset_id||asset?.id||null;
-  try{if(path.resolve(file)!==path.resolve(finalPath)&&fs.existsSync(file))fs.unlinkSync(file)}catch{}
-  setArchiveMeta(assetId,{originalExt:originalExt||path.extname(finalPath).toLowerCase(),archiveExt:path.extname(finalPath).toLowerCase(),policy,archivePath:finalPath,sourceContainer});
-  return {archived:true,dedup:false,path:finalPath,assetId};
+  return saved;
 }
 async function archiveMemberIntoDir(file,destDir,sourceContainer=null){
   const ext=path.extname(file).toLowerCase(),name=path.basename(file);
@@ -821,6 +824,10 @@ async function loop(){
     try{jobs.complete(job.id,await processJob(job))}catch(e){jobs.fail(job.id,e)}
   }
 }
-process.on("uncaughtException",e=>console.error("worker uncaught",e));
-process.on("unhandledRejection",e=>console.error("worker rejection",e));
-loop();
+if(process.env.BONO_WORKER_TEST_MODE==="1"){
+  module.exports={processJob,archiveOneFile,copyIntoArchiveDir,archiveWithFormatPolicy,guardedArchiveIntoCaseDir,archiveFolderForCase};
+}else{
+  process.on("uncaughtException",e=>console.error("worker uncaught",e));
+  process.on("unhandledRejection",e=>console.error("worker rejection",e));
+  loop();
+}
