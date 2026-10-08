@@ -1,5 +1,5 @@
 import {esc} from '../../ui.js';
-const labels={archived_never_executed:'Arşivlendi · hiç yürütülmedi',never_executed:'Hiç yürütülmedi',legacy_attempted_unverified:'Eski yürütme kaydı · sonuç doğrulanmadı',queued:'Kullanıcı sorgusu sırada',running:'Sorgu yürütülüyor',completed:'Doğrulanmış sonuç',failed:'Başarısız',execution_unknown:'Yürütme sonucu belirsiz · otomatik tekrar yok'};
+const labels={archived_never_executed:'Arşivlendi · hiç yürütülmedi',never_executed:'Hiç yürütülmedi',legacy_attempted_unverified:'Eski yürütme kaydı · sonuç doğrulanmadı',queued:'Kullanıcı sorgusu sırada',running:'Sorgu yürütülüyor',completed:'Doğrulanmış sonuç',not_found:'Hedef dosya bulunamadı',ambiguous:'Birden fazla eşleşme bulundu',identity_mismatch:'UYAP kimliği mevcut kayıtla uyuşmuyor',failed:'Başarısız',execution_unknown:'Yürütme sonucu belirsiz · otomatik tekrar yok'};
 async function read(url,options){const r=await fetch(url,options);const v=await r.json();if(!r.ok)throw Error(v.error||'Sorgu servisi kullanılamıyor');return v;}
 export async function mountGlobalQueryHistory(){
  const panel=document.createElement('section');panel.innerHTML='<h2>Kalıcı sorgu geçmişi</h2><div></div><button type="button">Önceki kayıtlar</button>';document.getElementById('app')?.append(panel);
