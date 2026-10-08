@@ -18,7 +18,7 @@ setting("uyap_session_state","ready");
 setting("uyap_manual_download_pause","1");
 setting("uyap_document_download_state","paused_manual");
 db.prepare(`insert or replace into uyap_endpoints(endpoint_key,method,host,path,purpose,enabled,min_interval_ms)
- values('document.list','POST','avukat.uyap.gov.tr','/dosya_evrak_bilgileri.ajx','docs',1,0)`).run();
+ values('document.list','POST','avukat.uyap.gov.tr','/list_dosya_evraklar.ajx','docs',1,0)`).run();
 addCase(1,"2026/1","DOSYA-1");
 addCase(10,"2026/10","DOSYA-10");
 
@@ -31,6 +31,7 @@ must(ten!==one,"case 1 must not prefix-collide with case 10");
 must(uyap.caseDocumentSyncStatus(1).state==="queued","case 1 should be queued");
 
 let cmd=uyap.claimNext("avukat.uyap.gov.tr","query");
+must(cmd.path==='/list_dosya_evraklar.ajx'&&cmd.method==='POST',"document request does not match observed contract");
 must(cmd&&cmd.id===one,"case 1 query should claim first");
 must(uyap.caseDocumentSyncStatus(1).state==="running","case 1 should be running");
 

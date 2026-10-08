@@ -24,7 +24,7 @@ setting("uyap_manual_download_reason","fixture_pause");
 setting("uyap_document_download_state","paused_manual");
 
 db.prepare(`insert or replace into uyap_endpoints(endpoint_key,method,host,path,purpose,enabled,min_interval_ms)
- values('document.list','POST','avukat.uyap.gov.tr','/dosya_evrak_bilgileri.ajx','docs',1,0)`).run();
+ values('document.list','POST','avukat.uyap.gov.tr','/list_dosya_evraklar.ajx','docs',1,0)`).run();
 db.prepare(`insert or replace into uyap_endpoints(endpoint_key,method,host,path,purpose,enabled,min_interval_ms)
  values('document.pdf','GET','vatandas.uyap.gov.tr','/view_document_brd.uyap','download',1,0)`).run();
 
@@ -80,6 +80,7 @@ async function main(){
   must(st.body.state==="queued"&&Number(st.body.commandId)===commandId,"queued lifecycle missing");
 
   const claim=await req("/api/uyap/commands/next?host=avukat.uyap.gov.tr&lane=query");
+  must(claim.body.path==='/list_dosya_evraklar.ajx'&&claim.body.method==='POST',"document request does not match observed contract");
   must(claim.status===200&&Number(claim.body.id)===commandId&&claim.body.endpointKey==="document.list","fake extension could not claim document.list");
   st=await req("/api/uyap/cases/1/document-sync-status");
   must(st.body.state==="running","running lifecycle missing");
