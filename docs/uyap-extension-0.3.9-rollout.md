@@ -85,3 +85,29 @@ Restore:
 10. Verify query behavior separately before any download resume.
 
 Rollback never restores or rewrites `bono.db`, case data, archive data, document files, or the native EXE.
+
+
+## Automated five-minute acceptance monitor
+
+After the user has manually logged in and Core has observed a genuine authenticated 2xx JSON response, run:
+
+```powershell
+npm run test:uyap-live-acceptance
+```
+
+Default observation window is 300 seconds with 15-second samples. Optional example:
+
+```powershell
+node scripts/uyap_live_acceptance_watch.js --duration=300 --interval=10
+```
+
+The monitor opens `data/bono.db` read-only and never mutates the database or queue. PASS requires:
+- session remains `ready`;
+- manual download pause remains active;
+- no PDF command becomes running;
+- PDF last-dispatch timestamp remains unchanged;
+- PDF queued count remains unchanged when no manual batch is started;
+- query running count never exceeds one;
+- query last-dispatch advances;
+- CBS completed count advances;
+- no 401/403 state appears during the observation window.
