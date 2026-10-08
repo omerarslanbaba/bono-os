@@ -18,7 +18,7 @@ async function operate(bundle,root,mode='Verify',port=47831,hooks={}){
  const info=inspect(bundle,root);if(mode==='Verify')return {state:info.state,buildId:info.m.buildId};
  if(!['Apply','Rollback','Recover'].includes(mode))throw Error('invalid_mode');
  const reserved=net.createServer();await new Promise((resolve,reject)=>{reserved.once('error',reject);reserved.listen(port,'127.0.0.1',resolve);});
- const lock=path.join(info.root,'.bono-package.lock'),journal=path.join(info.root,'.bono-package-state.json');let owned=false;
+ const lock=path.join(info.root,'.bono-package.lock'),journal=path.join(info.root,info.m.mode==='local_return_hold'?'.bono-local-return-state.json':'.bono-package-state.json');let owned=false;
  try{
   if(mode==='Recover'&&fs.existsSync(lock)){
    const bytes=fs.readFileSync(lock),old=JSON.parse(bytes);if(!Number.isInteger(old.pid)||old.buildId!==info.m.buildId)throw Error('unknown_lock');
