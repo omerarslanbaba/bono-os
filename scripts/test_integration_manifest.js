@@ -1,13 +1,15 @@
 const fs=require("node:fs");
 const path=require("node:path");
-const crypto=require("node:crypto");
+const {spawnSync}=require("node:child_process");
 
 function must(value,message){if(!value)throw new Error(message)}
 function gitBlobSha(file){
-  const buf=fs.readFileSync(file);
-  return crypto.createHash("sha1")
-    .update(Buffer.concat([Buffer.from("blob "+buf.length+"\0"),buf]))
-    .digest("hex");
+  const rel=path.relative(root,file).replace(/\\/g,"/");
+  const r=spawnSync("git",["ls-files","-s","--",rel],{cwd:root,encoding:"utf8"});
+  if(r.status!==0)throw new Error("git ls-files failed for "+rel+": "+r.stderr);
+  const m=String(r.stdout||"").trim().match(/^\d+\s+([0-9a-f]{40})\s+/i);
+  if(!m)throw new Error("tracked blob SHA missing for "+rel);
+  return m[1].toLowerCase();
 }
 const root=path.resolve(__dirname,"..");
 const manifest=JSON.parse(fs.readFileSync(path.join(root,"integration","manifest.json"),"utf8"));
