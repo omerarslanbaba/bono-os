@@ -16,6 +16,7 @@
     "test:uyap-single-case-sync": "node scripts/test_uyap_single_case_sync.js",
     "test:archive-worker-case-guard": "node scripts/test_archive_worker_case_guard.js",
     "test:uyap-webview-contract": "node scripts/test_uyap_webview_contract.js",
-    "test:uyap-targeted-case-search": "node scripts/test_uyap_targeted_case_search.js"
+    "test:uyap-targeted-case-search": "node scripts/test_uyap_targeted_case_search.js",
+    "test:uyap-targeted-cbs-party-search": "node scripts/test_uyap_targeted_cbs_party_search.js"
   }
 }

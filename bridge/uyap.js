@@ -384,7 +384,9 @@ function reportResult(id,result={}){
     const payload=row.payload_json?JSON.parse(row.payload_json):{};
     const ctx=payload?.context||{};
     const targetedCasePage=row.endpoint_key==="case.search"&&ctx.targetedCaseSearch&&Array.isArray(cleanData);
-    const resultJson=cleanData==null?null:(targetedCasePage?null:JSON.stringify(cleanData));
+    const targetedCbsPage=row.endpoint_key==="cbs.search"&&ctx.targetedCbsPartySearch&&Array.isArray(cleanData);
+    const targetedPartyPage=row.endpoint_key==="case.parties"&&ctx.targetedCbsPartySearch&&Array.isArray(cleanData);
+    const resultJson=cleanData==null?null:((targetedCasePage||targetedCbsPage||targetedPartyPage)?null:JSON.stringify(cleanData));
     db.prepare(`UPDATE uyap_command_queue SET status='completed',finished_at=datetime('now'),result_meta_json=?,result_json=? WHERE id=?`)
       .run(JSON.stringify(safeResult(result)),resultJson,id);
     if(row.endpoint_key==="document.viewer_params"&&ctx.purpose==="refresh_document_tokens"){
@@ -449,17 +451,26 @@ function reportResult(id,result={}){
         for(const s of statuses) enqueueCbsSearchPage({ilKodu:ctx.ilKodu,birimId:bid,dosyaDurumKod:s,pageNumber:1,syncDocuments:ctx.syncDocuments});
       }
     }
+    if(row.endpoint_key==="case.parties"&&ctx.targetedCbsPartySearch&&Array.isArray(cleanData)){
+      const summary=finalizeTargetedPartyResult(cleanData,ctx,payload);
+      db.prepare("UPDATE uyap_command_queue SET result_json=? WHERE id=?").run(JSON.stringify(summary),id);
+    }
     if(row.endpoint_key==="cbs.search"&&Array.isArray(cleanData)){
-      upsertCasesFromSearch(cleanData);
-      if(ctx.discovery&&ctx.stage==="cbs_cases"){
-        const list=Array.isArray(cleanData?.[0])?cleanData[0]:[];
-        const total=Number(cleanData?.[1]||0),pageSize=Number(payload?.body?.pageSize||500),page=Number(ctx.pageNumber||1);
-        if(total>page*pageSize) enqueueCbsSearchPage({ilKodu:ctx.ilKodu,birimId:ctx.birimId,dosyaDurumKod:ctx.dosyaDurumKod,pageNumber:page+1,syncDocuments:ctx.syncDocuments});
-        if(ctx.syncDocuments){
-          for(const item of list){
-            const ext="uyap:case:"+String(item?.birimId||"")+":"+String(item?.dosyaNo||"");
-            const c=db.prepare("SELECT id FROM cases WHERE external_id=?").get(ext);
-            if(c?.id){try{enqueueCaseDocumentSync(c.id)}catch{}}
+      if(ctx.targetedCbsPartySearch){
+        const summary=finalizeTargetedCbsPage(cleanData,ctx,payload);
+        db.prepare("UPDATE uyap_command_queue SET result_json=? WHERE id=?").run(JSON.stringify(summary),id);
+      }else{
+        upsertCasesFromSearch(cleanData);
+        if(ctx.discovery&&ctx.stage==="cbs_cases"){
+          const list=Array.isArray(cleanData?.[0])?cleanData[0]:[];
+          const total=Number(cleanData?.[1]||0),pageSize=Number(payload?.body?.pageSize||500),page=Number(ctx.pageNumber||1);
+          if(total>page*pageSize) enqueueCbsSearchPage({ilKodu:ctx.ilKodu,birimId:ctx.birimId,dosyaDurumKod:ctx.dosyaDurumKod,pageNumber:page+1,syncDocuments:ctx.syncDocuments});
+          if(ctx.syncDocuments){
+            for(const item of list){
+              const ext="uyap:case:"+String(item?.birimId||"")+":"+String(item?.dosyaNo||"");
+              const c=db.prepare("SELECT id FROM cases WHERE external_id=?").get(ext);
+              if(c?.id){try{enqueueCaseDocumentSync(c.id)}catch{}}
+            }
           }
         }
       }
@@ -560,6 +571,197 @@ function cbsUnitId(x){
     const v=x?.[k]; if(v!==undefined&&v!==null&&String(v).trim())return String(v);
   }
   return null;
+}
+function observedEndpointTemplate(pathName,requiredBodyTypes){
+  const obs=db.prepare(`SELECT id,status,last_seen_at,hit_count,sample_request_json
+    FROM uyap_endpoint_observations WHERE path=? AND sample_request_json IS NOT NULL
+    ORDER BY last_seen_at DESC LIMIT 1`).get(pathName);
+  let parsed=null,parseError=null;
+  if(obs?.sample_request_json){
+    try{parsed=JSON.parse(obs.sample_request_json)}catch(e){parseError=String(e?.message||e)}
+  }
+  const body=parsed?.body;
+  const verified=!!body&&typeof body==="object"&&!Array.isArray(body)&&Object.entries(requiredBodyTypes||{}).every(([k,t])=>
+    Object.prototype.hasOwnProperty.call(body,k)&&typeof body[k]===t);
+  return {obs,parsed,parseError,verified};
+}
+function cbsPartySearchSchemaStatus(){
+  const cbs=observedEndpointTemplate("/avukat_dosya_sorgula_cbs_brd.ajx",{
+    dosyaDurumKod:"number",pageSize:"number",pageNumber:"number",birimId:"string",birimTuru2:"string",birimTuru3:"string"
+  });
+  const parties=observedEndpointTemplate("/dosya_taraf_bilgileri_brd.ajx",{dosyaId:"string"});
+  return {
+    contractVersion:"uyap.cbs-party-search-schema.v1",
+    ready:cbs.verified&&parties.verified,
+    cbsSearch:{observed:!!cbs.parsed,verified:cbs.verified,observedAt:cbs.obs?.last_seen_at||null,hitCount:Number(cbs.obs?.hit_count||0),
+      bodyShape:cbs.parsed?shapeOfObservedObject(cbs.parsed.body):null,parseError:cbs.parseError},
+    partyLookup:{observed:!!parties.parsed,verified:parties.verified,observedAt:parties.obs?.last_seen_at||null,hitCount:Number(parties.obs?.hit_count||0),
+      bodyShape:parties.parsed?shapeOfObservedObject(parties.parsed.body):null,parseError:parties.parseError},
+    matching:{partyField:"adi",roleField:"rol",entityTypeField:"kisiKurum",mode:"exact_normalized"},
+    safeguards:{requiresObservedUnit:true,requiresDateWindow:true,maxWindowDays:120,maxCandidates:50,noDocumentList:true,noDownloads:true}
+  };
+}
+function cbsUnitOptions(ilKodu){
+  const code=Number(ilKodu);if(!Number.isInteger(code)||code<1||code>81)throw new Error("Geçersiz il kodu");
+  const rows=db.prepare(`SELECT result_json,finished_at FROM uyap_command_queue
+    WHERE endpoint_key='cbs.units' AND status='completed' AND result_json IS NOT NULL
+      AND json_valid(payload_json)=1 AND CAST(json_extract(payload_json,'$.context.ilKodu') AS INTEGER)=?
+    ORDER BY id DESC`).all(code);
+  const seen=new Set(),units=[];
+  for(const row of rows){
+    let data=null;try{data=JSON.parse(row.result_json)}catch{}
+    if(!Array.isArray(data))continue;
+    for(const x of data){
+      const id=cbsUnitId(x),name=String(x?.birimAdi||x?.ad||"").trim();
+      if(!id||!name||seen.has(id))continue;seen.add(id);
+      units.push({birimId:id,birimAdi:name,observedAt:row.finished_at||null});
+    }
+  }
+  units.sort((a,b)=>a.birimAdi.localeCompare(b.birimAdi,"tr"));
+  return {contractVersion:"uyap.cbs-units.v1",ilKodu:code,units};
+}
+function uyapObjectDate(value){
+  const d=value?.date||value;
+  const y=Number(d?.year),m=Number(d?.month),day=Number(d?.day);
+  if(!Number.isInteger(y)||!Number.isInteger(m)||!Number.isInteger(day))return null;
+  return String(y).padStart(4,"0")+"-"+String(m).padStart(2,"0")+"-"+String(day).padStart(2,"0");
+}
+function hashPartyName(name){
+  return crypto.createHash("sha256").update("party-v1|"+nrm(name)).digest("hex");
+}
+function targetedCbsCandidate(item){
+  return {
+    dosyaNo:String(item?.dosyaNo||""),dosyaDurumKod:Number(item?.dosyaDurumKod||0),
+    dosyaDurum:String(item?.dosyaDurum||""),dosyaTurKod:Number(item?.dosyaTurKod||0),
+    dosyaTur:String(item?.dosyaTur||""),birimAdi:String(item?.birimAdi||""),
+    birimId:String(item?.birimId||""),dosyaAcilisTarihi:item?.dosyaAcilisTarihi||null
+  };
+}
+function enqueueTargetedCbsPage(ctx,dosyaDurumKod,pageNumber){
+  const schema=cbsPartySearchSchemaStatus();if(!schema.ready)throw new Error("CBS/party gözlem şeması hazır değil");
+  const t=observedEndpointTemplate("/avukat_dosya_sorgula_cbs_brd.ajx",{
+    dosyaDurumKod:"number",pageSize:"number",pageNumber:"number",birimId:"string",birimTuru2:"string",birimTuru3:"string"
+  });
+  const body={...(t.parsed?.body||{})};
+  body.dosyaDurumKod=Number(dosyaDurumKod);body.pageSize=500;body.pageNumber=Number(pageNumber);
+  body.birimId="";body.birimTuru2=String(ctx.birimId);body.birimTuru3="3";
+  return enqueue({commandType:"fetch_json",endpointKey:"cbs.search",priority:6,payload:{
+    query:{...(t.parsed?.query||{})},body,context:{
+      targetedCbsPartySearch:true,searchId:String(ctx.searchId),targetKey:String(ctx.targetKey),
+      targetPartyHash:String(ctx.targetPartyHash),ilKodu:Number(ctx.ilKodu),birimId:String(ctx.birimId),
+      dosyaDurumKod:Number(dosyaDurumKod),pageNumber:Number(pageNumber),
+      openedFrom:String(ctx.openedFrom),openedTo:String(ctx.openedTo),maxCandidates:Number(ctx.maxCandidates)
+    }
+  }});
+}
+function enqueueTargetedPartyLookup(ctx,item){
+  const t=observedEndpointTemplate("/dosya_taraf_bilgileri_brd.ajx",{dosyaId:"string"});
+  if(!t.verified)throw new Error("UYAP taraf sorgusu şeması doğrulanmadı");
+  const body={...(t.parsed?.body||{}),dosyaId:uyapOpaqueId(item?.dosyaId)};
+  const candidate=targetedCbsCandidate(item);
+  return enqueue({commandType:"fetch_json",endpointKey:"case.parties",priority:6,payload:{
+    query:{...(t.parsed?.query||{})},body,context:{
+      targetedCbsPartySearch:true,searchId:String(ctx.searchId),targetKey:String(ctx.targetKey),
+      targetPartyHash:String(ctx.targetPartyHash),candidate
+    }
+  }});
+}
+function enqueueTargetedCbsPartySearch(input={}){
+  if(sessionState().state==="login_required")throw new Error("UYAP oturumu gerekli");
+  const schema=cbsPartySearchSchemaStatus();if(!schema.ready)throw new Error("CBS/party gözlem şeması hazır değil");
+  const ilKodu=Number(input.ilKodu),birimId=String(input.birimId||"").trim();
+  const partyName=String(input.partyName||"").trim();if(!partyName)throw new Error("Taraf adı gerekli");
+  const openedFrom=String(input.openedFrom||""),openedTo=String(input.openedTo||"");
+  const from=parseYmd(openedFrom),to=parseYmd(openedTo);if(to<from)throw new Error("Tarih aralığı geçersiz");
+  const days=Math.floor((to-from)/86400000)+1;if(days>120)throw new Error("CBS hedefli arama tarih aralığı en fazla 120 gün olabilir");
+  const unit=cbsUnitOptions(ilKodu).units.find(x=>String(x.birimId)===birimId);
+  if(!unit)throw new Error("CBS birimi gerçek cbs.units sonucunda doğrulanmadı");
+  const statuses=[...new Set((Array.isArray(input.statuses)?input.statuses:[0]).map(Number).filter(x=>x===0||x===1))];
+  if(!statuses.length)throw new Error("Dosya durumu gerekli");
+  const maxCandidates=Math.max(1,Math.min(50,Number(input.maxCandidates)||25));
+  const targetPartyHash=hashPartyName(partyName);
+  const targetKey=crypto.createHash("sha256").update([ilKodu,birimId,statuses.join(","),openedFrom,openedTo,targetPartyHash].join("|")).digest("hex");
+  const active=db.prepare(`SELECT id,payload_json FROM uyap_command_queue
+    WHERE status IN ('queued','running') AND json_valid(payload_json)=1
+      AND json_extract(payload_json,'$.context.targetedCbsPartySearch')=1
+      AND json_extract(payload_json,'$.context.targetKey')=? ORDER BY id LIMIT 1`).get(targetKey);
+  if(active?.id){
+    let p={};try{p=JSON.parse(active.payload_json||"{}")}catch{}
+    return {searchId:String(p?.context?.searchId||""),commandIds:[Number(active.id)],dedup:true};
+  }
+  const searchId=crypto.randomUUID(),ctx={searchId,targetKey,targetPartyHash,ilKodu,birimId,openedFrom,openedTo,maxCandidates};
+  const commandIds=statuses.map(s=>enqueueTargetedCbsPage(ctx,s,1));
+  return {searchId,commandIds,dedup:false,unit:{ilKodu,birimId,birimAdi:unit.birimAdi},statuses,openedFrom,openedTo,maxCandidates};
+}
+function finalizeTargetedCbsPage(cleanData,ctx,payload){
+  const list=Array.isArray(cleanData?.[0])?cleanData[0]:[];
+  const total=Number(cleanData?.[1]||0),page=Number(ctx.pageNumber||1),pageSize=Number(payload?.body?.pageSize||500);
+  const from=String(ctx.openedFrom||""),to=String(ctx.openedTo||"");
+  const candidates=list.filter(item=>{const d=uyapObjectDate(item?.dosyaAcilisTarihi);return d&&d>=from&&d<=to});
+  const already=Number(db.prepare(`SELECT count(*) n FROM uyap_command_queue
+    WHERE endpoint_key='case.parties' AND json_valid(payload_json)=1
+      AND json_extract(payload_json,'$.context.targetedCbsPartySearch')=1
+      AND json_extract(payload_json,'$.context.searchId')=?`).get(String(ctx.searchId))?.n||0);
+  const capacity=Math.max(0,Number(ctx.maxCandidates||25)-already);
+  const selected=candidates.slice(0,capacity),partyCommandIds=[];
+  for(const item of selected)partyCommandIds.push(enqueueTargetedPartyLookup(ctx,item));
+  const limitReached=candidates.length>selected.length||already+selected.length>=Number(ctx.maxCandidates||25);
+  let nextCommandId=null;
+  const hasMore=total>page*pageSize;
+  if(hasMore&&!limitReached)nextCommandId=enqueueTargetedCbsPage(ctx,Number(ctx.dosyaDurumKod),page+1);
+  return {type:"targeted_cbs_list_result",searchId:String(ctx.searchId),page,total,
+    pageResultCount:list.length,dateCandidateCount:candidates.length,partyChecksQueued:partyCommandIds.length,
+    partyCommandIds,hasMore:hasMore&&!!nextCommandId,nextCommandId,limitReached};
+}
+function finalizeTargetedPartyResult(cleanData,ctx,payload){
+  const parties=Array.isArray(cleanData)?cleanData:[];
+  const matches=parties.filter(x=>hashPartyName(x?.adi||"")===String(ctx.targetPartyHash||""));
+  let caseInfo=null;
+  if(matches.length){
+    const candidate={...(ctx.candidate||{}),dosyaId:payload?.body?.dosyaId};
+    upsertCasesFromSearch([[candidate],1]);
+    const ext="uyap:case:"+String(candidate?.birimId||"")+":"+String(candidate?.dosyaNo||"");
+    const c=db.prepare("SELECT id FROM cases WHERE external_id=?").get(ext);
+    caseInfo=safeTargetedCase(candidate,c?.id||null);
+  }
+  return {type:"targeted_cbs_party_result",searchId:String(ctx.searchId),matched:matches.length>0,
+    matchCount:matches.length,case:caseInfo,roles:[...new Set(matches.map(x=>String(x?.rol||"")).filter(Boolean))],
+    partyCount:parties.length};
+}
+function targetedCbsPartySearchStatus(searchId){
+  searchId=String(searchId||"").trim();
+  const rows=db.prepare(`SELECT id,endpoint_key,status,priority,attempts,max_attempts,created_at,dispatched_at,finished_at,error,payload_json,result_json
+    FROM uyap_command_queue
+    WHERE json_valid(payload_json)=1
+      AND json_extract(payload_json,'$.context.targetedCbsPartySearch')=1
+      AND json_extract(payload_json,'$.context.searchId')=?
+    ORDER BY id`).all(searchId);
+  if(!rows.length)return null;
+  const commands=rows.map(r=>({id:Number(r.id),endpointKey:r.endpoint_key,status:r.status,priority:Number(r.priority||0),
+    attempts:Number(r.attempts||0),maxAttempts:Number(r.max_attempts||0),createdAt:r.created_at||null,
+    dispatchedAt:r.dispatched_at||null,finishedAt:r.finished_at||null,error:r.error||null}));
+  const matches=[];let candidateLimitReached=false,partyChecks=0;
+  for(const r of rows){
+    if(!r.result_json)continue;
+    try{
+      const x=JSON.parse(r.result_json);
+      if(x?.type==="targeted_cbs_list_result"){candidateLimitReached=candidateLimitReached||!!x.limitReached;partyChecks+=Number(x.partyChecksQueued||0)}
+      if(x?.type==="targeted_cbs_party_result"&&x.matched&&x.case)matches.push(x.case);
+    }catch{}
+  }
+  const uniqueMatches=[...new Map(matches.map(x=>[String(x.caseId||"")+"|"+x.court+"|"+x.fileNo,x])).values()];
+  const session=sessionState(),running=rows.some(r=>r.status==="running"),queued=rows.some(r=>r.status==="queued");
+  let state="not_found",label="Belirtilen tarafla eşleşen CBS dosyası bulunamadı",terminal=true,success=false,requiresLogin=false;
+  if(uniqueMatches.length===1){state="completed";label="CBS soruşturma dosyası bulundu";success=true}
+  else if(uniqueMatches.length>1){state="ambiguous";label="Aynı tarafla birden fazla CBS dosyası eşleşti"}
+  else if(session.state==="login_required"&&(running||queued)){state="login_required";label="UYAP oturumu gerekli";terminal=false;requiresLogin=true}
+  else if(running){state="running";label="CBS dosyası ve taraf bilgileri sorgulanıyor";terminal=false}
+  else if(queued){state="queued";label="CBS hedefli arama bekliyor";terminal=false}
+  else if(rows.some(r=>r.status==="failed")){state="failed";label="CBS hedefli arama başarısız"}
+  else if(candidateLimitReached){state="candidate_limit_reached";label="Aday limiti doldu; tarih aralığını daraltın"}
+  return {contractVersion:"uyap.targeted-cbs-party-search.v1",searchId,state,label,terminal,success,requiresLogin,
+    pollAfterMs:["queued","running"].includes(state)?1500:null,partyChecks,candidateLimitReached,matches:uniqueMatches,
+    commands,session:{state:session.state,manualDownloadPaused:session.manualDownloadPaused}};
 }
 function enqueueCbsDiscovery({statuses=[0,1],syncDocuments=false}={}){
   const id=enqueue({commandType:"fetch_json",endpointKey:"cbs.provinces",
@@ -1470,4 +1672,4 @@ function discoveryStatus(){
   const withDocs=db.prepare("SELECT count(DISTINCT case_id) n FROM uyap_remote_documents").get().n;
   return {...counts,totalCases:Number(totalCases||0),casesWithDocuments:Number(withDocs||0),rate:rateState()};
 }
-module.exports={GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,setManualDownloadPause,recoverSession,queue,cases,remoteDocuments,caseDocumentSyncStatus,caseSearchSchemaStatus,caseSearchOptions,enqueueTargetedCaseSearch,targetedCaseSearchStatus,documentDownloadPolicy,caseDownloadSummary,activeCaseDownloadCount,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,discoveryStatus};
+module.exports={GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,setManualDownloadPause,recoverSession,queue,cases,remoteDocuments,caseDocumentSyncStatus,caseSearchSchemaStatus,caseSearchOptions,enqueueTargetedCaseSearch,targetedCaseSearchStatus,documentDownloadPolicy,caseDownloadSummary,activeCaseDownloadCount,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,cbsPartySearchSchemaStatus,cbsUnitOptions,enqueueTargetedCbsPartySearch,targetedCbsPartySearchStatus,discoveryStatus};
