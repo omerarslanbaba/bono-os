@@ -294,6 +294,23 @@ const server=http.createServer(async(req,res)=>{
       return out?json(res,200,out):json(res,404,{error:"UYAP dosya araması bulunamadı"});
     }
 
+    if(req.method==="GET"&&p==="/api/uyap/cbs-party-search-schema") return json(res,200,uyap.cbsPartySearchSchemaStatus());
+    if(req.method==="GET"&&p==="/api/uyap/cbs-units"){
+      return json(res,200,uyap.cbsUnitOptions(Number(u.searchParams.get("ilKodu"))));
+    }
+    if(req.method==="POST"&&p==="/api/uyap/cbs-party-search"){
+      const b=await readBody(req);
+      if(uyap.sessionState().state==="login_required") return json(res,409,{error:"UYAP oturumu gerekli."});
+      const out=uyap.enqueueTargetedCbsPartySearch(b);
+      audit("lawyer","uyap_targeted_cbs_party_search","uyap",null,{searchId:out.searchId,commandIds:out.commandIds});
+      return json(res,202,{ok:true,accepted:true,...out,status:uyap.targetedCbsPartySearchStatus(out.searchId)});
+    }
+    m=p.match(/^\/api\/uyap\/cbs-party-search\/([A-Za-z0-9-]+)$/);
+    if(req.method==="GET"&&m){
+      const out=uyap.targetedCbsPartySearchStatus(m[1]);
+      return out?json(res,200,out):json(res,404,{error:"CBS hedefli arama bulunamadı"});
+    }
+
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/remote-documents$/);
     if(req.method==="GET"&&m) return json(res,200,uyap.remoteDocuments(Number(m[1])));
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/document-sync-status$/);
