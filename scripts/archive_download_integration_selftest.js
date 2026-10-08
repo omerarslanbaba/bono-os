@@ -44,15 +44,21 @@ for(const [k,v] of [
 db.prepare("INSERT INTO uyap_endpoints(endpoint_key,method,host,path,purpose,enabled,min_interval_ms) VALUES(?,?,?,?,?,?,?)")
   .run("document.pdf","GET","avukat.uyap.gov.tr","/view_document_brd.uyap","document",1,1300);
 
+const originalUyap=path.join(__dirname,"..","bridge","uyap.js");
+const tempBridge=path.join(tmp,"bridge");
+fs.mkdirSync(tempBridge,{recursive:true});
+const tempUyap=path.join(tempBridge,"uyap.js");
+fs.copyFileSync(originalUyap,tempUyap);
+
 const originalLoad=Module._load;
 Module._load=function(request,parent,isMain){
-  if(request==="./db"&&parent&&String(parent.filename||"").endsWith(path.join("bridge","uyap.js")))return db;
+  if(request==="./db"&&parent&&path.resolve(String(parent.filename||""))===path.resolve(tempUyap))return db;
   return originalLoad.call(this,request,parent,isMain);
 };
 let uyap;
 try{
-  delete require.cache[require.resolve("../bridge/uyap")];
-  uyap=require("../bridge/uyap");
+  delete require.cache[require.resolve(tempUyap)];
+  uyap=require(tempUyap);
 }finally{
   Module._load=originalLoad;
 }
