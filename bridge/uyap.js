@@ -103,9 +103,10 @@ function observe(input){
       last_seen_at=datetime('now'),
       hit_count=uyap_endpoint_observations.hit_count+1`)
     .run(x.method,x.host,x.path,x.status,x.contentType,JSON.stringify(x.sampleKeys),requestJson,responseJson);
+  const explicitErrorObservation=x.sampleKeys.some(k=>["errorcode","error"].includes(String(k).toLowerCase()));
   if(AUTHENTICATED_OBSERVATION_PATHS.has(x.path)&&(x.status===401||x.status===403)){
     setSessionLoginRequired("auth_probe_http_"+x.status+":"+x.path);
-  }else if(sessionState().state==="login_required"&&x.status>=200&&x.status<400&&/json/i.test(String(x.contentType||""))&&(READ_ONLY_ENDPOINTS.has(x.path)||AUTHENTICATED_OBSERVATION_PATHS.has(x.path))){
+  }else if(sessionState().state==="login_required"&&!explicitErrorObservation&&x.status>=200&&x.status<400&&/json/i.test(String(x.contentType||""))&&(READ_ONLY_ENDPOINTS.has(x.path)||AUTHENTICATED_OBSERVATION_PATHS.has(x.path))){
     recoverSession("successful_network_observation:"+x.path);
   }
   return x;

@@ -45,7 +45,9 @@ function authenticatedObservation(data) {
   try {
     const u = new URL(data?.url||"");
     const okStatus = Number(data?.status||0) >= 200 && Number(data?.status||0) < 400;
-    return okStatus && /json/i.test(String(data?.contentType||"")) && AUTH_PATHS.has(u.pathname);
+    const keys = Array.isArray(data?.sampleKeys) ? data.sampleKeys.map(x=>String(x).toLowerCase()) : [];
+    const explicitError = keys.includes("errorcode") || keys.includes("error");
+    return okStatus && !explicitError && /json/i.test(String(data?.contentType||"")) && AUTH_PATHS.has(u.pathname);
   } catch { return false; }
 }
 async function senderCanExecute(sender) {
@@ -111,6 +113,9 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
       const p=message.payload||{},data=p.data||{},tabId=sender.tab?.id,frameId=Number(sender.frameId||0);
       if(p.kind==="page_seen" && frameId!==0){sendResponse({ok:true,ignored:"subframe_page_seen"});return;}
       if(tabId && frameId===0){
+        if(p.kind==="probe_ready"){
+          await chrome.storage.local.set({bonoBridgeNeedsTabReload:false,bonoBridgeActiveRuntimeVersion:"0.3.9"});
+        }
         if(p.kind==="network_observation"){
           const status=Number(data.status||0);
           let path="";
@@ -166,10 +171,9 @@ async function migrateBridgeRuntime(){
     const key="bonoBridgeRuntimeVersion",version="0.3.9";
     const old=await chrome.storage.local.get(key);
     if(old[key]===version)return;
-    await chrome.storage.local.set({[key]:version});
-    const tabs=await chrome.tabs.query({url:["https://*.uyap.gov.tr/*"]});
-    const active=tabs.find(t=>t.active)||tabs.find(t=>looksLikeApp(t));
-    if(active?.id)await chrome.tabs.reload(active.id);
+    // Extension reload'ı açık UYAP sekmesini kendiliğinden yenilemez.
+    // Yeni content-script kullanıcı/rollout adımında güvenli bir F5 sonrası yüklenir.
+    await chrome.storage.local.set({[key]:version,bonoBridgeNeedsTabReload:true});
   }catch{}
 }
 migrateBridgeRuntime();
