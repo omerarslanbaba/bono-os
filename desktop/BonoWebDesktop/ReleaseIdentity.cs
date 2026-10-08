@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace BonoWebDesktop;
 
-internal sealed record ReleaseIdentity(
+public sealed record ReleaseIdentity(
     string Version,
     string ExeCommit,
     string WebCommit,
