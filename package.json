@@ -7,6 +7,8 @@
     "start": "node bridge/server.js",
     "bridge": "node bridge/server.js",
     "check": "node --check bridge/server.js && node --check bridge/worker.js && node --check bridge/repository.js && node --check bridge/jobs.js && node --check bridge/uyap.js && node --check bridge/v04.js && node --check bridge/v05.js && node --check bridge/v06.js && node --check bridge/v09.js && node --check bridge/workflow_engine.js && node --check bridge/event_bus.js && node --check bridge/udf_adapter.js && node --check bridge/deadline_engine.js && node --check extension/content.js && node --check extension/page_probe.js",
-    "test:uyap": "node scripts/test_uyap_rate.js"
+    "test:uyap": "node scripts/test_uyap_rate.js",
+    "test:uyap-single-case-sync": "node scripts/test_uyap_single_case_sync.js",
+    "test:webview2-uyap-e2e": "node scripts/test_webview2_uyap_single_case_e2e.js"
   }
 }
