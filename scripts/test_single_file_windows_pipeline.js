@@ -23,7 +23,7 @@ async function req(base,url,options={}){const r=await fetch(base+url,{headers:{"
   "db.prepare(\"insert or replace into uyap_endpoints(endpoint_key,method,host,path,purpose,enabled,min_interval_ms) values(?,?,?,?,?,?,?)\").run(\"document.list\",\"POST\",\"avukat.uyap.gov.tr\",\"/dosya_evrak_bilgileri.ajx\",\"docs\",1,0);",
   "db.prepare(\"insert into cases(id,external_id,court,court_file_no,case_type,status,client_name,uyap_dosya_id) values(?,?,?,?,?,?,?,?)\").run(101,\"uyap:fixture:101\",\"Eskişehir Cumhuriyet Başsavcılığı\",\"2026/101\",\"Soruşturma\",\"open\",\"Fixture Müvekkil\",\"DOSYA-101\");",
   "try{db.close()}catch{}"
- ].join("\\n");
+ ].join("\n");
  const seeded=spawnSync(process.execPath,["-e",seed],{cwd:process.cwd(),env,encoding:"utf8"});
  if(seeded.status!==0)throw new Error("seed failed: "+seeded.stderr);
  const server=spawn(process.execPath,["bridge/server.js"],{cwd:process.cwd(),env,stdio:["ignore","pipe","pipe"]});let out="",err="";server.stdout.on("data",d=>out+=d);server.stderr.on("data",d=>err+=d);
@@ -57,7 +57,7 @@ async function req(base,url,options={}){const r=await fetch(base+url,{headers:{"
     "db.prepare(\"insert into asset_locations(asset_id,local_path,source_root) values(?,?,?)\").run(2001,e.PIPE_ARCHIVE,e.PIPE_ARCHIVE_ROOT);",
     "db.prepare(\"update uyap_remote_documents set local_asset_id=?,filed_path=?,remote_hash=?,status=\\\"filed\\\",filed_at=datetime(\\\"now\\\") where id=?\").run(2001,e.PIPE_ARCHIVE,e.PIPE_SHA,Number(e.PIPE_REMOTE));",
     "try{db.close()}catch{}"
-  ].join("\\n");
+  ].join("\n");
   const handEnv={...env,PIPE_SHA:sha(pdf),PIPE_SIZE:String(pdf.length),PIPE_ARCHIVE:archiveFile,PIPE_ARCHIVE_ROOT:archiveRoot,PIPE_REMOTE:String(remoteId)};
   const linked=spawnSync(process.execPath,["-e",handoff],{cwd:process.cwd(),env:handEnv,encoding:"utf8"});
   if(linked.status!==0)throw new Error("synthetic archive handoff failed: "+linked.stderr);
