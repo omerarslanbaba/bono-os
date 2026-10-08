@@ -29,7 +29,7 @@ db.prepare(`insert into uyap_endpoint_observations(method,host,path,status,conte
 );
 db.prepare(`insert into uyap_command_queue(command_type,endpoint_key,payload_json,status,result_json,finished_at)
  values('fetch_json','cbs.units',?,'completed',?,datetime('now'))`).run(
- JSON.stringify({query:{},body:{ilKodu:99},context:{discovery:true,stage:"cbs_units",ilKodu:99}}),
+ JSON.stringify({query:{},body:{ilKodu:1},context:{discovery:true,stage:"cbs_units",ilKodu:1}}),
  JSON.stringify([{birimAdi:"Örnek Cumhuriyet Başsavcılığı",birimId:"9000001"}])
 );
 
@@ -41,11 +41,11 @@ must(units.units.length===1&&units.units[0].birimId==="9000001","observed CBS un
 
 const privateName="Örnek Hedef Kişi";
 const s=uyap.enqueueTargetedCbsPartySearch({
- ilKodu:99,birimId:"9000001",partyName:privateName,statuses:[0],openedFrom:"2026-09-01",openedTo:"2026-10-01",maxCandidates:10
+ ilKodu:1,birimId:"9000001",partyName:privateName,statuses:[0],openedFrom:"2026-09-01",openedTo:"2026-10-01",maxCandidates:10
 });
 must(s.searchId&&s.commandIds.length===1&&!s.dedup,"targeted CBS search not queued");
 const duplicate=uyap.enqueueTargetedCbsPartySearch({
- ilKodu:99,birimId:"9000001",partyName:privateName,statuses:[0],openedFrom:"2026-09-01",openedTo:"2026-10-01",maxCandidates:10
+ ilKodu:1,birimId:"9000001",partyName:privateName,statuses:[0],openedFrom:"2026-09-01",openedTo:"2026-10-01",maxCandidates:10
 });
 must(duplicate.dedup===true&&duplicate.searchId===s.searchId,"targeted CBS duplicate not suppressed");
 const cbsId=s.commandIds[0];
@@ -87,7 +87,7 @@ must(Number(db.prepare("select count(*) n from uyap_command_queue where endpoint
 must(uyap.sessionState().manualDownloadPaused===true,"targeted CBS search cleared manual pause");
 
 let wideBlocked=false;try{uyap.enqueueTargetedCbsPartySearch({
- ilKodu:99,birimId:"9000001",partyName:"Başka Hedef",statuses:[0],openedFrom:"2026-01-01",openedTo:"2026-10-01"
+ ilKodu:1,birimId:"9000001",partyName:"Başka Hedef",statuses:[0],openedFrom:"2026-01-01",openedTo:"2026-10-01"
 })}catch(e){wideBlocked=/120 gün/i.test(String(e.message))}
 must(wideBlocked,"wide date window not rejected");
 
