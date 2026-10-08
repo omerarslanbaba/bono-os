@@ -24,6 +24,9 @@ on:
       - 'bridge/case_document_review.js'
       - 'bridge/archive_safety.js'
       - 'package.json'
+      - 'scripts/test_single_file_windows_pipeline.js'
+      - 'scripts/test_integration_manifest.js'
+      - 'integration/manifest.json'
       - 'bridge/server.js'
       - 'bridge/uyap.js'
       - 'bridge/db.js'
@@ -68,6 +71,12 @@ jobs:
 
       - name: Verify case document inquiry UI
         run: node scripts/test_web_desktop_case_ui.js
+
+      - name: Verify unified integration manifest and contracts
+        run: npm run test:integration-manifest
+
+      - name: Single-file UYAP metadata to isolated Windows archive pipeline
+        run: npm run test:single-file-windows-pipeline
 
       - name: Isolated SQLite document.list lifecycle fixture
         run: npm run test:uyap-single-case-sync
@@ -163,6 +172,8 @@ jobs:
           $web = 'dist/package/web-bundle.zip'
           $exeHash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           $webHash = (Get-FileHash $web -Algorithm SHA256).Hash.ToLowerInvariant()
+          Copy-Item 'integration/manifest.json' 'dist/package/integration-manifest.json' -Force
+          $integrationHash = (Get-FileHash 'dist/package/integration-manifest.json' -Algorithm SHA256).Hash.ToLowerInvariant()
           [ordered]@{
             schemaVersion = 1
             product = 'BONO OS Web Desktop Preview'
@@ -179,11 +190,19 @@ jobs:
             webView2Sdk = '${{ steps.ver.outputs.webview2sdk }}'
             coreHealthUri = 'http://127.0.0.1:47831/health'
             previewOrigin = 'loopback ephemeral same-origin proxy'
+            corePackageVersion = '0.9.0'
+            chromeExtensionVersion = '0.3.6'
+            uiSourceCommit = '313cd1261cc9570b5b7b867bae70b28877bcc2f2'
+            uyapSourceCommit = 'b7d438995d94a6901ba4c83d2bf68ae0ca83c702'
+            archiveSourceCommit = 'dca93cd26cf94bc2d2d379c368f6e45f7a66bf30'
+            integrationManifest = 'integration-manifest.json'
+            integrationManifestSha256 = $integrationHash
             channel = 'preview'
           } | ConvertTo-Json | Set-Content 'dist/package/release-manifest.json' -Encoding utf8
           @(
             "$exeHash  BONO OS Web Desktop.exe",
-            "$webHash  web-bundle.zip"
+            "$webHash  web-bundle.zip",
+            "$integrationHash  integration-manifest.json"
           ) | Set-Content 'dist/package/SHA256SUMS.txt' -Encoding ascii
 
       - name: Verify package through updater
@@ -220,6 +239,7 @@ jobs:
             dist/package/BONO OS Web Desktop.exe
             dist/package/web-bundle.zip
             dist/package/release-manifest.json
+            dist/package/integration-manifest.json
             dist/package/SHA256SUMS.txt
             dist/BONO-OS-WebView2-Preview-*.zip
           retention-days: 14
