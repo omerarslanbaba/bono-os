@@ -66,8 +66,8 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel>
-                    <TextBlock x:Name="PageTitle" Text="Bugün" Foreground="{StaticResource Text}" FontSize="30" FontWeight="SemiBold"/>
-                    <TextBlock x:Name="PageSubtitle" Text="Ofis ve UYAP akışının canlı özeti" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/>
+                    <TextBlock x:Name="PageTitle" Text="Bugün" Visibility="Collapsed" Foreground="{StaticResource Text}" FontSize="30" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="PageSubtitle" Text="Ofis ve UYAP akışının canlı özeti" Visibility="Collapsed" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBox x:Name="GlobalSearch" Width="300" Height="39" VerticalContentAlignment="Center" Margin="0,0,12,0" ToolTip="FÖY, müvekkil veya dosya ara" TextChanged="GlobalSearch_TextChanged"/>
@@ -76,8 +76,10 @@
             </Grid>
 
             <Grid Grid.Row="2">
+                <!-- Web-parity Today workspace; preserve legacy home for rollback. -->
+                <views:TodayWorkspace x:Name="TodayView" Visibility="Visible"/>
                 <!-- HOME -->
-                <ScrollViewer x:Name="HomePage" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer x:Name="HomePage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
                         <UniformGrid Columns="4" Margin="0,0,0,18">
                             <Border Style="{x:Null}" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="16" Margin="0,0,10,0">
