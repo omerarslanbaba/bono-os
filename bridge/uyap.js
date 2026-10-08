@@ -490,7 +490,10 @@ function reportResultUnchecked(id,result={}){
       db.prepare("UPDATE uyap_command_queue SET result_json=? WHERE id=?").run(JSON.stringify(summary),id);
     }
     if(row.endpoint_key==="cbs.search"&&Array.isArray(cleanData)){
-      if(ctx.targetedCbsPartySearch){
+      if(ctx.explicitCbsCaseLookup){
+        // Integration-only scoped listing: retain sanitized [rows,total] for the
+        // user-query adapter. Never bulk-upsert, auto-page or start documents here.
+      }else if(ctx.targetedCbsPartySearch){
         const summary=finalizeTargetedCbsPage(cleanData,ctx,payload);
         db.prepare("UPDATE uyap_command_queue SET result_json=? WHERE id=?").run(JSON.stringify(summary),id);
       }else{
