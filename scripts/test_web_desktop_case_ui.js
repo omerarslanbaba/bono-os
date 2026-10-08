@@ -1,0 +1,15 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const src=fs.readFileSync('web/js/views/active/uyap.js','utf8');
+new vm.Script(src.replace(/^import .*;\s*$/gm,'').replace(/export async function renderUyap/,'async function renderUyap'),{filename:'uyap.js'});
+assert.match(src,/UYAP'tan Evrak Listesini Getir/);
+assert.match(src,/api\.syncUyapDocuments\(id\)/);
+assert.match(src,/Bu işlem PDF\/UDF dosyalarını indirmez/);
+assert.match(src,/result\?\.commandId/);
+assert.match(src,/r\.party_names/);
+assert.match(src,/file\.party_names/);
+assert.match(src,/file\.client_name/);
+assert.doesNotMatch(src,/queueMissingUyapDocuments/);
+const css=fs.readFileSync('web/styles-active.css','utf8');
+assert.match(css,/\.case-sync-panel/);
+assert.match(css,/\.case-parties/);
+console.log('PASS case UI: JS syntax, single-case list inquiry, no automatic download, source-grounded party fields, empty state style');
