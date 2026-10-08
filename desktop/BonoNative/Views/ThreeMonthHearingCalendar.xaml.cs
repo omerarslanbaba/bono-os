@@ -85,7 +85,7 @@ public partial class ThreeMonthHearingCalendar : UserControl
                 {
                     Background = !valid ? Brush("#141619") : items.Count > 0 ? Brush("#18232B") : Panel,
                     BorderBrush = Line, BorderThickness = new Thickness(0, 0, 1, 1),
-                    Padding = new Thickness(5), MinHeight = 93
+                    Padding = new Thickness(4), MinHeight = 72
                 };
                 Grid.SetRow(cell, j / 7);
                 Grid.SetColumn(cell, j % 7);
@@ -106,8 +106,8 @@ public partial class ThreeMonthHearingCalendar : UserControl
                     {
                         Content = new TextBlock
                         {
-                            Text = h.Start.ToString("HH:mm") + " " + h.FileNo,
-                            TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 10,
+                            Text = h.Start.ToString("HH:mm") + "\\n" + h.FileNo,
+                            TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.Wrap, FontSize = 10,
                             Foreground = Brush("#DCEFF8")
                         },
                         Background = Brush("#12303D"), BorderBrush = Brush("#19AEE6"),
