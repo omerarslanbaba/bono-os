@@ -5,6 +5,10 @@ on:
     branches: [feature/desktop-webview2]
     paths:
       - 'desktop/BonoWebDesktop/**'
+      - 'desktop/BonoWebDesktop.Smoke/**'
+      - 'web/**'
+      - 'scripts/test_web_desktop_case_ui.js'
+      - 'scripts/test_web_desktop_hearings.js'
       - 'scripts/web_desktop_updater.ps1'
       - 'scripts/test_web_desktop_updater.ps1'
       - 'docs/web-desktop-update.md'
@@ -37,10 +41,20 @@ jobs:
           "short=$short" >> $env:GITHUB_OUTPUT
           "webview2sdk=$sdk" >> $env:GITHUB_OUTPUT
 
+      - name: Verify month-only hearing calendar source
+        run: node scripts/test_web_desktop_hearings.js
+
       - name: Verify case document inquiry UI
         run: node scripts/test_web_desktop_case_ui.js
+
       - name: Restore WebView2 project
         run: dotnet restore desktop/BonoWebDesktop/BonoWebDesktop.csproj -r win-x64
+
+      - name: Restore headless integration smoke
+        run: dotnet restore desktop/BonoWebDesktop.Smoke/BonoWebDesktop.Smoke.csproj
+
+      - name: Test bundled UI origin and Core API proxy
+        run: dotnet run --project desktop/BonoWebDesktop.Smoke/BonoWebDesktop.Smoke.csproj -c Release --no-restore -- web
 
       - name: Publish self-contained single-file preview
         shell: pwsh
@@ -54,40 +68,62 @@ jobs:
             -p:InformationalVersion="${{ steps.ver.outputs.version }}+${{ steps.ver.outputs.short }}" `
             -o dist/package
 
+      - name: Create versioned web source bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'dist/web-source' | Out-Null
+          Copy-Item 'web/*' 'dist/web-source/' -Recurse -Force
+          [ordered]@{
+            product = 'BONO OS Web UI'
+            commit = '${{ github.sha }}'
+            shortCommit = '${{ steps.ver.outputs.short }}'
+            builtAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+          } | ConvertTo-Json | Set-Content 'dist/web-source/__bono_web_version.json' -Encoding utf8
+          Compress-Archive -Path 'dist/web-source/*' -DestinationPath 'dist/package/web-bundle.zip'
+
       - name: Verify single executable binary
         shell: pwsh
         run: |
           $exe = 'dist/package/BONO OS Web Desktop.exe'
           if (!(Test-Path $exe)) { throw 'Expected WebView2 EXE missing' }
+          if (!(Test-Path 'dist/package/web-bundle.zip')) { throw 'Expected versioned web bundle missing' }
           $allExe = @(Get-ChildItem 'dist/package' -Recurse -File -Filter '*.exe')
           if ($allExe.Count -ne 1) { throw "Expected exactly one EXE binary, found $($allExe.Count)" }
           $dlls = @(Get-ChildItem 'dist/package' -Recurse -File -Filter '*.dll')
           if ($dlls.Count -ne 0) {
             $dlls | ForEach-Object { Write-Host $_.FullName }
-            throw "Publish left external DLLs; single-file preview is not self-contained as expected."
+            throw 'Publish left external DLLs; single-file preview is not self-contained as expected.'
           }
-          Get-ChildItem 'dist/package' -Recurse -File | ForEach-Object { Write-Host $_.FullName }
 
-      - name: Create versioned manifest and SHA-256
+      - name: Create EXE and web integrity manifest
         shell: pwsh
         run: |
           $exe = 'dist/package/BONO OS Web Desktop.exe'
-          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $web = 'dist/package/web-bundle.zip'
+          $exeHash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $webHash = (Get-FileHash $web -Algorithm SHA256).Hash.ToLowerInvariant()
           [ordered]@{
             schemaVersion = 1
             product = 'BONO OS Web Desktop Preview'
             version = '${{ steps.ver.outputs.version }}'
             commit = '${{ github.sha }}'
             shortCommit = '${{ steps.ver.outputs.short }}'
+            webCommit = '${{ github.sha }}'
             builtAtUtc = (Get-Date).ToUniversalTime().ToString('o')
             executable = 'BONO OS Web Desktop.exe'
-            sha256 = $hash
+            sha256 = $exeHash
+            webBundle = 'web-bundle.zip'
+            webSha256 = $webHash
             webView2Runtime = 'Evergreen required'
             webView2Sdk = '${{ steps.ver.outputs.webview2sdk }}'
             coreHealthUri = 'http://127.0.0.1:47831/health'
+            previewOrigin = 'loopback ephemeral same-origin proxy'
             channel = 'preview'
           } | ConvertTo-Json | Set-Content 'dist/package/release-manifest.json' -Encoding utf8
-          "$hash  BONO OS Web Desktop.exe" | Set-Content 'dist/package/SHA256SUMS.txt' -Encoding ascii
+          @(
+            "$exeHash  BONO OS Web Desktop.exe",
+            "$webHash  web-bundle.zip"
+          ) | Set-Content 'dist/package/SHA256SUMS.txt' -Encoding ascii
 
       - name: Verify package through updater
         shell: pwsh
@@ -98,14 +134,16 @@ jobs:
         shell: pwsh
         run: ./scripts/test_web_desktop_updater.ps1
 
-      - name: Core and WebView2 runtime smoke
+      - name: Core and WebView2 runtime source smoke
         shell: pwsh
         run: |
           $source = Get-Content 'desktop/BonoWebDesktop/MainWindow.xaml.cs' -Raw
-          if (-not $source.Contains('new Uri(AppUri, "health")')) { throw 'Core /health preflight missing' }
+          if (-not $source.Contains('new Uri(CoreUri, "health")')) { throw 'Core /health preflight missing' }
           if (-not $source.Contains('CoreWebView2Environment.GetAvailableBrowserVersionString()')) { throw 'WebView2 Runtime detection missing' }
           if (-not $source.Contains('WebView2RuntimeNotFoundException')) { throw 'WebView2 Runtime missing-state handling missing' }
-          if (-not $source.Contains('BONO Core çalışmıyor')) { throw 'Explicit Core unavailable message missing' }
+          if (-not $source.Contains('WebBundleManager.Prepare')) { throw 'Versioned web bundle loader missing' }
+          if (-not $source.Contains('LocalPreviewServer.StartAsync')) { throw 'Same-origin local preview server missing' }
+          if ($source.Contains('Browser.Source = CoreUri')) { throw 'Browser still navigates directly to live Core UI' }
           if ($source.Contains('Process.Start') -or $source.Contains('Process.Kill')) { throw 'Desktop preview must not start/stop Core processes' }
 
       - name: Package preview ZIP
@@ -119,6 +157,7 @@ jobs:
           name: bono-os-webview2-preview-${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.short }}
           path: |
             dist/package/BONO OS Web Desktop.exe
+            dist/package/web-bundle.zip
             dist/package/release-manifest.json
             dist/package/SHA256SUMS.txt
             dist/BONO-OS-WebView2-Preview-*.zip
