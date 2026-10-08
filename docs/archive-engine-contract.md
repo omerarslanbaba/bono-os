@@ -72,3 +72,33 @@ Canlı worktree farkında `bridge/worker.js` içindeki üç `uyap.enqueuePending
 - Vekaletnameler gibi merkezi kaynak klasörleri normal archive-root dışı istisna olarak audit edilir.
 - `Downloads` içindeki tek fiziksel kopya her zaman warning kabul edilir.
 - Integrity checker varsayılan olarak salt-okumadır.
+
+## Cross-branch fixture gate
+
+Chat-UYAP düzeltmeleri archive branch'e merge edilmeden de test edilebilir.
+
+Örnek:
+
+```powershell
+node scripts/archive_download_contract_gate.js --uyap-module "<uyap-worktree>\bridge\uyap.js"
+```
+
+Gate fixture DB kullanır; canlı UYAP oturumu, canlı kuyruk ve canlı veritabanı gerekmez.
+
+Gate'in minimum kabul koşulları:
+- ilk çağrı 200 uygun evrakta tam 200 queue edebilmeli
+- aynı case için ikinci eşzamanlı trigger active toplamını 200'ün üzerine çıkaramamalı
+- ilk batch tamamlandıktan sonra kalan evrak sonraki batch ile alınabilmeli
+- failed/cancelled download command ingest tarafından reddedilmeli; staging/filed oluşmamalı
+- staging -> canonical hash ve byte-size bütünlüğü korunmalı
+- UDF byte bütünlüğü korunmalı
+- duplicate aynı canonical target'ı yalnız doğrulanmış aynı hashte reuse etmeli
+
+## Canonical case-scope güvenliği
+
+Exact-hash duplicate tek başına başka dava klasöründeki fiziksel target'ı reuse etmek için yeterli değildir. Hedef path beklenen dava archive klasörü içinde olmalıdır. `archive_safety.copyVerifiedIntoCase()` bu invariantı fixture/test yardımcı katmanında uygular:
+- aynı hash + doğru case target -> reuse edilebilir
+- aynı hash + yanlış case target -> reddedilir
+- aynı isim + farklı içerik -> overwrite edilmez
+- yarım/bozuk source -> mevcut canonical target korunur
+- staging'den ikinci işleme -> yeni duplicate fiziksel dosya üretilmez
