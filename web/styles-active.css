@@ -435,3 +435,19 @@ a.search-hit:hover,
 .case-sync-copy>small{display:block;color:#76bbd5;font-size:11px;line-height:1.5}
 .case-sync-panel button{white-space:nowrap;flex-shrink:0}
 @media(max-width:760px){.case-sync-panel{flex-direction:column;align-items:stretch}.case-sync-panel button{width:100%}}
+
+
+/* Case document overview: UI-only, awaiting Core lifecycle integration. */
+.case-document-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:13px 0}
+.case-document-summary>div{padding:14px 16px;background:#1b2025;border:1px solid #333d43;border-radius:5px;display:flex;flex-direction:column;gap:5px}
+.case-document-summary strong{font-size:21px;color:#f1f6f8;font-variant-numeric:tabular-nums}
+.case-document-summary span{font-size:11px;color:#aebfc7}
+.case-document-guidance{display:flex;gap:13px;align-items:flex-start;background:#16242b;border:1px dashed #3b6574;border-radius:5px;padding:18px;margin:12px 0 16px}
+.case-document-guidance-icon{font-size:24px;color:#50c7f2}
+.case-document-guidance strong{font-size:13px;color:#eaf4f7}
+.case-document-guidance p{font-size:12px;line-height:1.55;color:#b0c4cd;margin:7px 0 0}
+.case-download-controls{display:flex;align-items:center;justify-content:space-between;gap:15px;margin:13px 0 0;padding:14px 16px;background:#1b1d21;border:1px solid #34393f;border-radius:5px}
+.case-download-controls strong{font-size:12px;color:#e8edef}
+.case-download-controls p{margin:6px 0 0;max-width:700px;font-size:11px;color:#abb6bf;line-height:1.55}
+.case-download-pending{font-size:11px;color:#9da7ae;white-space:nowrap;border:1px solid #41494f;padding:7px 10px;border-radius:4px}
+@media(max-width:800px){.case-document-summary{grid-template-columns:1fr}.case-download-controls{flex-direction:column;align-items:stretch}.case-download-pending{white-space:normal}}
