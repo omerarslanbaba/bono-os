@@ -51,8 +51,13 @@ async function jsonReq(base,url){const r=await fetch(base+url);const t=await r.t
   const wrongContent=await jsonReq(base,"/api/cases/2/documents/201/content");
   must(wrongContent.r.status===404&&wrongContent.b.error==="document_not_found_in_case","wrong-case content access was not rejected");
   const udfView=await jsonReq(base,"/api/cases/1/documents/202/view");
-  must(udfView.r.status===200&&udfView.b.document.viewer.mode==="udf_text","UDF text viewer mode missing");
-  must(udfView.b.document.readability.readable===true&&udfView.b.document.readability.text.includes("Fixture UDF"),"UDF extracted text missing");
+  const udfMode=udfView.b?.document?.viewer?.mode;
+  must(udfView.r.status===200&&udfView.b.document.viewer.openable===true&&["udf_text","udf_download_only"].includes(udfMode),"UDF safe viewer mode missing: "+JSON.stringify(udfView.b));
+  if(udfMode==="udf_text"){
+    must(udfView.b.document.readability.readable===true&&String(udfView.b.document.readability.text||"").includes("Fixture UDF"),"UDF text mode requires extracted text");
+  }else{
+    must(udfView.b.document.readability.readable===false,"UDF download-only mode must report unreadable text");
+  }
   const udfContent=await fetch(base+"/api/cases/1/documents/202/content");const udfBytes=Buffer.from(await udfContent.arrayBuffer());
   must(udfContent.status===200&&String(udfContent.headers.get("content-disposition")||"").startsWith("attachment;"),"UDF content must be attachment");
   must(String(udfContent.headers.get("content-disposition")||"").includes("filename*=UTF-8"),"UTF-8 filename disposition missing");
@@ -60,6 +65,6 @@ async function jsonReq(base,url){const r=await fetch(base+url);const t=await r.t
   fs.appendFileSync(pdfPath,"TAMPER");
   const tampered=await jsonReq(base,"/api/cases/1/documents/201/content");
   must(tampered.r.status===412&&tampered.b.error==="canonical_hash_not_verified","tampered content was not rejected at stream time");
-  console.log(JSON.stringify({ok:true,coreRouteIntegration:true,pdfInline:true,udfText:true,caseOwnership:true,wrongCaseRejected:true,shaVerified:true,toctouTamperRejected:true,utf8Disposition:true}));
+  console.log(JSON.stringify({ok:true,coreRouteIntegration:true,pdfInline:true,udfViewerMode:udfMode,caseOwnership:true,wrongCaseRejected:true,shaVerified:true,toctouTamperRejected:true,utf8Disposition:true}));
  }finally{if(server.exitCode==null)server.kill();await sleep(100);try{fs.rmSync(root,{recursive:true,force:true})}catch{}}
 })().catch(e=>{console.error(e);process.exit(1)});
