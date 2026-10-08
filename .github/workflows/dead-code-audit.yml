@@ -89,12 +89,14 @@ jobs:
           npm run test:uyap-batch-safety
           npm run test:webview2-uyap-targeted-e2e
 
-      - name: Archive regressions
-        shell: pwsh
-        run: |
-          npm run test:document-view-service
-          npm run test:document-view-http
-          npm run test:webview2-archive-route-e2e
+      - name: Archive document view service contract
+        run: npm run test:document-view-service
+
+      - name: Archive document view HTTP security contract
+        run: npm run test:document-view-http
+
+      - name: Core route PDF UDF ownership and SHA E2E
+        run: npm run test:webview2-archive-route-e2e
 
       - name: Restore WebView2 projects
         shell: pwsh
