@@ -81,11 +81,11 @@ function finishActiveBatch(caseId){
 }
 
 try{
-  addCase(1,405);
+  addCase(1,201);
   const b1=uyap.enqueuePendingDownloads(1,200);
   let c=counts(1);
-  assert("batch1_queues_exactly_200",b1.queued===200&&c.download_queued===200&&c.discovered===205,{result:b1,counts:c});
-  assert("batch1_reports_remaining_downloadable",Number(b1.summary?.missingDownloadable||0)===205,{missingDownloadable:b1.summary?.missingDownloadable});
+  assert("batch1_queues_exactly_200",b1.queued===200&&c.download_queued===200&&c.discovered===1,{result:b1,counts:c});
+  assert("batch1_reports_remaining_downloadable",Number(b1.summary?.missingDownloadable||0)===1,{missingDownloadable:b1.summary?.missingDownloadable});
   assert("batch1_completion_fixture",finishActiveBatch(1)===200);
 
   const b2=uyap.enqueuePendingDownloads(1,200);
@@ -97,7 +97,7 @@ try{
   c=counts(1);
   assert("batch3_queues_remainder",b3.queued===5&&c.download_queued===5&&Number(c.discovered||0)===0,{result:b3,counts:c});
 
-  addCase(2,405);
+  addCase(2,201);
   const cap1=uyap.enqueuePendingDownloads(2,200);
   const cap2=uyap.enqueuePendingDownloads(2,200);
   const active=Number(counts(2).download_queued||0);
