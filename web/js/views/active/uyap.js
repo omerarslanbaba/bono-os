@@ -221,13 +221,28 @@ async function renderCase(id){
     :(syncBusy?(syncStatus.state==='queued'?'Sorgu Bekliyor':'Sorgulanıyor…'):'↻ Evrak Listesini Yenile');
   const canSync=!!file.uyap_dosya_id&&!syncBusy&&syncStatus.state!=='login_required';
 
+  const documentSummary=`<div class="case-document-summary" aria-label="Evrak durumları">
+    <div><strong>${docs.length}</strong><span>UYAP evrak kaydı</span></div>
+    <div><strong>${docs.filter(d=>!!d.local_asset_id).length}</strong><span>BONO'da</span></div>
+    <div><strong>${docs.filter(d=>!d.local_asset_id).length}</strong><span>Henüz indirilmemiş</span></div>
+  </div>`;
+  const documentGuidance=`<div class="case-document-guidance">
+    <div class="case-document-guidance-icon">▤</div>
+    <div><strong>${docs.length?'Evrakları incelemeye hazır':'Evrak listesi boş'}</strong>
+    <p>${docs.length?'Listeleme tamamlanmıştır anlamına gelmez; UYAP sorgusuyla yeni kayıtları kontrol edebilirsiniz.':esc(lifecycleText[syncStatus.state]||syncMessage)}</p></div>
+  </div>`;
+  const downloadControls=`<div class="case-download-controls">
+    <div><strong>Evrak indirme</strong><p>Liste sorgusu evrak indirmez. Eksik evrak indirme işlemleri yalnız ayrıca onay verilerek ve UYAP motorunun güvenlik kontrollerinden geçerek başlayabilir.</p></div>
+    <span class="case-download-pending">İndirme kontrolü · Entegrasyon bekleniyor</span>
+  </div>`;
+
   const tabs=`<div class="case-tabs"><button class="case-tab active" data-file-tab="documents">Evraklar <span>${docs.length}</span></button><button class="case-tab" data-file-tab="finance">Tahsilat / Reddiyat <span>${(finance.counts?.converted||0)+(finance.counts?.pending||0)}</span></button></div>`;
   const related=(file.related_cases||[]).map(x=>`<a class="notice-row clickable" href="#uyap/${x.caseId}"><div><div class="doc-title">Bağlantılı Arabuluculuk Dosyası · ${esc(x.courtFileNo||'')}</div><div class="doc-meta">${esc(x.court||'')} · ${esc(x.caseType||'')} · ${esc(x.status||'')}</div></div><span>→</span></a>`).join('');
 
   mount(`<div class="case-header"><a class="back-link" href="#uyap">← Dosyalarıma dön</a><h1><span class="foy-badge ${file.office_file_no?'':'pending'}">${esc(file.office_file_no||'Föy Bekliyor')}</span>${esc(file.court||'Dosya')} ${file.court_file_no?'· '+esc(file.court_file_no):''}</h1><p class="detail-subtitle">${esc(file.case_type||'Dosya içeriği')}</p><div class="case-parties"><strong>Taraf Bilgileri</strong><div>${file.client_name?`<span><b>Müvekkil:</b> ${esc(file.client_name)}</span>`:''}${file.party_names?`<span><b>Kayıtlı taraflar:</b> ${esc(file.party_names)}</span>`:'<span>UYAP taraf bilgisi henüz kaydedilmemiş.</span>'}</div></div>${related?`<div class="related-case-list">${related}</div>`:''}</div>
     <div class="case-sync-panel ${docs.length?'has-documents':'is-empty'}"><div class="case-sync-copy"><strong>${docs.length?'Evrak listesini güncelle':'Bu dosyanın evrak listesi henüz alınmamış'}</strong><p>${docs.length?'Yeni evrak olup olmadığını UYAP üzerinden sorgulayabilirsin.':'UYAP üzerinden yalnız bu dosyanın evrak listesini sorgula. Bu işlem PDF/UDF dosyalarını indirmez.'}</p><small id="syncUyapStatus" role="status" aria-live="polite">${esc(syncMessage)}</small></div><button id="syncUyapDocs" type="button" class="primary-action" ${canSync?'':'disabled'}>${syncButtonLabel}</button></div>
     ${tabs}
-    <div class="file-tab-panel" data-file-panel="documents">${section('Evraklar','▤',documentBody)}</div>
+    <div class="file-tab-panel" data-file-panel="documents">${documentSummary}${docs.length?'':documentGuidance}${section('Evraklar','▤',documentBody)}${downloadControls}</div>
     <div class="file-tab-panel" data-file-panel="finance" hidden>${financeBody}</div>`,'uyap');
 
   document.querySelectorAll('[data-file-tab]').forEach(b=>b.onclick=()=>{const tab=b.dataset.fileTab;document.querySelectorAll('[data-file-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('[data-file-panel]').forEach(p=>p.hidden=p.dataset.filePanel!==tab)});
