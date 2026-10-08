@@ -51,9 +51,9 @@ async function main(){
     const udf=path.join(case1Dir,"Duruşma Tutanağı.udf");
     const blank=path.join(case1Dir,"Tarama.pdf");
     const corrupt=path.join(case1Dir,"Bozuk.pdf");
-    makePdf(pdf1,"PDF FIXTURE METNI DOSYA BIR SAYFA BIR");
-    makePdf(pdf2,"PDF IKINCI EVRAK AYNI ISIM FARKLI ICERIK");
-    makePdf(pdfWrong,"WRONG CASE SECRET CONTENT");
+    makePdf(pdf1,"PDF FIXTURE METNI DOSYA BIR SAYFA BIR UZUN OKUNABILIR BELGE ICERIGI");
+    makePdf(pdf2,"PDF IKINCI EVRAK AYNI ISIM FARKLI ICERIK VE YETERLI UZUNLUKTA METIN");
+    makePdf(pdfWrong,"WRONG CASE SECRET CONTENT SHOULD NEVER ENTER REQUESTED CASE REVIEW");
     makeBlankPdf(blank);
     makeUdf(udf,"DURUŞMA ZAPTI\n\nAÇIKLAMALAR\nUDF FIXTURE METNI VE TANIK BEYANI\n\nSONUÇ VE İSTEM\nTalep sonucu.");
     fs.writeFileSync(corrupt,Buffer.from("%PDF-corrupt"));
