@@ -22,6 +22,7 @@ export const api={
   startUyapArchive:()=>request('/api/uyap/archive/start',{method:'POST',body:'{}'}),
   uyapCases:()=>request('/api/uyap/cases'),
   uyapRemoteDocuments:caseId=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/remote-documents'),
+  uyapDocumentSyncStatus:caseId=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/document-sync-status'),
   syncUyapDocuments:caseId=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/sync-documents',{method:'POST',body:'{}'}),
-  downloadUyapDocument:id=>request('/api/uyap/remote-documents/'+encodeURIComponent(id)+'/download',{method:'POST',body:'{}'})
+  downloadUyapDocument:id=>request('/api/uyap/remote-documents/'+encodeURIComponent(id)+'/download',{method:'POST',body:JSON.stringify({confirmed:true})})
 };
