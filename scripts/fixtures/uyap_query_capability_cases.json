@@ -1,0 +1,126 @@
+{
+  "fixtureMetadata": {
+    "synthetic": true,
+    "liveUyapEvidence": false,
+    "warning": "Bu dosya yalnız capability sözleşmesini test eder; içindeki liveObserved=true senaryoları simülasyondur ve gerçek UYAP kanıtı değildir."
+  },
+  "scenarios": [
+    {
+      "name": "court_document_list_ready_simulation",
+      "input": {
+        "case": {"caseKind": "court", "court": "Fixture İş Mahkemesi"},
+        "operation": "document_list_query",
+        "caseIdentity": {"state": "verified", "verified": true, "liveObserved": true, "sourceType": "authorized_observation", "identity": {"uyapDosyaId": "OPAQUE-COURT-1"}},
+        "flowEvidence": {"caseSearch": {"schemaVerified": true, "liveObserved": true, "sourceType": "authorized_observation"}},
+        "documentListEvidence": {"endpointObserved": true, "responseObserved": true, "responseShapeRecognized": true, "responseShape": "tumEvraklar.array", "method": "POST", "path": "/list_dosya_evraklar.ajx", "liveObserved": true, "sourceType": "authorized_observation", "caseKinds": ["court"]},
+        "session": {"state": "ready"}
+      },
+      "expect": {"caseKind": "court", "supportState": "supported", "availabilityState": "ready", "canQueryDocumentList": true, "canBindDocuments": false, "primaryBlocker": null, "safeNextAction": "RUN_DOCUMENT_LIST_READ_ONLY"}
+    },
+    {
+      "name": "court_login_required",
+      "input": {
+        "case": {"caseKind": "court"},
+        "operation": "document_list_query",
+        "caseIdentity": {"state": "verified", "verified": true, "liveObserved": true, "sourceType": "authorized_observation", "identity": {"uyapDosyaId": "OPAQUE-COURT-2"}},
+        "flowEvidence": {"caseSearch": {"schemaVerified": true, "liveObserved": true, "sourceType": "authorized_observation"}},
+        "documentListEvidence": {"endpointObserved": true, "responseObserved": true, "responseShapeRecognized": true, "method": "POST", "path": "/list_dosya_evraklar.ajx", "liveObserved": true, "sourceType": "authorized_observation"},
+        "session": {"state": "login_required"}
+      },
+      "expect": {"supportState": "supported", "availabilityState": "blocked", "canQueryDocumentList": false, "primaryBlocker": "SESSION_LOGIN_REQUIRED", "safeNextAction": "RESTORE_UYAP_SESSION"}
+    },
+    {
+      "name": "court_transient_failure",
+      "input": {
+        "case": {"caseKind": "court"},
+        "operation": "document_list_query",
+        "caseIdentity": {"state": "verified", "verified": true, "liveObserved": true, "sourceType": "authorized_observation", "identity": {"uyapDosyaId": "OPAQUE-COURT-3"}},
+        "flowEvidence": {"caseSearch": {"schemaVerified": true, "liveObserved": true, "sourceType": "authorized_observation"}},
+        "documentListEvidence": {"endpointObserved": true, "responseObserved": true, "responseShapeRecognized": true, "method": "POST", "path": "/list_dosya_evraklar.ajx", "liveObserved": true, "sourceType": "authorized_observation"},
+        "session": {"state": "ready"},
+        "lastFailure": {"kind": "transient", "status": 503, "message": "temporary upstream failure"}
+      },
+      "expect": {"supportState": "supported", "availabilityState": "blocked", "canQueryDocumentList": false, "primaryBlocker": "TRANSIENT_UYAP_ERROR", "safeNextAction": "RETRY_READ_ONLY_QUERY"}
+    },
+    {
+      "name": "identity_mismatch_blocks_query",
+      "input": {
+        "case": {"caseKind": "court"},
+        "operation": "document_list_query",
+        "caseIdentity": {"state": "mismatch", "verified": false, "reason": "opaque_case_id_mismatch", "liveObserved": true, "sourceType": "authorized_observation"},
+        "flowEvidence": {"caseSearch": {"schemaVerified": true, "liveObserved": true, "sourceType": "authorized_observation"}},
+        "documentListEvidence": {"endpointObserved": true, "responseObserved": true, "responseShapeRecognized": true, "method": "POST", "path": "/list_dosya_evraklar.ajx", "liveObserved": true, "sourceType": "authorized_observation"},
+        "session": {"state": "ready"}
+      },
+      "expect": {"supportState": "supported", "availabilityState": "blocked", "canQueryDocumentList": false, "primaryBlocker": "IDENTITY_MISMATCH", "safeNextAction": "REVIEW_IDENTITY"}
+    },
+    {
+      "name": "cbs_direct_number_is_unsupported",
+      "input": {
+        "case": {"caseKind": "cbs"},
+        "operation": "discover_case",
+        "discoveryMode": "investigation_number",
+        "flowEvidence": {
+          "cbsSearch": {"schemaVerified": true, "liveObserved": true, "sourceType": "authorized_observation"},
+          "cbsPartyLookup": {"schemaVerified": true, "liveObserved": true, "sourceType": "authorized_observation"}
+        },
+        "session": {"state": "ready"}
+      },
+      "expect": {"caseKind": "cbs", "supportState": "unsupported", "availabilityState": "unsupported", "canDiscoverCase": false, "primaryBlocker": "DIRECT_CBS_NUMBER_FLOW_UNSUPPORTED", "safeNextAction": "USE_CBS_PARTY_SEARCH"}
+    },
+    {
+      "name": "cbs_mixed_ownership_blocks_binding",
+      "input": {
+        "case": {"caseKind": "cbs"},
+        "operation": "bind_documents",
+        "caseIdentity": {"state": "verified", "verified": true, "liveObserved": true, "sourceType": "authorized_observation", "identity": {"uyapDosyaId": "OPAQUE-CBS-1"}},
+        "flowEvidence": {
+          "cbsSearch": {"schemaVerified": true, "liveObserved": true, "sourceType": "authorized_observation"},
+          "cbsPartyLookup": {"schemaVerified": true, "liveObserved": true, "sourceType": "authorized_observation"}
+        },
+        "documentListEvidence": {"endpointObserved": true, "responseObserved": true, "responseShapeRecognized": true, "method": "POST", "path": "/list_dosya_evraklar.ajx", "responseShape": "tumEvraklar.grouped", "liveObserved": true, "sourceType": "authorized_observation"},
+        "ownershipEvidence": {"liveObserved": true, "sourceType": "authorized_observation"},
+        "documentListResponse": {"tumEvraklar": {"SORUŞTURMA EVRAKLARI": [{"evrakId": "OWN-1", "dosyaId": "OPAQUE-CBS-1"}], "TALİMAT EVRAKLARI": [{"evrakId": "FOREIGN-1", "dosyaId": "OPAQUE-TALIMAT-1"}]}},
+        "session": {"state": "ready"}
+      },
+      "expect": {"supportState": "supported", "availabilityState": "blocked", "canBindDocuments": false, "primaryBlocker": "OWNERSHIP_MIXED_OR_UNVERIFIED", "safeNextAction": "VALIDATE_DOCUMENT_OWNERSHIP", "groupLabelMayProveOwnership": false}
+    },
+    {
+      "name": "enforcement_document_flow_waits_for_live_scope",
+      "input": {
+        "case": {"caseKind": "enforcement"},
+        "operation": "document_list_query",
+        "caseIdentity": {"state": "verified", "verified": true, "liveObserved": true, "sourceType": "authorized_observation", "identity": {"uyapDosyaId": "OPAQUE-ICRA-1"}},
+        "documentListEvidence": {"endpointObserved": true, "responseObserved": true, "responseShapeRecognized": true, "method": "POST", "path": "/list_dosya_evraklar.ajx", "liveObserved": true, "sourceType": "authorized_observation", "caseKinds": ["court"]},
+        "session": {"state": "ready"}
+      },
+      "expect": {"caseKind": "enforcement", "supportState": "verification_pending", "availabilityState": "verification_pending", "canQueryDocumentList": false, "primaryBlocker": "ENFORCEMENT_DOCUMENT_FLOW_UNVERIFIED", "safeNextAction": "OBSERVE_ENFORCEMENT_FLOW"}
+    },
+    {
+      "name": "instruction_direct_flow_unsupported",
+      "input": {
+        "case": {"caseKind": "instruction"},
+        "operation": "discover_case",
+        "session": {"state": "ready"}
+      },
+      "expect": {"caseKind": "instruction", "supportState": "unsupported", "availabilityState": "unsupported", "canDiscoverCase": false, "primaryBlocker": "TALIMAT_DIRECT_FLOW_UNSUPPORTED", "safeNextAction": "OBSERVE_TALIMAT_FLOW"}
+    },
+    {
+      "name": "case93_fixture_must_not_be_live_verified",
+      "input": {
+        "case": {"caseKind": "cbs", "caseId": 93},
+        "operation": "document_list_query",
+        "caseIdentity": {"state": "verified", "verified": true, "liveObserved": false, "sourceType": "synthetic_fixture", "identity": {"uyapDosyaId": "FIXTURE-CASE93-DOSYA-ID"}},
+        "flowEvidence": {
+          "cbsSearch": {"schemaVerified": true, "liveObserved": true, "sourceType": "authorized_observation"},
+          "cbsPartyLookup": {"schemaVerified": true, "liveObserved": true, "sourceType": "authorized_observation"}
+        },
+        "documentListEvidence": {"endpointObserved": true, "responseObserved": true, "responseShapeRecognized": true, "method": "POST", "path": "/list_dosya_evraklar.ajx", "liveObserved": false, "sourceType": "synthetic_fixture"},
+        "ownershipEvidence": {"liveObserved": false, "sourceType": "synthetic_fixture"},
+        "documentListResponse": {"tumEvraklar": [{"evrakId": "FIXTURE-EVR-1", "dosyaId": "FIXTURE-CASE93-DOSYA-ID"}]},
+        "session": {"state": "ready"}
+      },
+      "expect": {"caseKind": "cbs", "supportState": "supported", "availabilityState": "verification_pending", "identityState": "verification_pending", "identityLiveVerified": false, "documentEvidenceVerified": false, "canQueryDocumentList": false, "canBindDocuments": false, "primaryBlocker": "IDENTITY_LIVE_EVIDENCE_REQUIRED", "safeNextAction": "RUN_VERIFIED_DISCOVERY_FLOW"}
+    }
+  ]
+}
