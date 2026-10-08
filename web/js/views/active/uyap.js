@@ -1,5 +1,6 @@
 import {api} from '../../api.js';
 import {mount,pageHero,section,empty,esc,badge} from '../../ui.js';
+import {mountCbsCaseHandoff} from './cbs-case-handoff.js';
 
 function discoveryBar(s,a){
   const active=(s.queued||0)+(s.running||0);
@@ -212,7 +213,7 @@ function bindQuery(rows){
 
 export async function renderUyap(id){
   if(id)return renderCase(id);
-  const [rows,status,archive,searchOptions]=await Promise.all([api.uyapCases(),api.uyapDiscoveryStatus(),api.uyapArchiveStatus(),api.uyapCaseSearchOptions().catch(()=>({ready:false,units:[]}))]);
+  const [rows,status,archive,searchOptions,cbsSchema]=await Promise.all([api.uyapCases(),api.uyapDiscoveryStatus(),api.uyapArchiveStatus(),api.uyapCaseSearchOptions().catch(()=>({ready:false,units:[]})),api.uyapCbsPartySearchSchema().catch(()=>({ready:false}))]);
   const counts={};for(const r of rows){const c=caseCategory(r);counts[c]=(counts[c]||0)+1}
   const order=['Ceza','Hukuk','İş','Aile','İcra','Tüketici','İdare','Diğer'];
   const cats=['Tümü',...order.filter(x=>counts[x])];
@@ -224,6 +225,7 @@ export async function renderUyap(id){
   mount(pageHero('Dosyalarım','Dosyaları yargı türü, birimi, mahkemesi ve esas numarasıyla sorgula.')+
     queryForm(rows)+targetedSearchForm(searchOptions)+discoveryBar(status,archive)+section('Dosya Sorgulama Sonuçları','⚖',body),'uyap');
   bindQuery(rows);
+  mountCbsCaseHandoff(api,cbsSchema);
   bindTargetedCaseSearch();
   // Sorgulama filtreleri bindQuery tarafından yönetilir.
   document.querySelector('#syncAllUyap')?.addEventListener('click',async e=>{
