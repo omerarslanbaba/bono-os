@@ -1,5 +1,6 @@
 import {mountUserQueries,mountGlobalQueryHistory} from './user-queries.js';
 import {api} from '../../api.js';
+import {inventoryState,inventoryTotals} from '../../inventory-state.mjs';
 import {mount,pageHero,section,empty,esc,badge} from '../../ui.js';
 import {mountCbsCaseHandoff} from './cbs-case-handoff.js';
 
@@ -215,6 +216,7 @@ function bindQuery(rows){
 export async function renderUyap(id){
   if(id)return renderCase(id);
   const [rows,status,archive,searchOptions,cbsSchema]=await Promise.all([api.uyapCases(),api.uyapDiscoveryStatus(),api.uyapArchiveStatus(),api.uyapCaseSearchOptions().catch(()=>({ready:false,units:[]})),api.uyapCbsPartySearchSchema().catch(()=>({ready:false}))]);
+  const inv=inventoryTotals(rows);
   const counts={};for(const r of rows){const c=caseCategory(r);counts[c]=(counts[c]||0)+1}
   const order=['Ceza','Hukuk','İş','Aile','İcra','Tüketici','İdare','Diğer'];
   const cats=['Tümü',...order.filter(x=>counts[x])];
@@ -223,8 +225,9 @@ export async function renderUyap(id){
     <div><div class="doc-title"><span class="foy-badge ${r.office_file_no?'':'pending'}">${esc(r.office_file_no||'Föy Bekliyor')}</span>${esc(r.court||'Dosya')} · ${esc(r.court_file_no||'')}</div>
     <div class="doc-meta">${esc(cat)} · ${esc(r.case_type||'')} · ${r.remote_count||0} evrak · ${r.indexed_count||0} BONO’da${r.related_cases?.length?' · '+r.related_cases.length+' bağlantılı arabuluculuk':''}</div><div class="doc-meta case-party-inline">${r.client_name?`Müvekkil: ${esc(r.client_name)}`:''}${r.client_name&&r.party_names?' · ':''}${r.party_names?`Taraflar: ${esc(r.party_names)}`:(!r.client_name?'Taraf bilgisi henüz kaydedilmemiş':'')}</div></div><span>→</span>
   </a>`}).join('')}</div>`:empty('Henüz dosya keşfedilmedi.');
+  const inventorySummary=`<div class="case-document-summary"><div><strong>${inv.known}</strong><span>Bilinen dosya</span></div><div><strong>${inv.never}</strong><span>Hiç sorgulanmadı</span></div><div><strong>${inv.partial}</strong><span>Kısmi liste</span></div><div><strong>${inv.unknown}</strong><span>Kapsam belirsiz</span></div></div>`;
   mount(pageHero('Dosyalarım','Dosyaları yargı türü, birimi, mahkemesi ve esas numarasıyla sorgula.')+
-    queryForm(rows)+'<p>Yeni UYAP sorguları yalnız doğrulanmış dosya içindeki Sorgula/Yenile işlemiyle başlatılır. Geniş discovery kapalıdır.</p>'+section('Dosya Sorgulama Sonuçları','⚖',body),'uyap');
+    section('Envanter Özeti','▤',inventorySummary)+queryForm(rows)+'<p>Yeni UYAP sorguları yalnız doğrulanmış dosya içindeki Sorgula/Yenile işlemiyle başlatılır. Geniş discovery kapalıdır.</p>'+section('Dosya Sorgulama Sonuçları','⚖',body),'uyap');
   bindQuery(rows);
   mountGlobalQueryHistory();
   bindTargetedCaseSearch();
@@ -267,6 +270,7 @@ function bindDocumentTree(){
 async function renderCase(id){
   const [docs,finance,cases]=await Promise.all([api.uyapRemoteDocuments(id),api.accountingOverview(id),api.uyapCases()]);
   const file=cases.find(x=>String(x.id)===String(id))||{};
+  const inventory=inventoryState(file,docs);
   const status=v=>({discovered:'İndirilecek',download_queued:'İndirme kuyruğunda',downloaded:'İndirildi',indexed:'İndekslendi',filed:'Arşivlendi',summarized:'Nota dönüştürüldü',duplicate:'Mükerrer',skipped:'Arşiv dışı',review:'İnceleme gerekli'}[String(v||'').toLowerCase()]||v||'Keşfedildi');
 
   const counts={};for(const d of docs){const c=docCategory(d);counts[c]=(counts[c]||0)+1}
@@ -296,9 +300,11 @@ async function renderCase(id){
   const tabs=`<div class="case-tabs"><button class="case-tab active" data-file-tab="documents">Evraklar <span>${docs.length}</span></button><button class="case-tab" data-file-tab="finance">Tahsilat / Reddiyat <span>${(finance.counts?.converted||0)+(finance.counts?.pending||0)}</span></button></div>`;
   const related=(file.related_cases||[]).map(x=>`<a class="notice-row clickable" href="#uyap/${x.caseId}"><div><div class="doc-title">Bağlantılı Arabuluculuk Dosyası · ${esc(x.courtFileNo||'')}</div><div class="doc-meta">${esc(x.court||'')} · ${esc(x.caseType||'')} · ${esc(x.status||'')}</div></div><span>→</span></a>`).join('');
 
-  mount(`<div class="case-header"><a class="back-link" href="#uyap">← Dosyalarıma dön</a><h1><span class="foy-badge ${file.office_file_no?'':'pending'}">${esc(file.office_file_no||'Föy Bekliyor')}</span>${esc(file.court||'Dosya')} ${file.court_file_no?'· '+esc(file.court_file_no):''}</h1><p class="detail-subtitle">${esc(file.case_type||'Dosya içeriği')}</p><div class="case-parties"><strong>Taraf Bilgileri</strong><div>${file.client_name?`<span><b>Müvekkil:</b> ${esc(file.client_name)}</span>`:''}${file.party_names?`<span><b>Kayıtlı taraflar:</b> ${esc(file.party_names)}</span>`:'<span>UYAP taraf bilgisi henüz kaydedilmemiş.</span>'}</div></div>${related?`<div class="related-case-list">${related}</div>`:''}</div>
-    <div class="case-sync-panel ${docs.length?'has-documents':'is-empty'}"><div class="case-sync-copy"><strong>${docs.length?'Evrak listesini güncelle':'Bu dosyanın evrak listesi henüz alınmamış'}</strong><p>${docs.length?'Yeni evrak olup olmadığını UYAP üzerinden sorgulayabilirsin.':'UYAP üzerinden yalnız bu dosyanın evrak listesini sorgula. Bu işlem PDF/UDF dosyalarını indirmez.'}</p><small id="syncUyapStatus" role="status" aria-live="polite">${file.uyap_dosya_id?'Liste sorgulaması hazır.':'Bu kayıt için UYAP dosya bağlantısı bulunamadı.'}</small></div><button id="syncUyapDocs" type="button" class="primary-action" ${file.uyap_dosya_id?'':'disabled'}>↻ UYAP'tan Evrak Listesini Getir</button></div>
-    ${tabs}
+  const inventoryPanel=section('Dosya Envanteri / Kanıt Durumu','▤',
+    `<div class="case-document-summary"><div><strong>${esc(inventory.identity)}</strong><span>UYAP kimliği</span></div><div><strong>${esc(inventory.lastSuccess)}</strong><span>Son başarılı sorgu</span></div><div><strong>${esc(inventory.list)}</strong><span>Evrak listesi</span></div><div><strong>${esc(inventory.download)}</strong><span>İndirme</span></div><div><strong>${esc(inventory.integrity)}</strong><span>Bütünlük</span></div></div><p>Dosya kimliği, evrak listesi, indirme ve bütünlük ayrı kanıtlardır. Aşağıdaki sorgu eylemi yalnız Core'un desteklediği ve doğruladığı akışta etkinleşir.</p>`);
+  mount(inventoryPanel+`<div class="case-header"><a class="back-link" href="#uyap">← Dosyalarıma dön</a><h1><span class="foy-badge ${file.office_file_no?'':'pending'}">${esc(file.office_file_no||'Föy Bekliyor')}</span>${esc(file.court||'Dosya')} ${file.court_file_no?'· '+esc(file.court_file_no):''}</h1><p class="detail-subtitle">${esc(file.case_type||'Dosya içeriği')}</p><div class="case-parties"><strong>Taraf Bilgileri</strong><div>${file.client_name?`<span><b>Müvekkil:</b> ${esc(file.client_name)}</span>`:''}${file.party_names?`<span><b>Kayıtlı taraflar:</b> ${esc(file.party_names)}</span>`:'<span>UYAP taraf bilgisi henüz kaydedilmemiş.</span>'}</div></div>${related?`<div class="related-case-list">${related}</div>`:''}</div>
+    <div class="case-sync-panel ${docs.length?'has-documents':'is-empty'}"><div class="case-sync-copy"><strong>UYAP'ta Sorgula</strong><p>Yalnız bu dosya için kullanıcı kontrollü, salt-okunur sorgu. Fiziksel evrak indirme ayrı onaydır.</p><small id="syncUyapStatus" role="status" aria-live="polite">${file.uyap_dosya_id?'Sorgu desteği kontrol ediliyor.':'Bu kayıt için doğrulanmış UYAP dosya bağlantısı bulunamadı.'}</small></div><button id="syncUyapDocs" type="button" class="primary-action" disabled>UYAP'ta Sorgula</button></div>
+    <div id="case-documents"></div>${tabs}
     <div class="file-tab-panel" data-file-panel="documents">${documentSummary}${docs.length?'':documentGuidance}${section('Evraklar','▤',renderDocumentTree(docs,status))}<div id="caseDocumentViewer" class="case-document-viewer" hidden aria-live="polite"></div>${downloadControls}</div>
     <div class="file-tab-panel" data-file-panel="finance" hidden>${financeBody}</div>`,'uyap');
 
