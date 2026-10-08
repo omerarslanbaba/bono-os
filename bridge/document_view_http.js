@@ -40,6 +40,28 @@ function handleDocumentViewRequest(req,res,db){
   if(route.kind==="view"){
     const result=viewService.getDocumentView(db,route.caseId,route.remoteDocumentDbId,{verifyFiles:true,includeText:true});
     if(!result.ok){json(res,result.statusCode||404,{ok:false,error:result.error,reason:result.reason||null});return true}
+    if(result.document?.integrity?.exists===true){
+      const verified=streamGuard.openVerifiedDocumentContent(db,route.caseId,route.remoteDocumentDbId);
+      if(verified.ok){
+        try{fs.closeSync(verified.fd)}catch{}
+        result.document.integrity.streamSafe=true;
+        result.document.integrity.streamBlockReason=null;
+      }else{
+        result.document.integrity.streamSafe=false;
+        result.document.integrity.streamBlockReason=verified.error||verified.reason||"content_stream_blocked";
+        if(verified.error==="canonical_hash_not_verified"){
+          result.document.integrity.verified=false;
+          result.document.integrity.reason=verified.reason||"sha256_mismatch";
+        }
+        result.document.viewer={...result.document.viewer,mode:"blocked",openable:false,reason:verified.error||verified.reason||"content_stream_blocked"};
+        if(result.document.endpoints)result.document.endpoints.content=null;
+      }
+    }else{
+      result.document.integrity.streamSafe=false;
+      result.document.integrity.streamBlockReason=result.document.integrity.reason||"canonical_file_missing";
+      result.document.viewer={...result.document.viewer,mode:"blocked",openable:false,reason:result.document.integrity.streamBlockReason};
+      if(result.document.endpoints)result.document.endpoints.content=null;
+    }
     json(res,200,result);
     return true;
   }
