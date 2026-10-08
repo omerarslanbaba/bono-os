@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text.Json;
 
 namespace BonoWebDesktop;
 
@@ -51,6 +52,20 @@ internal static class WebBundleManager
 
             if (!File.Exists(Path.Combine(tempDir, "index.html")))
                 throw new InvalidOperationException("Web bundle index.html içermiyor.");
+
+            var versionPath = Path.Combine(tempDir, "__bono_web_version.json");
+            if (!File.Exists(versionPath))
+                throw new InvalidOperationException("Web bundle sürüm tanılama dosyasını içermiyor.");
+
+            using (var versionDoc = JsonDocument.Parse(File.ReadAllText(versionPath)))
+            {
+                var bundledCommit = versionDoc.RootElement.TryGetProperty("commit", out var commitNode)
+                    ? commitNode.GetString()
+                    : null;
+                if (!string.Equals(bundledCommit, identity.WebCommit, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException(
+                        $"Web bundle commit uyuşmuyor. manifest={identity.WebCommit} bundle={bundledCommit ?? "missing"}");
+            }
 
             File.WriteAllText(Path.Combine(tempDir, ".bundle-sha256"), actual);
             if (Directory.Exists(finalDir)) Directory.Delete(finalDir, recursive: true);
