@@ -211,7 +211,7 @@ async function renderCase(id){
   </div>`;
   const downloadControls=`<div class="case-download-controls">
     <div><strong>Evrak indirme</strong><p>Liste sorgusu evrak indirmez. Eksik evrak indirme işlemleri yalnız ayrıca onay verilerek ve UYAP motorunun güvenlik kontrollerinden geçerek başlayabilir.</p></div>
-    <span class="case-download-pending">İndirme kontrolü · Entegrasyon bekleniyor</span>
+    <div class="case-download-actions"><small id="caseDownloadStatus" role="status" aria-live="polite">İndirme durumu kontrol ediliyor…</small><button id="queueCaseDownloads" type="button" class="subtle-action" disabled>Eksik Evrakları Kuyruğa Ekle</button></div>
   </div>`;
 
   const tabs=`<div class="case-tabs"><button class="case-tab active" data-file-tab="documents">Evraklar <span>${docs.length}</span></button><button class="case-tab" data-file-tab="finance">Tahsilat / Reddiyat <span>${(finance.counts?.converted||0)+(finance.counts?.pending||0)}</span></button></div>`;
@@ -225,5 +225,86 @@ async function renderCase(id){
 
   document.querySelectorAll('[data-file-tab]').forEach(b=>b.onclick=()=>{const tab=b.dataset.fileTab;document.querySelectorAll('[data-file-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('[data-file-panel]').forEach(p=>p.hidden=p.dataset.filePanel!==tab)});
   bindDocumentTree();
-  document.querySelector('#syncUyapDocs:not(:disabled)')?.addEventListener('click',async e=>{const btn=e.currentTarget,notice=document.querySelector('#syncUyapStatus');btn.disabled=true;btn.textContent='Sorgu kuyruğa alınıyor…';notice.textContent='UYAP evrak listesi sorgusu gönderiliyor. Bu işlem dosyaları indirmez.';try{const result=await api.syncUyapDocuments(id);notice.textContent=result?.commandId?'Sorgu kuyruğa alındı (#'+result.commandId+'). Tamamlandığında evrak listesi yenilenebilir.':'Sorgu kuyruğa alındı. Tamamlandığında evrak listesi yenilenebilir.';btn.textContent='↻ Yeniden Sorgula';btn.disabled=false;}catch(err){notice.textContent='Sorgu başlatılamadı: '+err.message;btn.disabled=false;btn.textContent='↻ Tekrar Dene';}});
+  bindCaseDocumentControls(id);
+}
+
+
+let activeCaseLifecycle=null;
+function bindCaseDocumentControls(caseId){
+  if(activeCaseLifecycle)activeCaseLifecycle.stop();
+  const btn=document.getElementById('syncUyapDocs'),notice=document.getElementById('syncUyapStatus');
+  const downloadButton=document.getElementById('queueCaseDownloads'),downloadNotice=document.getElementById('caseDownloadStatus');
+  const route='#uyap/'+caseId;
+  let timer=null,stopped=false,busy=false,startedCommandId=null,completedHandled=false;
+  let statusSupported=false,downloadCapacity=0;
+  const labels={not_synced:'Evrak listesi henüz sorgulanmamış',queued:'Sorgu sırada bekliyor',running:'UYAP evrak listesi sorgulanıyor',completed:'Evrak listesi hazır',empty:'Sorgu tamamlandı: evrak bulunamadı',failed:'Sorgu başarısız',login_required:'UYAP oturumu gerekli',metadata_unbound:'Evrak bilgileri geldi ancak BONO listesine işlenemedi',unlinked:'Bu kaydın UYAP dosya bağlantısı yok'};
+  const stop=()=>{stopped=true;if(timer)clearTimeout(timer)};
+  const session={stop};activeCaseLifecycle=session;
+  const alive=()=>!stopped&&activeCaseLifecycle===session&&location.hash===route&&!!notice?.isConnected;
+  function schedule(ms){if(timer)clearTimeout(timer);if(!stopped)timer=setTimeout(poll,ms)}
+  async function refreshDownloadState(){
+    if(!alive()||!statusSupported||!downloadButton)return;
+    try{
+      const d=await api.uyapDownloadSummary(caseId);if(!alive())return;
+      const missing=Math.max(0,Number(d.missingDownloadable??0));
+      const active=Math.max(0,Number(d.queued??0));
+      downloadCapacity=Math.max(0,Math.min(200-active,missing));
+      downloadButton.disabled=downloadCapacity===0;
+      downloadButton.textContent=downloadCapacity?'Eksik Evrakları Kuyruğa Ekle ('+downloadCapacity+')':'İndirilecek evrak yok / kapasite dolu';
+      downloadNotice.textContent='Eksik: '+missing+' · Kuyruk: '+active+' · İndirmeler ayrıca onay gerektirir';
+    }catch{if(alive()){downloadButton.disabled=true;downloadNotice.textContent='İndirme durumu okunamadı; işlem devre dışı';}}
+  }
+  async function poll(){
+    if(!alive()||busy)return;
+    busy=true;
+    try{
+      const x=await api.uyapDocumentSyncStatus(caseId);
+      if(!alive())return;
+      statusSupported=true;
+      const state=x.state||'not_synced',pending=state==='queued'||state==='running';
+      notice.textContent=(labels[state]||x.label||state)+(x.commandId?' · Komut #'+x.commandId:'')+(x.error&&state==='failed'?' · '+x.error:'');
+      if(btn){btn.disabled=pending||state==='unlinked';btn.textContent=pending?'Sorgu devam ediyor…':'↻ UYAP\'tan Evrak Listesini Getir'}
+      await refreshDownloadState();
+      if(startedCommandId!=null&&String(x.commandId)===String(startedCommandId)&&!pending&&!completedHandled){
+        completedHandled=true;
+        if(state==='completed'||state==='empty'){
+          // Only refresh this case after the matching command reached a confirmed terminal state.
+          stop();
+          await renderCase(caseId);
+          return;
+        }
+      }
+      schedule(pending?2500:10000);
+    }catch(err){
+      if(alive()){
+        statusSupported=false;
+        notice.textContent='Sorgu durumu şu an görüntülenemiyor: '+err.message+'. Güncel BONO Core gerekli.';
+        if(btn){btn.disabled=true;btn.textContent='Sorgu entegrasyonu bekleniyor'}
+        if(downloadButton)downloadButton.disabled=true;
+        if(downloadNotice)downloadNotice.textContent='Güvenli indirme için güncel Core gerekli';
+        schedule(15000);
+      }
+    }finally{busy=false}
+  }
+  btn?.addEventListener('click',async ()=>{
+    if(!alive()||btn.disabled||!statusSupported)return;
+    btn.disabled=true;notice.textContent='Yalnızca bu dosyanın evrak listesi için komut gönderiliyor…';
+    try{
+      const result=await api.syncUyapDocuments(caseId);
+      startedCommandId=result.sync?.commandId??result.id??null;completedHandled=false;
+      notice.textContent='Sorgu kuyruğa alındı'+(startedCommandId?' · Komut #'+startedCommandId:'');
+      await poll();
+    }catch(err){if(alive()){notice.textContent='Sorgu başlatılamadı: '+err.message;btn.disabled=false;}}
+  });
+  downloadButton?.addEventListener('click',async ()=>{
+    if(!alive()||downloadButton.disabled||!statusSupported||downloadCapacity<1)return;
+    const count=downloadCapacity;
+    if(!confirm('Bu dava dosyası için en fazla '+count+' eksik evrak indirme kuyruğuna eklensin mi? Manuel duraklatma açıksa indirmeler başlamaz.'))return;
+    downloadButton.disabled=true;downloadNotice.textContent='Onaylanan indirme komutları kuyruğa ekleniyor…';
+    try{
+      await api.queueMissingUyapDocuments(caseId,count);
+      if(alive()){downloadNotice.textContent='İndirme kuyruğuna ekleme isteği gönderildi. Manuel duraklatma değiştirilmedi.';await refreshDownloadState();}
+    }catch(err){if(alive()){downloadNotice.textContent='İndirme kuyruğu hatası: '+err.message;await refreshDownloadState();}}
+  });
+  poll();
 }
