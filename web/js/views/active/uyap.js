@@ -261,20 +261,22 @@ function bindCaseDocumentControls(caseId){
       const x=await api.uyapDocumentSyncStatus(caseId);
       if(!alive())return;
       statusSupported=true;
+      if(x.contractVersion!=='uyap.document-sync.v1')throw new Error('UYAP sorgu durum API sürümü desteklenmiyor');
       const state=x.state||'not_synced',pending=state==='queued'||state==='running';
-      notice.textContent=(labels[state]||x.label||state)+(x.commandId?' · Komut #'+x.commandId:'')+(x.error&&state==='failed'?' · '+x.error:'');
-      if(btn){btn.disabled=pending||state==='unlinked';btn.textContent=pending?'Sorgu devam ediyor…':'↻ UYAP\'tan Evrak Listesini Getir'}
+      const commandId=x.command?.id??null;
+      notice.textContent=(labels[state]||x.label||state)+(commandId?' · Komut #'+commandId:'')+(x.error&&state==='failed'?' · '+x.error:'');
+      if(btn){btn.disabled=!x.canSync;btn.textContent=pending?'Sorgu devam ediyor…':'↻ UYAP\'tan Evrak Listesini Getir'}
       await refreshDownloadState();
-      if(startedCommandId!=null&&String(x.commandId)===String(startedCommandId)&&!pending&&!completedHandled){
+      if(startedCommandId!=null&&String(commandId)===String(startedCommandId)&&x.terminal&&!completedHandled){
         completedHandled=true;
-        if(state==='completed'||state==='empty'){
+        if(x.success&&(state==='completed'||state==='empty')){
           // Only refresh this case after the matching command reached a confirmed terminal state.
           stop();
           await renderCase(caseId);
           return;
         }
       }
-      schedule(pending?2500:10000);
+      schedule(pending?Math.max(1000,Math.min(15000,Number(x.pollAfterMs)||2500)):10000);
     }catch(err){
       if(alive()){
         statusSupported=false;
@@ -291,7 +293,8 @@ function bindCaseDocumentControls(caseId){
     btn.disabled=true;notice.textContent='Yalnızca bu dosyanın evrak listesi için komut gönderiliyor…';
     try{
       const result=await api.syncUyapDocuments(caseId);
-      startedCommandId=result.sync?.commandId??result.id??null;completedHandled=false;
+      if(result?.accepted!==true||!result.commandId)throw new Error('Core sorgu komutunu onaylamadı veya komut kimliği vermedi.');
+      startedCommandId=result.commandId;completedHandled=false;
       notice.textContent='Sorgu kuyruğa alındı'+(startedCommandId?' · Komut #'+startedCommandId:'');
       await poll();
     }catch(err){if(alive()){notice.textContent='Sorgu başlatılamadı: '+err.message;btn.disabled=false;}}
