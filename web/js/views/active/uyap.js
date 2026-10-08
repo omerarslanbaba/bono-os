@@ -203,7 +203,7 @@ async function renderCase(id){
     empty:'UYAP sorgusu tamamlandı; bu dosyada evrak bulunamadı.',
     metadata_unbound:'UYAP evrak metadata’sı döndü ancak BONO listesine işlenemedi.'
   }[syncStatus.state]||'Evrak listesi henüz alınmadı.';
-  const docRows=docs.length?`<div class="evrak-scroll">${docs.map(d=>{const cat=docCategory(d);return `<div class="notice-row evrak-row" data-category="${esc(cat)}"><div><div class="doc-title">${esc(d.remote_title||d.document_type||'UYAP Evrakı')}</div><div class="doc-meta">${esc(d.document_date||'')} · ${esc(cat)} · ${esc(status(d.status))}</div></div><div class="row-actions">${d.status==='summarized'?badge('Nota dönüştürüldü','green'):(d.local_asset_id?badge('BONO’da','green'):badge(d.status==='download_queued'?'Bekliyor':'Henüz alınmadı'))}</div></div>`}).join('')}</div>`:empty(syncMessage);
+  const documentBody=docs.length?renderDocumentTree(docs,status):empty(syncMessage);
 
   const converted=(finance.converted||[]).map(x=>`<div class="notice-row accounting-row"><div><div class="doc-title">${esc(x.title)}</div><div class="doc-meta">${esc(extractLine(x.body,'Tarih'))} · ${esc(extractLine(x.body,'Tutar'))}</div><div class="accounting-source">${esc(extractLine(x.body,'Kaynak belge'))}</div></div>${badge('Nota dönüştürüldü','green')}</div>`).join('');
   const pending=(finance.pending||[]).map(x=>`<div class="notice-row accounting-row"><div><div class="doc-title">${esc(x.remote_title||x.document_type||x.original_file_name||'Mali evrak')}</div><div class="doc-meta">${esc(x.document_date||'Tarih yok')}</div><div class="accounting-source">${esc(x.reason||'İnceleme bekliyor')}</div></div>${badge('İnceleme bekliyor')}</div>`).join('');
@@ -229,7 +229,7 @@ async function renderCase(id){
   mount(`<div class="case-header"><a class="back-link" href="#uyap">← Dosyalarıma dön</a><h1><span class="foy-badge ${file.office_file_no?'':'pending'}">${esc(file.office_file_no||'Föy Bekliyor')}</span>${esc(file.court||'Dosya')} ${file.court_file_no?'· '+esc(file.court_file_no):''}</h1><p class="detail-subtitle">${esc(file.case_type||'Dosya içeriği')}</p>${related?`<div class="related-case-list">${related}</div>`:''}</div>
     ${downloadActions}
     ${tabs}
-    <div class="file-tab-panel" data-file-panel="documents">${section('Evraklar','▤',renderDocumentTree(docs,status))}</div>
+    <div class="file-tab-panel" data-file-panel="documents">${section('Evraklar','▤',documentBody)}</div>
     <div class="file-tab-panel" data-file-panel="finance" hidden>${financeBody}</div>`,'uyap');
 
   document.querySelectorAll('[data-file-tab]').forEach(b=>b.onclick=()=>{const tab=b.dataset.fileTab;document.querySelectorAll('[data-file-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('[data-file-panel]').forEach(p=>p.hidden=p.dataset.filePanel!==tab)});
