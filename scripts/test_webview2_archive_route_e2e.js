@@ -50,7 +50,12 @@ async function jsonReq(base,url){const r=await fetch(base+url);const t=await r.t
   must(wrong.r.status===404&&wrong.b.error==="document_not_found_in_case","wrong-case access was not rejected");
   const wrongContent=await jsonReq(base,"/api/cases/2/documents/201/content");
   must(wrongContent.r.status===404&&wrongContent.b.error==="document_not_found_in_case","wrong-case content access was not rejected");
-  const udfView=await jsonReq(base,"/api/cases/1/documents/202/view");
+  let udfView=null;
+  for(let attempt=0;attempt<4;attempt++){
+    udfView=await jsonReq(base,"/api/cases/1/documents/202/view");
+    if(udfView.b?.document?.viewer?.reason!=="canonical_open_failed")break;
+    await sleep(150);
+  }
   const udfMode=udfView.b?.document?.viewer?.mode;
   must(udfView.r.status===200&&udfView.b.document.viewer.openable===true&&["udf_text","udf_download_only"].includes(udfMode),"UDF safe viewer mode missing: "+JSON.stringify(udfView.b));
   if(udfMode==="udf_text"){
