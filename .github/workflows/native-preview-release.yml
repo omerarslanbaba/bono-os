@@ -8,6 +8,7 @@ on:
       - 'scripts/native_preview_updater.ps1'
       - 'scripts/test_native_preview_updater.ps1'
       - '.github/workflows/native-preview-release.yml'
+      - 'docs/native-preview-update.md'
   workflow_dispatch:
 
 permissions:
