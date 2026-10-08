@@ -34,7 +34,7 @@ core.MapMethods("/api/echo", new[] { "GET", "POST" }, async context =>
         body = await reader.ReadToEndAsync();
     }
 
-    return Results.Json(new
+    await context.Response.WriteAsJsonAsync(new
     {
         ok = true,
         method = context.Request.Method,
