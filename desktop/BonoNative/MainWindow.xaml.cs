@@ -320,7 +320,7 @@ public partial class MainWindow : Window
         selectedUyapCaseId = 0;
         selectedUyapCase = null;
         ShowPage(UyapPage, "UYAP Dosyaları", "UYAP dosyaları ve evrak arşiv durumu");
-        SetActiveNav(NavUyap);
+        SetActiveNav(NavFiles);
         await LoadUyapAsync();
     }
 
@@ -572,7 +572,7 @@ public partial class MainWindow : Window
     async void NavUyap_Click(object sender, RoutedEventArgs e)
     {
         ShowPage(UyapPage, "UYAP Dosyaları", "UYAP dosyaları ve evrak arşiv durumu");
-        SetActiveNav(NavUyap);
+        SetActiveNav(NavFiles);
         await LoadSummaryAsync(); await LoadUyapAsync();
     }
     async void NavHearings_Click(object sender, RoutedEventArgs e)
@@ -592,7 +592,7 @@ public partial class MainWindow : Window
     async void OfficeFilesView_FileOpened(object sender, BonoNative.Views.OfficeFilesWorkspace.OfficeFileItem file)
     {
         ShowPage(UyapPage, "Bağlı UYAP Dosyaları", file.FileNo + " · " + file.Client);
-        SetActiveNav(NavUyap);
+        SetActiveNav(NavFiles);
         UyapSearch.Text = file.FileNo;
         await LoadUyapAsync();
     }
@@ -602,7 +602,7 @@ public partial class MainWindow : Window
     {
         if (FilesGrid.SelectedItem is not OfficeFileRow row) return;
         ShowPage(UyapPage, "Dosyalarım", row.FileNo + " · " + row.Client);
-        SetActiveNav(NavUyap);
+        SetActiveNav(NavFiles);
         UyapSearch.Text = row.FileNo;
         await LoadUyapAsync();
     }
@@ -618,7 +618,7 @@ public partial class MainWindow : Window
         var grid = sender as System.Windows.Controls.DataGrid;
         if (grid?.SelectedItem is not HearingRow row) return;
         ShowPage(UyapPage, "Duruşma Dosyası", row.DateText + " · " + row.Court);
-        SetActiveNav(NavUyap);
+        SetActiveNav(NavFiles);
         UyapSearch.Text = row.FileNo;
         await LoadUyapAsync();
     }
