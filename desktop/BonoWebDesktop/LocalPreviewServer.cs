@@ -8,10 +8,11 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Logging;
 
 namespace BonoWebDesktop;
 
-internal sealed class LocalPreviewServer : IAsyncDisposable
+public sealed class LocalPreviewServer : IAsyncDisposable
 {
     private static readonly HashSet<string> HopByHopHeaders = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -82,14 +83,9 @@ internal sealed class LocalPreviewServer : IAsyncDisposable
             webSha256 = identity.WebSha256
         }));
 
-        app.Map("/api/{**path}", branch =>
-        {
-            branch.Run(context => ProxyAsync(context, coreClient, coreBase));
-        });
-        app.Map("/health", branch =>
-        {
-            branch.Run(context => ProxyAsync(context, coreClient, coreBase));
-        });
+        var proxyMethods = new[] { "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD" };
+        app.MapMethods("/api/{**path}", proxyMethods, context => ProxyAsync(context, coreClient, coreBase));
+        app.MapMethods("/health", proxyMethods, context => ProxyAsync(context, coreClient, coreBase));
 
         var provider = new PhysicalFileProvider(webRoot);
         app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = provider });
@@ -127,7 +123,8 @@ internal sealed class LocalPreviewServer : IAsyncDisposable
 
     private static async Task ProxyAsync(HttpContext context, HttpClient client, Uri coreBase)
     {
-        var target = new Uri(coreBase, context.Request.Path + context.Request.QueryString);
+        var relative = (context.Request.Path.Value ?? "/") + (context.Request.QueryString.Value ?? "");
+        var target = new Uri(coreBase, relative);
         using var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), target);
 
         var hasBody =
