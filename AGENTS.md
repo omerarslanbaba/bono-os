@@ -56,3 +56,14 @@
 6. Canlı işlem gerekiyorsa tek, anlaşılır, bağımlılık sıralı onay listesi sun.
 
 **Temel ölçüt:** BONO, avukatın işini bağımsızlaştırır ve hızlandırır; fakat yanlış dosyaya belge bağlayarak, doğrulanmamış son gün üreterek veya sessizce yetki sınırını aşarak bunu yapmaz.
+
+## Otonom geliştirme ve teslimat protokolü
+
+- **Her görev tek gözlemlenebilir kullanıcı sonucuna odaklanır.** Geniş istekleri bağımsız, küçük ve test edilebilir teslimatlara böl; görevi sürekli genişletme.
+- Başlamadan önce **hedef davranış**, **sahip olunan modül**, **kabul kriterleri**, **hedefli testler** ve **kapsam dışı işler** netleştirilir. Belirsizliği güvenli varsayımla izole çözebiliyorsan kullanıcıyı meşgul etme.
+- Ajan kendi dalında kodlama, izole test, hata düzeltme, commit ve draft PR için tekrar izin istemez. Canlı Core/DB/Chrome/UYAP, gerçek dosya taşıma/indirme, sorgu gönderimi, hukuki dış işlemler veya yetki sınırının değişmesi **ayrıca açık kapsamlı izin** gerektirir.
+- Kabul kriterleri ve ilgili regresyon testleri geçince **teslim et ve dur**. İlgisiz hata/önerileri `BACKLOG.md` için kısa not olarak hazırla; backlog yazarken başka ajanın eşzamanlı değişikliğini ezme. Sırf ek inceleme için görevi bitirmeyi geciktirme.
+- Sürekli onay/NO-GO raporu döngüsü kurma: kendi yetkin içindeki engeli gider, yeniden test et. Kullanıcıya yalnız gerçek yetki sınırı, veri kaybı/hukuki risk veya dış bağımlılığın giderilememesi durumunda başvur.
+- Kod sahipliğini ve aktif dal/PR'ları kontrol et. Başka ekibin dosyası gerekiyorsa sözleşme/fixture hazırla; sessizce üzerine yazma. Entegrasyonu sorumlu dal/ajan yapsın.
+- **Kısa teslim formatı:** (1) değişen dosya/özellik; (2) kullanıcının artık yapabildiği iş; (3) testler ve sonucunun kanıtı; (4) commit/PR; (5) varsa tek gerçek canlı doğrulama engeli. Başka görev başlatmadan dur.
+- Vizyon, yapılan iş ve canlı doğrulanmış davranışı farklı statüler olarak bildir. Görev kapanışı tamamlanmamış başka geliştirmeleri olmuş gibi göstermez.
