@@ -32,6 +32,13 @@ must(enqueueRefs===1,"Automatic enqueuePendingDownloads caller exists; refs="+en
 must(uyap.includes("capacity:Math.max(0,200-activeCommands)"),"Summary lacks 200 active capacity");
 must(uyap.includes("manualDownloadPaused:session.manualDownloadPaused"),"Summary lacks manual pause state");
 
+must(view.includes("documentBody=docs.length?renderDocumentTree(docs,status):empty(syncMessage)"),"Document panel does not use sync-aware empty state");
+must(view.includes("UYAP evrak listesi henüz sorgulanmadı."),"not_synced message missing");
+must(view.includes("Evrak listesi sorgusu kuyrukta bekliyor."),"queued message missing");
+must(view.includes("UYAP’tan evrak listesi sorgulanıyor."),"running message missing");
+must(view.includes("UYAP sorgusu tamamlandı; bu dosyada evrak bulunamadı."),"confirmed empty message missing");
+must(view.includes("UYAP evrak metadata’sı döndü ancak BONO listesine işlenemedi."),"metadata_unbound message missing");
+
 console.log(JSON.stringify({
   ok:true,
   globalDiscoveryDoesNotQueueDownloads:true,
