@@ -20,6 +20,7 @@ const fail=(name,error,detail={})=>results.push({name,status:"fail",error:String
 const risk=(name,detail={})=>results.push({name,status:"risk",...detail});
 function assert(name,cond,detail={}){if(cond)pass(name,detail);else fail(name,"assertion failed",detail)}
 function counts(caseId){return Object.fromEntries(db.prepare("SELECT status,COUNT(*) n FROM uyap_remote_documents WHERE case_id=? GROUP BY status").all(caseId).map(r=>[r.status,Number(r.n)]))}
+function tx(fn){db.exec("BEGIN");try{const out=fn();db.exec("COMMIT");return out}catch(e){db.exec("ROLLBACK");throw e}}
 
 db.exec([
 "CREATE TABLE app_settings(key TEXT PRIMARY KEY,value TEXT,updated_at TEXT DEFAULT CURRENT_TIMESTAMP)",
@@ -82,13 +83,13 @@ function finishActiveBatch(caseId){
 
 try{
   addCase(1,201);
-  const b1=uyap.enqueuePendingDownloads(1,200);
+  const b1=tx(()=>uyap.enqueuePendingDownloads(1,200));
   let c=counts(1);
   assert("batch1_queues_exactly_200",b1.queued===200&&c.download_queued===200&&c.discovered===1,{result:b1,counts:c});
   assert("batch1_reports_remaining_downloadable",Number(b1.summary?.missingDownloadable||0)===1,{missingDownloadable:b1.summary?.missingDownloadable});
   assert("batch1_completion_fixture",finishActiveBatch(1)===200);
 
-  const b2=uyap.enqueuePendingDownloads(1,200);
+  const b2=tx(()=>uyap.enqueuePendingDownloads(1,200));
   c=counts(1);
   assert("batch2_available_after_batch1_completion",b2.queued===200&&c.download_queued===200&&c.discovered===5,{result:b2,counts:c});
   finishActiveBatch(1);
@@ -98,8 +99,8 @@ try{
   assert("batch3_queues_remainder",b3.queued===5&&c.download_queued===5&&Number(c.discovered||0)===0,{result:b3,counts:c});
 
   addCase(2,201);
-  const cap1=uyap.enqueuePendingDownloads(2,200);
-  const cap2=uyap.enqueuePendingDownloads(2,200);
+  const cap1=tx(()=>uyap.enqueuePendingDownloads(2,200));
+  const cap2=tx(()=>uyap.enqueuePendingDownloads(2,200));
   const active=Number(counts(2).download_queued||0);
   if(active>200){
     risk("active_batch_cap_is_per_invocation",{
