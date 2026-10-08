@@ -2,7 +2,7 @@
 
 // Pure naming contract: never reads, creates, moves or deletes user files.
 const path = require('node:path');
-const INVALID = /[<>:"\\/|?*\x00-\x1F]/g;
+const INVALID = /[<>:"?*|\\\x00-\x1F]/g;
 const RESERVED = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i;
 const GROUPS = Object.freeze({
   asliye_hukuk: 'Asliye Hukuk Mahkemeleri',
@@ -14,7 +14,7 @@ const GROUPS = Object.freeze({
 });
 
 function segment(value, { maxLength = 72 } = {}) {
-  const text = String(value ?? '').normalize('NFC').replace(INVALID, '-')
+  const text = String(value ?? '').normalize('NFC').replace(INVALID, '-').replace(/\//g, '-')
     .replace(/\s+/g, ' ').replace(/[. ]+$/g, '').trim();
   let safe = text || 'Belirtilmemiş';
   if (RESERVED.test(safe)) safe = '_' + safe;
