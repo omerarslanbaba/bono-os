@@ -1,0 +1,40 @@
+name: Archive document view contract
+
+on:
+  pull_request:
+    paths:
+      - 'bridge/document_view_service.js'
+      - 'bridge/document_stream_guard.js'
+      - 'bridge/document_view_http.js'
+      - 'bridge/case_document_review.js'
+      - 'bridge/archive_safety.js'
+      - 'scripts/document_view_service_selftest.js'
+      - 'scripts/document_view_http_selftest.js'
+      - 'docs/document-view-service-contract.md'
+      - 'docs/document-view-server-handoff.md'
+      - '.github/workflows/archive-document-view-test.yml'
+  workflow_dispatch:
+
+jobs:
+  document-view-contract:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Syntax checks
+        run: |
+          node --check bridge/document_view_service.js
+          node --check bridge/document_stream_guard.js
+          node --check bridge/document_view_http.js
+          node --check scripts/document_view_service_selftest.js
+          node --check scripts/document_view_http_selftest.js
+      - name: Service fixture
+        run: node scripts/document_view_service_selftest.js
+      - name: HTTP fixture
+        run: node scripts/document_view_http_selftest.js
