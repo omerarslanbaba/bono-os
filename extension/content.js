@@ -4,6 +4,7 @@
 
   const LOCAL = "http://127.0.0.1:47831";
   const active = new Map();
+  const STALE_LANE_MS = 135000;
   const laneOf = command => command?.lane || (command?.commandType === "download_document" ? "download" : "query");
 
   const runtimeAlive = () => {
@@ -49,6 +50,15 @@
     } catch {}
   }
 
+  async function recoverStaleLane(lane) {
+    const x = active.get(lane);
+    if (!x || Date.now() - Number(x.startedAt || 0) < STALE_LANE_MS) return false;
+    if (x.timer) clearTimeout(x.timer);
+    active.delete(lane);
+    await postResult({ id: x.id, ok: false, status: 0, error: "content_lane_stale_timeout" });
+    return true;
+  }
+
   function dispatchCommand(command, laneHint = null) {
     if (!command?.id) return false;
     const lane = laneHint || laneOf(command);
@@ -60,7 +70,7 @@
         postResult({ id: command.id, ok: false, status: 0, error: "Komut zaman aşımına uğradı" });
       }
     }, 120000);
-    active.set(lane, { id: command.id, timer });
+    active.set(lane, { id: command.id, timer, startedAt: Date.now() });
     window.postMessage({ channel: "BONO_UYAP_CONTENT", type: "execute_command", command }, "*");
     return true;
   }
@@ -69,6 +79,7 @@
     if (runtimeAlive()) chrome.runtime.onMessage.addListener(message => {
       if (message?.type === "BONO_EXECUTE") dispatchCommand(message.command);
       if (message?.type === "BONO_AUTH_PROBE") window.postMessage({channel:"BONO_UYAP_CONTENT",type:"auth_probe"},"*");
+      if (message?.type === "BONO_WAKE_QUERY") pollLane("query");
     });
   } catch {}
 
@@ -93,7 +104,10 @@
   });
 
   async function pollLane(lane) {
-    if (active.has(lane)) return;
+    if (active.has(lane)) {
+      await recoverStaleLane(lane);
+      if (active.has(lane)) return;
+    }
     try {
       const reply = await chrome.runtime.sendMessage({ type: "BONO_POLL", host: location.hostname, lane });
       const command = reply?.command;

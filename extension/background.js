@@ -78,6 +78,9 @@ async function wakeUyapTabs() {
     if (!chosen?.id || !chosen.url) { await setExecutor(null); return; }
     await setExecutor(chosen.id);
     try{await chrome.tabs.sendMessage(chosen.id,{type:"BONO_AUTH_PROBE"},{frameId:0})}catch{}
+    // Content-script timer'ı Chrome tarafından throttle/suspend edilse bile query lane tamamen sahipsiz kalmasın.
+    // Alarm yalnız query lane'i uyandırır; download lane'e hiçbir komut vermez.
+    try{await chrome.tabs.sendMessage(chosen.id,{type:"BONO_WAKE_QUERY"},{frameId:0})}catch{}
   } catch {}
 }
 function ensureAlarm() { chrome.alarms.create("bono-uyap-poll",{periodInMinutes:0.5}); }
@@ -160,7 +163,7 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
 });
 async function migrateBridgeRuntime(){
   try{
-    const key="bonoBridgeRuntimeVersion",version="0.3.8";
+    const key="bonoBridgeRuntimeVersion",version="0.3.9";
     const old=await chrome.storage.local.get(key);
     if(old[key]===version)return;
     await chrome.storage.local.set({[key]:version});
