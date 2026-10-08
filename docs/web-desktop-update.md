@@ -31,8 +31,9 @@ If Core is unavailable, the app reports that state and does not attempt to start
 The GitHub Actions package contains:
 
 - `BONO OS Web Desktop.exe` — the only executable binary.
-- `release-manifest.json` — product, version, full commit SHA, short commit SHA, WebView2 SDK version, Runtime requirement, Core health URI, and EXE SHA-256.
-- `SHA256SUMS.txt`.
+- `web-bundle.zip` — the exact `web/` snapshot from the same build commit, including `__bono_web_version.json`.
+- `release-manifest.json` — product, EXE/web commit IDs, WebView2 SDK version, Runtime requirement, Core health URI, EXE SHA-256, and web bundle SHA-256.
+- `SHA256SUMS.txt` — hashes for both EXE and web bundle.
 - a versioned ZIP artifact.
 
 Version format:
@@ -92,3 +93,12 @@ Use `-BackupPath` to select a specific timestamped backup.
 - tampered package rejection.
 
 No live BONO OS path is used by these tests.
+
+
+## Bundled UI and Core API origin
+
+The browser no longer navigates to the live Core root page. The app verifies and extracts its packaged `web-bundle.zip`, then serves that snapshot from an ephemeral loopback-only origin. Root-relative `/api/*` and `/health` requests are proxied server-side to the existing Core.
+
+This keeps the original web UI URL model same-origin inside WebView2 and avoids CORS/mixed-origin changes. The live Core `web/` directory is not modified.
+
+The window title shows the EXE and UI short commit IDs. A visible warning appears when they differ.
