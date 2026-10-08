@@ -292,17 +292,17 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==="POST"&&m){
       const b=await readBody(req);
       const caseId=Number(m[1]),limit=Math.max(1,Math.min(200,Number(b.limit)||200));
-      uyap.setDocumentDownloadState("ready","per_file_batch:"+caseId);
+      uyap.setManualDownloadPause(false,"");
       const out=uyap.enqueuePendingDownloads(caseId,limit);
       audit("lawyer","uyap_download_case_batch","case",caseId,{limit,queued:out.queued});
       return json(res,202,{ok:true,...out});
     }
     if(req.method==="POST"&&p==="/api/uyap/downloads/pause"){
-      const out=uyap.setDocumentDownloadState("paused_manual","manual_download_pause");
+      const out=uyap.setManualDownloadPause(true,"manual_download_pause");
       return json(res,200,out);
     }
     if(req.method==="POST"&&p==="/api/uyap/downloads/resume"){
-      const out=uyap.setDocumentDownloadState("ready","");
+      const out=uyap.setManualDownloadPause(false,"");
       return json(res,200,out);
     }
     m=p.match(/^\/api\/uyap\/remote-documents\/(\d+)\/download$/);

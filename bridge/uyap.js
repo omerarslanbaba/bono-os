@@ -285,7 +285,7 @@ function claimNext(host,lane="any"){
       (payload_json LIKE '%"sessionRefresh":true%' OR payload_json LIKE '%"purpose":"session_refresh_documents"%')`).get().n;
     if(!Number(activeRefresh||0))setDocumentDownloadState("ready","");
   }
-  const documentDownloadsPaused=setting("uyap_document_download_state","ready")!=="ready";
+  const documentDownloadsPaused=sessionState().manualDownloadPaused||setting("uyap_document_download_state","ready")!=="ready";
   db.prepare(`UPDATE uyap_command_queue SET status='queued',not_before_ms=0,error='stale command recovered'
     WHERE status='running' AND dispatched_at IS NOT NULL AND dispatched_at < datetime('now','-3 minutes')`).run();
   const now=Date.now();
@@ -1055,4 +1055,4 @@ function discoveryStatus(){
   const withDocs=db.prepare("SELECT count(DISTINCT case_id) n FROM uyap_remote_documents").get().n;
   return {...counts,totalCases:Number(totalCases||0),casesWithDocuments:Number(withDocs||0),rate:rateState()};
 }
-module.exports={GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,recoverSession,queue,cases,remoteDocuments,documentDownloadPolicy,caseDownloadSummary,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,discoveryStatus};
+module.exports={GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,setManualDownloadPause,recoverSession,queue,cases,remoteDocuments,documentDownloadPolicy,caseDownloadSummary,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,discoveryStatus};
