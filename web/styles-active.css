@@ -481,3 +481,16 @@ a.search-hit:hover,
 
 .case-query-local-note{margin:5px 0 2px;font-size:11px;color:#9fb6bf;line-height:1.6;border-left:2px solid #3889a2;padding-left:11px}
 .case-query select:disabled{opacity:.55;cursor:not-allowed}
+
+
+/* Separately activated UYAP search: no invented court/number metadata or automatic downloads. */
+.case-targeted-search{margin:15px 0;padding:19px 22px;background:#192026;border:1px solid #344d5a;border-radius:7px}
+.case-targeted-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 15px}
+.case-targeted-head strong{color:#f0f7fa;font-size:15px}
+.case-targeted-head p{font-size:12px;color:#b0c1cc;margin:6px 0 0;line-height:1.5}
+.case-targeted-tag{border:1px solid #345c70;border-radius:4px;font-size:10px;color:#80cbeb;padding:6px 9px;white-space:nowrap}
+.case-targeted-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:15px}
+.case-targeted-actions small{font-size:11px;color:#acd0e0;line-height:1.5}
+.case-targeted-notice{border-left:3px solid #318cad;padding-left:11px;color:#aebbc3;line-height:1.55;font-size:11px;margin:16px 0 0}
+.case-targeted-notice strong{color:#d3e9f2}
+@media(max-width:720px){.case-targeted-head,.case-targeted-actions{align-items:stretch;flex-direction:column}.case-targeted-tag{white-space:normal}}
