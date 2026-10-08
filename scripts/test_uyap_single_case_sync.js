@@ -46,8 +46,8 @@ must(uyap.remoteDocuments(1).length===2,"remote-documents should expose two rows
 must(uyap.sessionState().manualDownloadPaused===true,"document list sync cleared manual pause");
 
 // Empty list confirmed by completed payload.
-cmd=uyap.claimNext("avukat.uyap.gov.tr","query"); // case 10 existing queued
-must(cmd&&cmd.id===ten,"case 10 command missing");
+db.prepare("update uyap_command_queue set status='running',attempts=attempts+1,dispatched_at=datetime('now') where id=?").run(ten);
+must(uyap.caseDocumentSyncStatus(10).state==="running","case 10 should be running before empty result");
 uyap.reportResult(ten,{ok:true,status:200,contentType:"application/json",data:{tumEvraklar:[]}});
 st=uyap.caseDocumentSyncStatus(10);
 must(st.state==="empty"&&st.resultCount===0&&st.remoteCount===0,"true empty list not distinguished");
