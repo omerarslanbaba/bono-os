@@ -28,7 +28,7 @@ core.MapGet("/health", () => Results.Json(new { ok = true }));
 core.MapMethods("/api/echo", new[] { "GET", "POST" }, async context =>
 {
     string body = "";
-    if (context.Request.ContentLength is > 0)
+    if (!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method))
     {
         using var reader = new StreamReader(context.Request.Body, Encoding.UTF8);
         body = await reader.ReadToEndAsync();
