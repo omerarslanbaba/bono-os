@@ -88,7 +88,7 @@ function cbsEvidence(db,c){
  const target={birimId:chosen.birimId,dosyaNo:fileNo,dosyaId:String(c?.uyap_dosya_id||"").trim()||null};
  return {observation,unit:chosen,status,target,prepared};
 }
-function cbsScopeHash(c,e){return digest([c?.id,c?.court,c?.court_file_no,c?.status,c?.uyap_dosya_id||null,e.unit.birimId,e.unit.ilKodu,e.status,e.observation.reference,e.unit.reference]);}
+function cbsScopeHash(c,e){return digest([c?.id,c?.court,c?.court_file_no,c?.status,e.unit.birimId,e.unit.ilKodu,e.status,e.observation.reference,e.unit.reference]);}
 function certifyBinding(db,proof){
  if(!ready(db))throw Error('migration_required');
  const c=db.prepare('SELECT * FROM cases WHERE id=?').get(Number(proof.caseId));
