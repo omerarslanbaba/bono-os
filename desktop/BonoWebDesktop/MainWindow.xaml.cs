@@ -29,9 +29,28 @@ public partial class MainWindow : Window
         StatusText.Text = "Yerel BONO Core bağlantısı kontrol ediliyor.";
         try
         {
-            using var response = await _probe.GetAsync(new Uri(AppUri, "health"));
-            if (response.StatusCode != HttpStatusCode.OK)
-                throw new InvalidOperationException("BONO Core sağlık kontrolü başarılı olmadı.");
+            try
+            {
+                using var response = await _probe.GetAsync(new Uri(AppUri, "health"));
+                if (response.StatusCode != HttpStatusCode.OK)
+                    throw new InvalidOperationException("BONO Core sağlık kontrolü HTTP " + (int)response.StatusCode + " döndürdü.");
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
+            {
+                StatusText.Text = "BONO Core çalışmıyor veya sağlık kontrolüne ulaşılamıyor. Mevcut BONO Core'u manuel olarak çalıştırıp yeniden deneyin.\n\n" + ex.Message;
+                return;
+            }
+
+            try
+            {
+                _ = CoreWebView2Environment.GetAvailableBrowserVersionString();
+            }
+            catch (WebView2RuntimeNotFoundException ex)
+            {
+                StatusText.Text = "Microsoft Edge WebView2 Runtime bulunamadı. BONO Core çalışıyor, ancak masaüstü arayüzünü açmak için WebView2 Evergreen Runtime kurulmalı.\n\n" + ex.Message;
+                return;
+            }
+
             var environment = await CoreWebView2Environment.CreateAsync(
                 userDataFolder: System.IO.Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -53,7 +72,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            StatusText.Text = "BONO Core'a ulaşılamıyor veya WebView2 yüklenemedi. Mevcut BONO Core'u çalıştırıp yeniden deneyin.\n\n" + ex.Message;
+            StatusText.Text = "WebView2 masaüstü arayüzü başlatılamadı. BONO Core sağlık kontrolü başarılıydı.\n\n" + ex.Message;
         }
         finally { _initializing = false; }
     }
