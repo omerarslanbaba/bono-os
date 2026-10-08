@@ -15,7 +15,7 @@ const v09=require("./v09");
 const workflow=require("./workflow_engine");
 const eventBus=require("./event_bus");
 
-const PORT=47831;
+const PORT=Number(process.env.BONO_PORT||47831);
 const ROOT=path.join(__dirname,"..");
 const DATA_DIR=path.join(ROOT,"data");
 const WEB_DIR=path.join(ROOT,"web");
@@ -280,13 +280,19 @@ const server=http.createServer(async(req,res)=>{
 
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/remote-documents$/);
     if(req.method==="GET"&&m) return json(res,200,uyap.remoteDocuments(Number(m[1])));
+    m=p.match(/^\/api\/uyap\/cases\/(\d+)\/document-sync-status$/);
+    if(req.method==="GET"&&m) return json(res,200,uyap.caseDocumentSyncStatus(Number(m[1])));
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/download-summary$/);
     if(req.method==="GET"&&m) return json(res,200,uyap.caseDownloadSummary(Number(m[1])));
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/sync-documents$/);
     if(req.method==="POST"&&m){
-      const id=uyap.enqueueCaseDocumentSync(Number(m[1]),{priority:6,purpose:"manual_case_sync",source:"native_case_detail"});
-      audit("lawyer","uyap_sync_documents","case",m[1],{commandId:id});
-      return json(res,202,{ok:true,id});
+      const caseId=Number(m[1]);
+      const before=uyap.caseDocumentSyncStatus(caseId);
+      if(before.sessionState==="login_required") return json(res,409,{error:"UYAP oturumu gerekli.",sync:before});
+      const id=uyap.enqueueCaseDocumentSync(caseId,{priority:6,purpose:"manual_case_sync",source:"web_case_detail"});
+      const sync=uyap.caseDocumentSyncStatus(caseId);
+      audit("lawyer","uyap_sync_documents","case",m[1],{commandId:id,state:sync.state});
+      return json(res,202,{ok:true,id,commandId:id,sync});
     }
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/download-missing$/);
     if(req.method==="POST"&&m){
@@ -449,9 +455,11 @@ const bucket=new Date().toISOString().slice(0,13);
 jobs.enqueue("rebuild_search",{},"startup-search:"+new Date().toISOString().slice(0,10),30);
 jobs.enqueue("scan_documents",{},"document-scan:"+bucket,60);
 
-const worker=new Worker(path.join(__dirname,"worker.js"));
-worker.on("error",e=>console.error("BONO worker error",e));
-worker.on("exit",code=>{if(code!==0)console.error("BONO worker exit",code)});
+if(process.env.BONO_DISABLE_WORKER!=="1"){
+  const worker=new Worker(path.join(__dirname,"worker.js"));
+  worker.on("error",e=>console.error("BONO worker error",e));
+  worker.on("exit",code=>{if(code!==0)console.error("BONO worker exit",code)});
+}
 
 v04.setHeartbeat("server","ok",{pid:process.pid,port:PORT});
 setInterval(()=>v04.setHeartbeat("server","ok",{pid:process.pid,port:PORT}),30000);
