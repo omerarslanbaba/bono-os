@@ -12,6 +12,8 @@ on:
       - 'scripts/test_webview2_uyap_single_case_e2e.js'
       - 'scripts/test_uyap_single_case_sync.js'
       - 'scripts/test_uyap_targeted_case_search.js'
+      - 'scripts/test_uyap_case_document_contract.js'
+      - 'bridge/uyap_case_document_contract.js'
       - 'scripts/test_uyap_targeted_cbs_party_search.js'
       - 'scripts/test_uyap_batch_safety.js'
       - 'scripts/test_webview2_uyap_targeted_search_e2e.js'
@@ -86,6 +88,9 @@ jobs:
 
       - name: Verify observed-schema targeted UYAP search fixture
         run: npm run test:uyap-targeted-case-search
+
+      - name: Verify fail-closed UYAP case/document identity contract
+        run: npm run test:uyap-case-document-contract
 
       - name: Verify targeted CBS party-search privacy and safety
         run: npm run test:uyap-targeted-cbs-party-search
@@ -195,7 +200,7 @@ jobs:
             chromeExtensionRuntimeMarker = '0.3.8'
             chromeExtensionCompatible = $false
             uiSourceCommit = '313cd1261cc9570b5b7b867bae70b28877bcc2f2'
-            uyapSourceCommit = 'b7d438995d94a6901ba4c83d2bf68ae0ca83c702'
+            uyapSourceCommit = '9559738f22f8939e05cb956be3f3538ac94f9136'
             archiveSourceCommit = 'dca93cd26cf94bc2d2d379c368f6e45f7a66bf30'
             integrationManifest = 'integration-manifest.json'
             integrationManifestSha256 = $integrationHash
