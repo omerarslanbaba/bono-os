@@ -1,10 +1,15 @@
-param([Parameter(Mandatory=$true)][string]$TargetRoot,[Parameter(Mandatory=$true)][string]$NodeExe,[Parameter(Mandatory=$true)][string]$SourceDB,[Parameter(Mandatory=$true)][string]$EvidenceDB,[Parameter(Mandatory=$true)][ValidatePattern('^[a-p]{32}$')][string]$ExtensionId)
+param([Parameter(Mandatory=$true)][string]$TargetRoot,[Parameter(Mandatory=$true)][string]$NodeExe,[Parameter(Mandatory=$true)][string]$SourceDB,[Parameter(Mandatory=$true)][string]$EvidenceDB,[Parameter(Mandatory=$true)][ValidatePattern('^[a-p]{32}$')][string]$ExtensionId,[ValidateRange(1024,65535)][int]$CorePort=47831)
 $ErrorActionPreference='Stop'
-if([Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners().Port -contains 47831){throw 'Port occupied; no process stopped'}
-if([IO.Path]::GetFullPath($SourceDB) -eq [IO.Path]::GetFullPath($EvidenceDB)){throw 'Evidence must be separate'}
-if(Test-Path -LiteralPath $EvidenceDB){throw 'Use a new evidence DB for this session'}
-$manifest=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'version-manifest.json') -Raw | ConvertFrom-Json
-foreach($f in $manifest.files){if(([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([IO.File]::ReadAllBytes((Join-Path $TargetRoot $f.path))))).Replace('-','').ToLower() -ne $f.sha256){throw 'Installed file hash mismatch'}}
-$env:BONO_OBSERVATION_ONLY='1';$env:BONO_DB_PATH=[IO.Path]::GetFullPath($SourceDB);$env:BONO_OBSERVATION_DB_PATH=[IO.Path]::GetFullPath($EvidenceDB)
-$env:BONO_OBSERVATION_BUILD_ID=$manifest.buildId;$env:BONO_OBSERVATION_EXTENSION_ID=$ExtensionId;$env:BONO_PORT='47831'
-try{& $NodeExe (Join-Path $TargetRoot 'bridge/server.js')}finally{foreach($key in @('BONO_OBSERVATION_ONLY','BONO_DB_PATH','BONO_OBSERVATION_DB_PATH','BONO_OBSERVATION_BUILD_ID','BONO_OBSERVATION_EXTENSION_ID','BONO_PORT')){Remove-Item -LiteralPath ('Env:'+ $key) -ErrorAction SilentlyContinue}}
+$saved=@{};$keys=@('BONO_OBSERVATION_ONLY','BONO_DB_PATH','BONO_OBSERVATION_DB_PATH','BONO_OBSERVATION_BUILD_ID','BONO_OBSERVATION_EXTENSION_ID','BONO_PORT')
+foreach($key in $keys){$saved[$key]=[Environment]::GetEnvironmentVariable($key,'Process')}
+$result=1
+try {
+ if([Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners().Port -contains $CorePort){throw 'Port occupied'}
+ $cores=Get-CimInstance Win32_Process | Where-Object {($_.Name -match '^BONO.*\.exe$') -or ($_.Name -eq 'node.exe' -and (-not $_.CommandLine -or $_.CommandLine -match 'bridge[\\/]server\.js'))}
+ if($cores){throw 'BONO desktop/Core active'}
+ & $NodeExe (Join-Path $PSScriptRoot 'launch_observation.js') $PSScriptRoot ([IO.Path]::GetFullPath($TargetRoot)) ([IO.Path]::GetFullPath($SourceDB)) ([IO.Path]::GetFullPath($EvidenceDB)) $ExtensionId $CorePort
+ $result=$LASTEXITCODE
+ if($null -eq $result){$result=1}
+}catch {Write-Output 'Observer launch rejected; no existing process stopped';$result=1}
+finally{foreach($key in $keys){[Environment]::SetEnvironmentVariable($key,$saved[$key],'Process')}}
+exit $result

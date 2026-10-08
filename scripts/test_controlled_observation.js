@@ -59,7 +59,7 @@ async function serverTests(){
  let source=new DatabaseSync(sourcePath);source.exec("CREATE TABLE cases(id INTEGER,court_file_no TEXT,uyap_birim_id TEXT,uyap_dosya_id TEXT); INSERT INTO cases VALUES(1,'2020/1','123','synthetic-reference-0001');CREATE TABLE uyap_command_queue(id INTEGER,status TEXT);INSERT INTO uyap_command_queue VALUES(1,'running');CREATE TABLE job_queue(id INTEGER,status TEXT);INSERT INTO job_queue VALUES(1,'running');CREATE TABLE app_settings(key TEXT,value TEXT);INSERT INTO app_settings VALUES('uyap_manual_download_pause','1');");source.close();
  const hash=()=>crypto.createHash('sha256').update(fs.readFileSync(sourcePath)).digest('hex');const before=hash();
  const net=require('node:net');const port=await new Promise(resolve=>{const socket=net.createServer();socket.listen(0,'127.0.0.1',()=>{const p=socket.address().port;socket.close(()=>resolve(p));});});
- const cp=spawn(process.execPath,[path.join(__dirname,'../bridge/server.js')],{env:{...process.env,BONO_OBSERVATION_ONLY:'1',BONO_DB_PATH:sourcePath,BONO_OBSERVATION_DB_PATH:evidencePath,BONO_OBSERVATION_BUILD_ID:build,BONO_OBSERVATION_EXTENSION_ID:extensionId,BONO_PORT:String(port)},stdio:['ignore','pipe','pipe']});
+ const cp=spawn(process.execPath,[path.join(__dirname,'../bridge/server.js')],{env:{...process.env,BONO_OBSERVATION_ONLY:'1',BONO_DB_PATH:sourcePath,BONO_OBSERVATION_DB_PATH:evidencePath,BONO_OBSERVATION_BUILD_ID:build,BONO_OBSERVATION_EXTENSION_ID:extensionId,BONO_PORT:String(port)},stdio:['pipe','pipe','pipe']});
  let logs='';cp.stdout.on('data',x=>logs+=x);cp.stderr.on('data',x=>logs+=x);
  const base='http://127.0.0.1:'+port,headers={'Content-Type':'application/json','X-Bono-Extension-Id':extensionId};
  const request=(p,body)=>fetch(base+p,{headers,...(body===undefined?{}:{method:'POST',body:JSON.stringify(body)})});
@@ -72,6 +72,6 @@ async function serverTests(){
   const bad=await fetch(base+'/events',{method:'POST',headers,body:'{"PRIVATE_RAW_TOKEN"'});assert.equal(bad.status,400);
   assert.equal(hash(),before);source=new DatabaseSync(sourcePath,{readOnly:true});assert.equal(source.prepare('SELECT status FROM uyap_command_queue').get().status,'running');assert.equal(source.prepare('SELECT status FROM job_queue').get().status,'running');assert.equal(source.prepare('SELECT value FROM app_settings').get().value,'1');source.close();
   assert(!logs.includes('PRIVATE_RAW'));pass('core_boot_zero_queue_pause_jobs_source_db_changes');pass('core_rejects_commands_and_foreign_origin');pass('raw_json_errors_not_logged');
- }finally{cp.kill();await new Promise(resolve=>cp.once('exit',resolve));}
+ }finally{cp.stdin.end('stop\n');await new Promise(resolve=>cp.once('exit',resolve));}
 }
 (async()=>{controllerTests();loadingTests();await backgroundTests();await serverTests();console.log(JSON.stringify({ok:true,results},null,2));})().catch(e=>{console.error(e);process.exitCode=1;});
