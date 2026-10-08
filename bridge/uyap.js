@@ -1023,13 +1023,13 @@ function targetedCaseSearchStatus(searchId){
   let first={};try{first=JSON.parse(rows[0].payload_json||"{}")?.context||{}}catch{}
   const target={court:String(first.targetCourt||""),fileNo:String(first.targetDosyaNo||""),yargiTuru:Number(first.yargiTuru),birimTuru2:String(first.birimTuru2||""),dosyaDurumKod:Number(first.dosyaDurumKod)};
   const commands=rows.map(r=>({id:Number(r.id),status:r.status,priority:Number(r.priority||0),attempts:Number(r.attempts||0),maxAttempts:Number(r.max_attempts||0),createdAt:r.created_at||null,dispatchedAt:r.dispatched_at||null,finishedAt:r.finished_at||null,error:r.error||null}));
-  let match=null,ambiguous=false,hasMore=false;
+  let match=null,ambiguous=false,lastHasMore=false;
   for(const row of rows){
     if(row.status!=="completed"||!row.result_json)continue;
     try{
       const x=JSON.parse(row.result_json);
       if(x?.type!=="targeted_case_search_result")continue;
-      hasMore=hasMore||!!x.hasMore;
+      lastHasMore=!!x.hasMore;
       if(Array.isArray(x.matches)&&x.matches.length){
         if(x.matches.length>1)ambiguous=true;
         match=x.matches[0]||match;
@@ -1043,7 +1043,7 @@ function targetedCaseSearchStatus(searchId){
   else if(ambiguous){state="ambiguous";label="Birden fazla exact eşleşme bulundu"}
   else if(session.state==="login_required"&&(running||queued)){state="login_required";label="UYAP oturumu gerekli";terminal=false;requiresLogin=true}
   else if(running){state="running";label="UYAP'ta dosya aranıyor";terminal=false}
-  else if(queued||hasMore){state="queued";label="UYAP dosya araması bekliyor";terminal=false}
+  else if(queued){state="queued";label="UYAP dosya araması bekliyor";terminal=false}
   else if(rows.some(r=>r.status==="failed")){state="failed";label="UYAP dosya araması başarısız"}
   else if(rows.some(r=>r.status==="cancelled"&&/401|403|auth|login/i.test(String(r.error||"")))){state="login_required";label="UYAP oturumu gerekli";terminal=false;requiresLogin=true}
   return {
