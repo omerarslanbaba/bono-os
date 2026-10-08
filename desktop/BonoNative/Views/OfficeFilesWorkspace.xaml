@@ -43,7 +43,7 @@
         <TextBlock Foreground="{StaticResource MutedText}" Margin="0,6,0,0"
                    Text="Föyleri, müvekkilleri ve ofis dosyalarını tek ekrandan yönet."/>
       </StackPanel>
-      <Button Grid.Column="1" Content="↻  Yenile" Click="Refresh_Click" VerticalAlignment="Center"/>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><Button Content="UYAP Dosyalarını Gör" Click="OpenUyap_Click" Margin="0,0,12,0"/><Button Content="↻  Yenile" Click="Refresh_Click"/></StackPanel>
     </Grid>
     <Border Grid.Row="2" Background="{StaticResource Surface}" BorderBrush="{StaticResource Stroke}"
             BorderThickness="1" CornerRadius="7" Padding="18">
