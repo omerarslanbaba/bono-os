@@ -129,10 +129,11 @@ public sealed class LocalPreviewServer : IAsyncDisposable
         var target = new Uri(coreBase, relative);
         using var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), target);
 
-        var hasBody =
-            context.Request.ContentLength is > 0 ||
-            context.Request.Headers.ContainsKey("Transfer-Encoding");
-        if (hasBody)
+        var mayHaveBody =
+            !HttpMethods.IsGet(context.Request.Method) &&
+            !HttpMethods.IsHead(context.Request.Method) &&
+            !HttpMethods.IsTrace(context.Request.Method);
+        if (mayHaveBody)
             request.Content = new StreamContent(context.Request.Body);
 
         foreach (var header in context.Request.Headers)
