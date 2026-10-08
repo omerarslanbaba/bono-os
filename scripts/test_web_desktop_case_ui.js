@@ -18,10 +18,16 @@ assert.match(src,/Bu işlem PDF\/UDF dosyalarını indirmez/);
 assert.match(src,/r\.party_names/);
 assert.match(src,/file\.party_names/);
 assert.match(src,/file\.client_name/);
+assert.match(src,/case-document-summary/);
+assert.match(src,/case-document-guidance/);
+assert.match(src,/case-download-controls/);
+assert.match(src,/Entegrasyon bekleniyor/);
 assert.doesNotMatch(src,/queueMissingUyapDocuments/);
 
 const css=fs.readFileSync('web/styles-active.css','utf8');
 assert.match(css,/\.case-sync-panel/);
 assert.match(css,/\.case-parties/);
+assert.match(css,/\.case-document-summary/);
+assert.match(css,/\.case-download-controls/);
 
 console.log('PASS case UI: lifecycle polling, single-case list inquiry, no automatic download, party fields and empty/error states');
