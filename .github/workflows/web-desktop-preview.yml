@@ -2,13 +2,17 @@ name: BONO OS WebView2 Desktop Preview
 
 on:
   push:
-    branches: [feature/desktop-webview2]
+    branches: [feature/desktop-webview2, integration/webview2-uyap-single-case]
     paths:
       - 'desktop/BonoWebDesktop/**'
       - 'desktop/BonoWebDesktop.Smoke/**'
       - 'web/**'
       - 'scripts/test_web_desktop_case_ui.js'
       - 'scripts/test_web_desktop_hearings.js'
+      - 'scripts/test_webview2_uyap_single_case_e2e.js'
+      - 'bridge/server.js'
+      - 'bridge/uyap.js'
+      - 'bridge/db.js'
       - 'scripts/web_desktop_updater.ps1'
       - 'scripts/test_web_desktop_updater.ps1'
       - 'docs/web-desktop-update.md'
@@ -50,6 +54,9 @@ jobs:
 
       - name: Verify case document inquiry UI
         run: node scripts/test_web_desktop_case_ui.js
+
+      - name: Isolated single-case UYAP lifecycle E2E
+        run: node scripts/test_webview2_uyap_single_case_e2e.js
 
       - name: Verify web API URLs stay same-origin
         shell: pwsh
