@@ -186,29 +186,63 @@ function bindDocumentTree(){
 }
 
 async function renderCase(id){
-  const [docs,finance,cases]=await Promise.all([api.uyapRemoteDocuments(id),api.accountingOverview(id),api.uyapCases()]);
+  const [docs,finance,cases,syncStatus]=await Promise.all([
+    api.uyapRemoteDocuments(id),
+    api.accountingOverview(id),
+    api.uyapCases(),
+    api.uyapDocumentSyncStatus(id)
+  ]);
   const file=cases.find(x=>String(x.id)===String(id))||{};
   const status=v=>({discovered:'İndirilecek',download_queued:'İndirme kuyruğunda',downloaded:'İndirildi',indexed:'İndekslendi',filed:'Arşivlendi',summarized:'Nota dönüştürüldü',duplicate:'Mükerrer',skipped:'Arşiv dışı',review:'İnceleme gerekli'}[String(v||'').toLowerCase()]||v||'Keşfedildi');
 
-  const counts={};for(const d of docs){const c=docCategory(d);counts[c]=(counts[c]||0)+1}
-  const cats=['Tümü',...Object.keys(counts).sort((a,b)=>a.localeCompare(b,'tr'))];
-  const filters=`<div class="document-categories">${cats.map((c,i)=>`<button class="category-chip ${i===0?'active':''}" data-cat="${esc(c)}">${esc(c)} <span>${c==='Tümü'?docs.length:counts[c]}</span></button>`).join('')}</div>`;
-  const docRows=docs.length?`<div class="evrak-scroll">${docs.map(d=>{const cat=docCategory(d);return `<div class="notice-row evrak-row" data-category="${esc(cat)}"><div><div class="doc-title">${esc(d.remote_title||d.document_type||'UYAP Evrakı')}</div><div class="doc-meta">${esc(d.document_date||'')} · ${esc(cat)} · ${esc(status(d.status))}</div></div><div class="row-actions">${d.status==='summarized'?badge('Nota dönüştürüldü','green'):(d.local_asset_id?badge('BONO’da','green'):badge(d.status==='download_queued'?'Bekliyor':'Henüz alınmadı'))}</div></div>`}).join('')}</div>`:empty('Evrak listesi henüz alınmadı.');
-
+  const counts={};for(const d of docs){const cat=docCategory(d);counts[cat]=(counts[cat]||0)+1}
   const converted=(finance.converted||[]).map(x=>`<div class="notice-row accounting-row"><div><div class="doc-title">${esc(x.title)}</div><div class="doc-meta">${esc(extractLine(x.body,'Tarih'))} · ${esc(extractLine(x.body,'Tutar'))}</div><div class="accounting-source">${esc(extractLine(x.body,'Kaynak belge'))}</div></div>${badge('Nota dönüştürüldü','green')}</div>`).join('');
   const pending=(finance.pending||[]).map(x=>`<div class="notice-row accounting-row"><div><div class="doc-title">${esc(x.remote_title||x.document_type||x.original_file_name||'Mali evrak')}</div><div class="doc-meta">${esc(x.document_date||'Tarih yok')}</div><div class="accounting-source">${esc(x.reason||'İnceleme bekliyor')}</div></div>${badge('İnceleme bekliyor')}</div>`).join('');
   const financeBody=(converted||pending)?`<div class="case-finance-grid"><div>${section('Otomatik Notlar','₺',converted||empty('Bu dosyada otomatik mali not yok.'))}</div><div>${section('İnceleme Bekleyenler','!',pending||empty('Bu dosyada inceleme bekleyen mali evrak yok.'))}</div></div>`:empty('Bu dosyada tahsilat/reddiyat kaydı yok.');
+
+  const lifecycleText={
+    not_synced:'UYAP evrak listesi henüz sorgulanmadı.',
+    queued:'Evrak listesi sorgusu kuyrukta bekliyor.',
+    running:'UYAP’tan evrak listesi sorgulanıyor.',
+    completed:'UYAP evrak listesi hazır.',
+    empty:'UYAP sorgusu tamamlandı; bu dosyada evrak bulunamadı.',
+    failed:'Evrak listesi sorgusu başarısız.',
+    login_required:'UYAP oturumu gerekli.',
+    metadata_unbound:'UYAP evrak metadata’sı döndü ancak BONO listesine işlenemedi.',
+    unlinked:'Bu kayıt için UYAP dosya bağlantısı bulunamadı.'
+  };
+  const syncBusy=['queued','running'].includes(syncStatus.state);
+  const syncMessage=syncStatus.error&&syncStatus.state==='failed'
+    ?`${lifecycleText.failed} ${esc(syncStatus.error)}`
+    :(syncStatus.label||lifecycleText[syncStatus.state]||'Evrak listesi durumu bilinmiyor.');
+  const documentBody=docs.length?renderDocumentTree(docs,status):empty(lifecycleText[syncStatus.state]||syncMessage);
+  const syncButtonLabel=syncStatus.state==='not_synced'
+    ?"↻ UYAP'tan Evrak Listesini Getir"
+    :(syncBusy?(syncStatus.state==='queued'?'Sorgu Bekliyor':'Sorgulanıyor…'):'↻ Evrak Listesini Yenile');
+  const canSync=!!file.uyap_dosya_id&&!syncBusy&&syncStatus.state!=='login_required';
 
   const tabs=`<div class="case-tabs"><button class="case-tab active" data-file-tab="documents">Evraklar <span>${docs.length}</span></button><button class="case-tab" data-file-tab="finance">Tahsilat / Reddiyat <span>${(finance.counts?.converted||0)+(finance.counts?.pending||0)}</span></button></div>`;
   const related=(file.related_cases||[]).map(x=>`<a class="notice-row clickable" href="#uyap/${x.caseId}"><div><div class="doc-title">Bağlantılı Arabuluculuk Dosyası · ${esc(x.courtFileNo||'')}</div><div class="doc-meta">${esc(x.court||'')} · ${esc(x.caseType||'')} · ${esc(x.status||'')}</div></div><span>→</span></a>`).join('');
 
   mount(`<div class="case-header"><a class="back-link" href="#uyap">← Dosyalarıma dön</a><h1><span class="foy-badge ${file.office_file_no?'':'pending'}">${esc(file.office_file_no||'Föy Bekliyor')}</span>${esc(file.court||'Dosya')} ${file.court_file_no?'· '+esc(file.court_file_no):''}</h1><p class="detail-subtitle">${esc(file.case_type||'Dosya içeriği')}</p><div class="case-parties"><strong>Taraf Bilgileri</strong><div>${file.client_name?`<span><b>Müvekkil:</b> ${esc(file.client_name)}</span>`:''}${file.party_names?`<span><b>Kayıtlı taraflar:</b> ${esc(file.party_names)}</span>`:'<span>UYAP taraf bilgisi henüz kaydedilmemiş.</span>'}</div></div>${related?`<div class="related-case-list">${related}</div>`:''}</div>
-    <div class="case-sync-panel ${docs.length?'has-documents':'is-empty'}"><div class="case-sync-copy"><strong>${docs.length?'Evrak listesini güncelle':'Bu dosyanın evrak listesi henüz alınmamış'}</strong><p>${docs.length?'Yeni evrak olup olmadığını UYAP üzerinden sorgulayabilirsin.':'UYAP üzerinden yalnız bu dosyanın evrak listesini sorgula. Bu işlem PDF/UDF dosyalarını indirmez.'}</p><small id="syncUyapStatus" role="status" aria-live="polite">${file.uyap_dosya_id?'Liste sorgulaması hazır.':'Bu kayıt için UYAP dosya bağlantısı bulunamadı.'}</small></div><button id="syncUyapDocs" type="button" class="primary-action" ${file.uyap_dosya_id?'':'disabled'}>↻ UYAP'tan Evrak Listesini Getir</button></div>
+    <div class="case-sync-panel ${docs.length?'has-documents':'is-empty'}"><div class="case-sync-copy"><strong>${docs.length?'Evrak listesini güncelle':'Bu dosyanın evrak listesi henüz alınmamış'}</strong><p>${docs.length?'Yeni evrak olup olmadığını UYAP üzerinden sorgulayabilirsin.':'UYAP üzerinden yalnız bu dosyanın evrak listesini sorgula. Bu işlem PDF/UDF dosyalarını indirmez.'}</p><small id="syncUyapStatus" role="status" aria-live="polite">${esc(syncMessage)}</small></div><button id="syncUyapDocs" type="button" class="primary-action" ${canSync?'':'disabled'}>${syncButtonLabel}</button></div>
     ${tabs}
-    <div class="file-tab-panel" data-file-panel="documents">${section('Evraklar','▤',renderDocumentTree(docs,status))}</div>
+    <div class="file-tab-panel" data-file-panel="documents">${section('Evraklar','▤',documentBody)}</div>
     <div class="file-tab-panel" data-file-panel="finance" hidden>${financeBody}</div>`,'uyap');
 
   document.querySelectorAll('[data-file-tab]').forEach(b=>b.onclick=()=>{const tab=b.dataset.fileTab;document.querySelectorAll('[data-file-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('[data-file-panel]').forEach(p=>p.hidden=p.dataset.filePanel!==tab)});
   bindDocumentTree();
-  document.querySelector('#syncUyapDocs:not(:disabled)')?.addEventListener('click',async e=>{const btn=e.currentTarget,notice=document.querySelector('#syncUyapStatus');btn.disabled=true;btn.textContent='Sorgu kuyruğa alınıyor…';notice.textContent='UYAP evrak listesi sorgusu gönderiliyor. Bu işlem dosyaları indirmez.';try{const result=await api.syncUyapDocuments(id);notice.textContent=result?.commandId?'Sorgu kuyruğa alındı (#'+result.commandId+'). Tamamlandığında evrak listesi yenilenebilir.':'Sorgu kuyruğa alındı. Tamamlandığında evrak listesi yenilenebilir.';btn.textContent='↻ Yeniden Sorgula';btn.disabled=false;}catch(err){notice.textContent='Sorgu başlatılamadı: '+err.message;btn.disabled=false;btn.textContent='↻ Tekrar Dene';}});
+
+  document.querySelector('#syncUyapDocs:not(:disabled)')?.addEventListener('click',async e=>{
+    const btn=e.currentTarget,notice=document.querySelector('#syncUyapStatus');
+    btn.disabled=true;btn.textContent='Sorgu kuyruğa alınıyor…';notice.textContent='UYAP evrak listesi sorgusu gönderiliyor. Bu işlem PDF/UDF dosyalarını indirmez.';
+    try{await api.syncUyapDocuments(id);await renderCase(id)}
+    catch(err){notice.textContent='Sorgu başlatılamadı: '+err.message;btn.disabled=false;btn.textContent='↻ Tekrar Dene'}
+  });
+
+  if(syncBusy){
+    setTimeout(()=>{
+      if(location.hash===`#uyap/${id}`) renderCase(id).catch(()=>{});
+    },750);
+  }
 }
