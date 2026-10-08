@@ -147,6 +147,11 @@ public sealed class LocalPreviewServer : IAsyncDisposable
                 request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
         }
 
+        if (context.Request.Headers.ContainsKey("Origin"))
+            request.Headers.TryAddWithoutValidation("Origin", coreBase.GetLeftPart(UriPartial.Authority));
+        if (context.Request.Headers.ContainsKey("Referer"))
+            request.Headers.Referrer = coreBase;
+
         using var response = await client.SendAsync(
             request,
             HttpCompletionOption.ResponseHeadersRead,
