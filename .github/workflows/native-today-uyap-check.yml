@@ -1,0 +1,68 @@
+name: Native Today + UYAP Integration Check
+
+on:
+  push:
+    branches: [integration/native-today-uyap-ui]
+    paths:
+      - 'desktop/BonoNative/**'
+      - '.github/workflows/native-today-uyap-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-integration:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore desktop/BonoNative/BonoNative.csproj
+
+      - name: Release build
+        run: dotnet build desktop/BonoNative/BonoNative.csproj -c Release --no-restore -p:UseAppHost=false
+
+      - name: Static navigation and UI smoke
+        shell: pwsh
+        run: |
+          $main = Get-Content 'desktop/BonoNative/MainWindow.xaml.cs' -Raw
+          $xaml = Get-Content 'desktop/BonoNative/MainWindow.xaml' -Raw
+          $calendar = Get-Content 'desktop/BonoNative/Views/ThreeMonthHearingCalendar.xaml.cs' -Raw
+          $office = Get-Content 'desktop/BonoNative/Views/OfficeFilesWorkspace.xaml.cs' -Raw
+
+          function Assert-Contains([string]$text, [string]$needle, [string]$label) {
+            if (-not $text.Contains($needle)) { throw "FAIL: $label" }
+            Write-Host "PASS: $label"
+          }
+
+          function Assert-NotContains([string]$text, [string]$needle, [string]$label) {
+            if ($text.Contains($needle)) { throw "FAIL: $label" }
+            Write-Host "PASS: $label"
+          }
+
+          Assert-Contains $xaml 'x:Name="TodayView"' 'Today workspace mounted'
+          Assert-Contains $xaml 'x:Name="NavUyap" Visibility="Collapsed"' 'UYAP sidebar hidden'
+          Assert-Contains $xaml 'UyapRequested="OfficeFilesView_UyapRequested"' 'Dosyalarım exposes UYAP entry'
+          Assert-Contains $xaml 'x:Name="UyapDetailPage"' 'Native UYAP detail retained'
+          Assert-Contains $xaml 'x:Name="LargeHearingCalendar"' 'Large hearing calendar mounted'
+
+          Assert-Contains $main 'if (UyapDetailPage.Visibility == Visibility.Visible) await LoadUyapCaseDetailAsync(false);' 'UYAP detail refresh priority retained'
+          Assert-Contains $main 'else if (OfficeFilesView.Visibility == Visibility.Visible) await OfficeFilesView.RefreshAsync();' 'Office files refresh retained'
+          Assert-Contains $main 'else if (TodayView.Visibility == Visibility.Visible) await TodayView.RefreshAsync();' 'Today refresh retained'
+          Assert-Contains $main 'await OpenUyapCaseAsync(row);' 'UYAP list opens native detail'
+          Assert-Contains $main 'async void BackToUyapCases_Click' 'UYAP detail back handler retained'
+          Assert-Contains $main 'async Task OpenUyapFilesAsync()' 'Dosyalarım to UYAP list route retained'
+          Assert-Contains $main 'void LargeHearingCalendar_HearingOpened' 'Calendar file route retained'
+          Assert-Contains $main 'OfficeFilesView.SetSearch(GlobalSearch.Text);' 'Global search retained'
+          Assert-Contains $main '"paused_manual" => "indirmeler bekletiliyor"' 'Manual download pause retained'
+          Assert-Contains $main '/download-missing' 'Per-case download endpoint remains wired'
+          Assert-NotContains $main 'SetActiveNav(NavUyap);' 'Hidden UYAP nav is never marked active'
+
+          Assert-Contains $office 'UyapRequested?.Invoke(this, EventArgs.Empty);' 'Dosyalarım UYAP request event retained'
+          Assert-Contains $calendar 'for (int m = 0; m < 3; m++)' 'Three-month calendar renders three months'
+          Assert-Contains $calendar 'Text = h.Start.ToString("HH:mm") + "\n" + h.FileNo' 'Hearing cell time/file label retained'

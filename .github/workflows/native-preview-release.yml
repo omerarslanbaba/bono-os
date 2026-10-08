@@ -1,0 +1,103 @@
+name: Native Preview Release + Updater Safety
+
+on:
+  push:
+    branches: [integration/native-today-uyap-ui]
+    paths:
+      - 'desktop/BonoNative/**'
+      - 'scripts/native_preview_updater.ps1'
+      - 'scripts/test_native_preview_updater.ps1'
+      - '.github/workflows/native-preview-release.yml'
+      - '.github/workflows/native-dosyalarim-preview.yml'
+      - 'docs/native-preview-update.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Compute version
+        id: ver
+        shell: pwsh
+        run: |
+          $short = $env:GITHUB_SHA.Substring(0,8)
+          $version = "0.1.0-preview.$env:GITHUB_RUN_NUMBER"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "short=$short" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore desktop/BonoNative/BonoNative.csproj -r win-x64
+
+      - name: Publish Release EXE
+        shell: pwsh
+        run: |
+          dotnet publish desktop/BonoNative/BonoNative.csproj -c Release -r win-x64 --self-contained true --no-restore `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:Version="${{ steps.ver.outputs.version }}" `
+            -p:InformationalVersion="${{ steps.ver.outputs.version }}+${{ steps.ver.outputs.short }}" `
+            -o dist/package
+
+      - name: Create release manifest
+        shell: pwsh
+        run: |
+          $exe = 'dist/package/BONO OS Native.exe'
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          [ordered]@{
+            schemaVersion = 1
+            product = 'BONO OS Native Preview'
+            version = '${{ steps.ver.outputs.version }}'
+            commit = '${{ github.sha }}'
+            shortCommit = '${{ steps.ver.outputs.short }}'
+            builtAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+            executable = 'BONO OS Native.exe'
+            sha256 = $hash
+            channel = 'preview'
+          } | ConvertTo-Json | Set-Content 'dist/package/release-manifest.json' -Encoding utf8
+          "$hash  BONO OS Native.exe" | Set-Content 'dist/package/SHA256SUMS.txt' -Encoding ascii
+
+      - name: Verify package hash
+        shell: pwsh
+        run: |
+          ./scripts/native_preview_updater.ps1 -Mode Plan -PackagePath 'dist/package' -RootPath (Join-Path $env:RUNNER_TEMP 'bono-plan') | Format-List
+
+      - name: Updater rollback tests
+        shell: pwsh
+        run: ./scripts/test_native_preview_updater.ps1
+
+      - name: Native integration smoke
+        shell: pwsh
+        run: |
+          $main = Get-Content 'desktop/BonoNative/MainWindow.xaml.cs' -Raw
+          $xaml = Get-Content 'desktop/BonoNative/MainWindow.xaml' -Raw
+          if (-not $xaml.Contains('x:Name="TodayView"')) { throw 'TodayView missing' }
+          if (-not $xaml.Contains('x:Name="UyapDetailPage"')) { throw 'UYAP detail missing' }
+          if (-not $xaml.Contains('x:Name="NavUyap" Visibility="Collapsed"')) { throw 'UYAP sidebar visibility changed' }
+          if ($main.Contains('SetActiveNav(NavUyap);')) { throw 'Hidden UYAP navigation became active again' }
+          if (-not $main.Contains('await OpenUyapCaseAsync(row);')) { throw 'UYAP detail route missing' }
+          if (-not $main.Contains('async Task OpenUyapFilesAsync()')) { throw 'Dosyalarım -> UYAP route missing' }
+          if (-not $main.Contains('void LargeHearingCalendar_HearingOpened')) { throw 'Hearing calendar route missing' }
+
+      - name: Package ZIP
+        shell: pwsh
+        run: |
+          $name = "BONO-OS-Native-Preview-${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.short }}.zip"
+          Compress-Archive -Path 'dist/package/*' -DestinationPath ("dist/" + $name)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bono-os-native-preview-${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.short }}
+          path: |
+            dist/package/BONO OS Native.exe
+            dist/package/release-manifest.json
+            dist/package/SHA256SUMS.txt
+            dist/BONO-OS-Native-Preview-*.zip
+          retention-days: 14
