@@ -1,5 +1,6 @@
 import {api} from '../../api.js';
 import {mount,pageHero,section,empty,esc,badge} from '../../ui.js';
+import {mountCbsCaseHandoff} from './cbs-case-handoff.js';
 
 function discoveryBar(s,a){
   const active=(s.queued||0)+(s.running||0);
@@ -212,7 +213,7 @@ function bindQuery(rows){
 
 export async function renderUyap(id){
   if(id)return renderCase(id);
-  const [rows,status,archive,searchOptions]=await Promise.all([api.uyapCases(),api.uyapDiscoveryStatus(),api.uyapArchiveStatus(),api.uyapCaseSearchOptions().catch(()=>({ready:false,units:[]}))]);
+  const [rows,status,archive,searchOptions,cbsSchema]=await Promise.all([api.uyapCases(),api.uyapDiscoveryStatus(),api.uyapArchiveStatus(),api.uyapCaseSearchOptions().catch(()=>({ready:false,units:[]})),api.uyapCbsPartySearchSchema().catch(()=>({ready:false}))]);
   const counts={};for(const r of rows){const c=caseCategory(r);counts[c]=(counts[c]||0)+1}
   const order=['Ceza','Hukuk','İş','Aile','İcra','Tüketici','İdare','Diğer'];
   const cats=['Tümü',...order.filter(x=>counts[x])];
@@ -224,6 +225,7 @@ export async function renderUyap(id){
   mount(pageHero('Dosyalarım','Dosyaları yargı türü, birimi, mahkemesi ve esas numarasıyla sorgula.')+
     queryForm(rows)+targetedSearchForm(searchOptions)+discoveryBar(status,archive)+section('Dosya Sorgulama Sonuçları','⚖',body),'uyap');
   bindQuery(rows);
+  mountCbsCaseHandoff(api,cbsSchema);
   bindTargetedCaseSearch();
   // Sorgulama filtreleri bindQuery tarafından yönetilir.
   document.querySelector('#syncAllUyap')?.addEventListener('click',async e=>{
@@ -314,6 +316,9 @@ function bindCaseDocumentControls(caseId){
   const route='#uyap/'+caseId;
   let timer=null,stopped=false,busy=false,startedCommandId=null,completedHandled=false;
   let statusSupported=false,downloadCapacity=0;
+  // A document.list command may be completed by Chat-UYAP outside this page.
+  // Reconcile with BONO's persisted remote-document count without starting another request.
+  let knownVisibleRemoteCount=Number(document.querySelector('.case-document-summary strong')?.textContent||0);
   const labels={not_synced:'Evrak listesi henüz sorgulanmamış',queued:'Sorgu sırada bekliyor',running:'UYAP evrak listesi sorgulanıyor',completed:'Evrak listesi hazır',empty:'Sorgu tamamlandı: evrak bulunamadı',failed:'Sorgu başarısız',login_required:'UYAP oturumu gerekli',metadata_unbound:'Evrak bilgileri geldi ancak BONO listesine işlenemedi',unlinked:'Bu kaydın UYAP dosya bağlantısı yok'};
   const stop=()=>{stopped=true;if(timer)clearTimeout(timer)};
   const session={stop};activeCaseLifecycle=session;
@@ -324,11 +329,13 @@ function bindCaseDocumentControls(caseId){
     try{
       const d=await api.uyapDownloadSummary(caseId);if(!alive())return;
       const missing=Math.max(0,Number(d.missingDownloadable??0));
-      const active=Math.max(0,Number(d.queued??0));
-      downloadCapacity=Math.max(0,Math.min(200-active,missing));
+      const active=Math.max(0,Number(d.activeCommands??0));
+      const reportedCapacity=Number(d.capacity);
+      if(!Number.isFinite(reportedCapacity)||reportedCapacity<0)throw new Error('Core indirme kapasitesi bilinmiyor');
+      downloadCapacity=Math.max(0,Math.min(200,Math.floor(reportedCapacity),missing));
       downloadButton.disabled=downloadCapacity===0;
       downloadButton.textContent=downloadCapacity?'Eksik Evrakları Kuyruğa Ekle ('+downloadCapacity+')':'İndirilecek evrak yok / kapasite dolu';
-      downloadNotice.textContent='Eksik: '+missing+' · Kuyruk: '+active+' · İndirmeler ayrıca onay gerektirir';
+      downloadNotice.textContent='Eksik: '+missing+' · Aktif: '+active+' · Kapasite: '+Math.floor(reportedCapacity)+(d.manualDownloadPaused?' · İndirmeler manuel duraklatılmış':'')+' · İndirme ayrıca onay gerektirir';
     }catch{if(alive()){downloadButton.disabled=true;downloadNotice.textContent='İndirme durumu okunamadı; işlem devre dışı';}}
   }
   async function poll(){
@@ -344,6 +351,15 @@ function bindCaseDocumentControls(caseId){
       notice.textContent=(labels[state]||x.label||state)+(commandId?' · Komut #'+commandId:'')+(x.error&&state==='failed'?' · '+x.error:'');
       if(btn){btn.disabled=!x.canSync;btn.textContent=pending?'Sorgu devam ediyor…':'↻ UYAP\'tan Evrak Listesini Getir'}
       await refreshDownloadState();
+      const serverRemoteCount=Number(x.documents?.remoteCount);
+      if((state==='completed'||state==='empty')&&x.terminal===true&&x.success===true&&
+         Number.isSafeInteger(serverRemoteCount)&&serverRemoteCount>=0&&
+         serverRemoteCount!==knownVisibleRemoteCount){
+        knownVisibleRemoteCount=serverRemoteCount;
+        stop();
+        await renderCase(caseId);
+        return;
+      }
       if(startedCommandId!=null&&String(commandId)===String(startedCommandId)&&x.terminal&&!completedHandled){
         completedHandled=true;
         if(x.success&&(state==='completed'||state==='empty')){
@@ -408,7 +424,7 @@ function bindCaseDocumentViewer(caseId){
       const label=(text,value)=>'<div><span>'+esc(text)+'</span><strong>'+esc(value)+'</strong></div>';
       const canOpen=viewer.openable===true&&integrity.verified===true&&integrity.exists===true;
       const contentUrl=api.caseDocumentContentUrl(caseId,docId);
-      const opened=canOpen?(viewer.mode==='pdf_inline'?'<iframe title="Doğrulanmış PDF evrakı" class="case-document-pdf" src="'+contentUrl+'"></iframe>':viewer.mode==='udf_text'?'':('<a class="subtle-action" href="'+contentUrl+'" target="_blank" rel="noopener">Doğrulanmış evrakı aç / indir ↗</a>')):'<div class="case-document-warning">Dosyanın bütünlüğü doğrulanmadan fiziksel içerik açılmaz.</div>';
+      const opened=canOpen?(viewer.mode==='pdf_inline'?'<iframe title="Doğrulanmış PDF evrakı" class="case-document-pdf" src="'+contentUrl+'"></iframe>':viewer.mode==='udf_text'?'<a class="subtle-action" href="'+contentUrl+'" download>Doğrulanmış UDF aslını indir ↓</a>':('<a class="subtle-action" href="'+contentUrl+'" target="_blank" rel="noopener">Doğrulanmış evrakı aç / indir ↗</a>')):'<div class="case-document-warning">Dosyanın bütünlüğü doğrulanmadan fiziksel içerik açılmaz.</div>';
       const body=readability.readable===true&&typeof readability.text==='string'?'<details class="case-document-text" open><summary>Çıkarılmış belge metni</summary><pre>'+esc(readability.text)+'</pre></details>':'<div class="case-document-warning">Metin okunamıyor veya henüz çıkarılmamış. '+esc(readability.error||readability.status||'')+'</div>';
       panel.innerHTML='<div class="case-document-viewer-head"><div><small>EVRAK İNCELEME</small><h3>'+esc(d.name||'UYAP Evrakı')+'</h3><p>'+esc(d.documentType||'Evrak')+' · '+esc(d.documentDate||'Tarih bilinmiyor')+'</p></div><button id="closeCaseDocumentViewer" class="subtle-action" type="button">Kapat ×</button></div><div class="case-document-flags">'+label('İndirilmiş',plainStatus(download.downloaded===true))+label('SHA doğrulandı',plainStatus(integrity.verified===true))+label('Metin okunabilir',plainStatus(readability.readable===true))+label('Görüntüleme',viewer.mode||'Kullanılamıyor')+'</div>'+opened+body;
       panel.querySelector('#closeCaseDocumentViewer')?.addEventListener('click',()=>{seq++;panel.hidden=true;panel.textContent=''});
