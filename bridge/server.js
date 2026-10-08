@@ -472,6 +472,8 @@ const server=http.createServer(async(req,res)=>{
               error:d.error?String(d.error).slice(0,500):undefined
             }}
           };
+          const evidenceEvent=require("./uyap_observation_events").record(db,d,{tabId:event.tabId,frameId:event.frameId,sourceUrl:event.sourceUrl});
+          if(evidenceEvent)stored.observationEventId=evidenceEvent.eventId;
           uyap.observe({...stored.payload.data,request:d.request||null,responseSummary:d.responseSummary||null});
         }catch{}
       }

@@ -26,9 +26,15 @@
     if (!runtimeAlive()) return;
     try {
       const script = document.createElement("script");
-      script.src = chrome.runtime.getURL("page_probe.js");
+      script.src = chrome.runtime.getURL("observation_contracts.js");
       script.async = false;
-      script.onload = () => script.remove();
+      script.onload = () => {
+        script.remove();
+        const probe = document.createElement("script");
+        probe.src = chrome.runtime.getURL("page_probe.js");
+        probe.onload = () => probe.remove();
+        (document.documentElement || document.head || document.body).appendChild(probe);
+      };
       (document.documentElement || document.head || document.body).appendChild(script);
     } catch {}
   }

@@ -124,7 +124,7 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
         }
       }
       const r=await fetch(LOCAL+"/events",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({capturedAt:new Date().toISOString(),sourceUrl:sender.tab?.url||"",payload:p})});
+        body:JSON.stringify({capturedAt:new Date().toISOString(),sourceUrl:sender.tab?.url||"",tabId:tabId??null,frameId,payload:p})});
       sendResponse({ok:r.ok});
     })().catch(e=>sendResponse({ok:false,error:e.message}));
     return true;
