@@ -21,21 +21,14 @@ function runPy(code,args=[]){
   return cp;
 }
 function makePdf(file,text){
-  const code=[
-    "import sys",
-    "from pypdf import PdfWriter",
-    "from pypdf.generic import NameObject,DictionaryObject,StreamObject",
-    "out,text=sys.argv[1],sys.argv[2]",
-    "w=PdfWriter();p=w.add_blank_page(width=612,height=792)",
-    "font=DictionaryObject({NameObject('/Type'):NameObject('/Font'),NameObject('/Subtype'):NameObject('/Type1'),NameObject('/BaseFont'):NameObject('/Helvetica'),NameObject('/Encoding'):NameObject('/WinAnsiEncoding')})",
-    "font_ref=w._add_object(font)",
-    "p[NameObject('/Resources')]=DictionaryObject({NameObject('/Font'):DictionaryObject({NameObject('/F1'):font_ref})})",
-    "safe=text.encode('latin-1','replace').replace(b'\\\\',b'\\\\\\\\').replace(b'(',b'\\\\(').replace(b')',b'\\\\)')",
-    "stream=StreamObject();stream.set_data(b'BT /F1 12 Tf 72 720 Td ('+safe+b') Tj ET')",
-    "p[NameObject('/Contents')]=w._add_object(stream)",
-    "f=open(out,'wb');w.write(f);f.close()"
-  ].join(";")
-  runPy(code,[file,text]);
+  const html=file+".html";
+  fs.writeFileSync(html,"<!doctype html><meta charset=utf-8><style>body{font:16px Arial;margin:40px}</style><p>"+String(text).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")+"</p>","utf8");
+  const cp=spawnSync("py",["-3",path.join(ROOT,"scripts","convert_archive_file.py"),html,file],{cwd:ROOT,encoding:"utf8",windowsHide:true,timeout:120000});
+  if(cp.status!==0)throw new Error(cp.stderr||cp.stdout||"HTML->PDF fixture build failed");
+  const line=String(cp.stdout||"").trim().split(/\r?\n/).filter(Boolean).pop()||"{}";
+  const result=JSON.parse(line);
+  if(!result.ok||!fs.existsSync(file))throw new Error(result.error||"HTML->PDF fixture build failed");
+  try{fs.unlinkSync(html)}catch{}
 }
 function makeBlankPdf(file){
   runPy("import sys;from pypdf import PdfWriter;w=PdfWriter();w.add_blank_page(width=612,height=792);f=open(sys.argv[1],'wb');w.write(f);f.close()",[file]);
