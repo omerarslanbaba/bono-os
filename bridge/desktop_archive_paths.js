@@ -49,8 +49,29 @@ function categoryFolder(type) {
   return GROUPS[key] || segment(type || 'Diğer Birimler');
 }
 
+// Existing Dava Dosyaları directories are authoritative. Do not rename or migrate
+// them to the proposed Mahkemeler layout merely to display a desktop view.
+// Only accept previously resolved, archive-owned relative paths.
+function existingCaseDirectory(archiveRoot, existingRelativePath) {
+  if (!archiveRoot || !path.isAbsolute(archiveRoot)) throw new TypeError('Absolute existing archive root required');
+  if (typeof existingRelativePath !== 'string' || !existingRelativePath.trim()) {
+    throw new TypeError('Existing case path must come from verified archive metadata');
+  }
+  const normalized = existingRelativePath.replace(/\\/g, '/');
+  const parts = normalized.split('/');
+  if (parts.some(part => !part || part === '.' || part === '..' || part.includes(':'))) {
+    throw new TypeError('Unsafe existing case path');
+  }
+  const target = path.resolve(archiveRoot, ...parts);
+  const relative = path.relative(archiveRoot, target);
+  if (!relative || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
+    throw new TypeError('Existing case path escapes archive');
+  }
+  return target;
+}
+
 function relativeCaseDirectory(record) {
   return path.join('Mahkemeler', categoryFolder(record.category), caseFolder(record));
 }
 
-module.exports = { segment, stableId, caseFolder, categoryFolder, relativeCaseDirectory, GROUPS };
+module.exports = { segment, stableId, caseFolder, categoryFolder, relativeCaseDirectory, existingCaseDirectory, GROUPS };
