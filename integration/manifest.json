@@ -13,7 +13,7 @@
       "uiCommit": "313cd1261cc9570b5b7b867bae70b28877bcc2f2"
     },
     "uyap": {
-      "coreCommit": "b7d438995d94a6901ba4c83d2bf68ae0ca83c702",
+      "coreCommit": "9559738f22f8939e05cb956be3f3538ac94f9136",
       "extension": {
         "packagedWithPreview": false,
         "manifestVersion": "0.3.6",
@@ -86,6 +86,11 @@
       "path": "extension/page_probe.js",
       "blobSha": "7cddbec07d96ed74a8b642862fab45566961300f",
       "owner": "CHAT-UYAP/current integration"
+    },
+    {
+      "path": "bridge/uyap_case_document_contract.js",
+      "blobSha": "536bc6fe3682a3fc0eeca0c870d24fe7a70a58eb",
+      "owner": "CHAT-UYAP"
     }
   ],
   "verifiedCapabilities": [
@@ -97,7 +102,8 @@
     "wrong-case rejection and stream-time SHA verification",
     "month-only hearing calendar",
     "same-origin bundled WebView2 UI",
-    "EXE + web-bundle integrity and rollback updater"
+    "EXE + web-bundle integrity and rollback updater",
+    "fail-closed UYAP case/document identity contract"
   ],
   "pendingDependencies": {
     "queueMigration": {
