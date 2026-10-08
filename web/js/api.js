@@ -23,5 +23,8 @@ export const api={
   uyapCases:()=>request('/api/uyap/cases'),
   uyapRemoteDocuments:caseId=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/remote-documents'),
   syncUyapDocuments:caseId=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/sync-documents',{method:'POST',body:'{}'}),
+  uyapDocumentSyncStatus:caseId=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/document-sync-status'),
+  uyapDownloadSummary:caseId=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/download-summary'),
+  queueMissingUyapDocuments:(caseId,limit=200)=>request('/api/uyap/cases/'+encodeURIComponent(caseId)+'/download-missing',{method:'POST',body:JSON.stringify({limit,confirmed:true})}),
   downloadUyapDocument:id=>request('/api/uyap/remote-documents/'+encodeURIComponent(id)+'/download',{method:'POST',body:'{}'})
 };
