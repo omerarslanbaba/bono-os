@@ -29,7 +29,7 @@ const documentViewHttp=require("./document_view_http");
 if(documentViewHttp.handleDocumentViewRequest(req,res,db)) return;
 ```
 
-Başka stream kodu yazılmamalıdır. Özellikle `fs.createReadStream(path)` ile yeniden path açılmamalıdır; adapter SHA doğrulamasını yaptığı **aynı açık file descriptor** üzerinden stream eder.
+Başka stream kodu yazılmamalıdır. Özellikle canonical `path` yeniden açılıp doğrudan stream edilmemelidir. Adapter canonical kaynağı case/asset/symlink kontrollerinden geçirir, doğrulanan byte’ları özel bir geçici snapshot’a kopyalarken SHA-256 hesaplar ve response’u yalnız bu doğrulanmış snapshot fd’sinden stream eder.
 
 ## Route sözleşmesi
 
@@ -63,7 +63,8 @@ Content yalnız şu şartlarda stream edilir:
 4. canonical path aynı asset'in `asset_locations` kaydında birebir vardır;
 5. path bileşenlerinde symlink/junction policy ihlali yoktur;
 6. dosya regular file'dır;
-7. açık file descriptor üzerinden hesaplanan SHA-256 beklenen asset/remote SHA ile aynıdır.
+7. canonical kaynak fd’sinden özel snapshot oluşturulurken hesaplanan SHA-256 beklenen asset/remote SHA ile aynıdır;
+8. HTTP response yalnız doğrulanmış snapshot fd’sinden stream edilir ve response kapanınca snapshot temizlenir.
 
 ## UI `c3f696e` birebir alan uyumu
 
@@ -142,9 +143,21 @@ HTTP route regex yalnız pozitif numeric `caseId` ve `remoteDocumentDbId` kabul 
 
 ## TOCTOU koruması
 
-`/view` sırasında yapılan hash doğrulamasına güvenilmez. `/content` çağrısında dosya tekrar açılır, SHA **açık fd üzerinden** hesaplanır ve response stream aynı fd'den yapılır.
+`/view` sırasında yapılan hash doğrulamasına güvenilmez. `/content` çağrısında canonical kaynak yeniden case/asset/symlink kontrollerinden geçirilir ve açılır.
 
-Bu nedenle kullanıcı `/view` cevabını aldıktan sonra fiziksel path değiştirilse bile content çağrısı yeni SHA ile tekrar doğrulanır; farklı içerik stream edilmez.
+Ardından:
+1. canonical source fd'den byte'lar yalnız BONO'nun oluşturduğu özel temp snapshot'a yazılır;
+2. SHA-256 aynı byte akışı üzerinde hesaplanır;
+3. hash uyuşmazsa snapshot silinir ve 412 döner;
+4. hash doğruysa canonical source fd kapatılır;
+5. HTTP response yalnız doğrulanmış snapshot fd'sinden stream edilir;
+6. stream/response kapanınca snapshot dizini temizlenir.
+
+Bu, iki ayrı yarışı kapatır:
+- `/view` ile `/content` arasında canonical dosyanın değiştirilmesi;
+- SHA doğrulamasından **sonra** canonical dosyanın yerinde değiştirilmesi.
+
+İkinci durumda bile response byte'ları artık canonical kaynaktan değil, hash'i doğrulanmış snapshot'tan geldiği için doğrulanmamış içerik kullanıcıya gönderilmez.
 
 ## Desktop WebView2 proxy uyumu
 
@@ -160,4 +173,4 @@ node scripts/document_view_service_selftest.js
 node scripts/test_web_desktop_case_ui.js
 ```
 
-HTTP fixture canlı Core veya gerçek DB kullanmaz; loopback ephemeral server + in-memory SQLite + temp dosyalar kullanır.
+HTTP fixture canlı Core veya gerçek DB kullanmaz; loopback ephemeral server + in-memory SQLite + temp dosyalar kullanır. Fixture ayrıca verified snapshot oluşturulduktan sonra canonical kaynağı değiştirip stream byte’larının değişmediğini ve snapshot cleanup’in tamamlandığını doğrular.
