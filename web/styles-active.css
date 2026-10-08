@@ -494,3 +494,21 @@ a.search-hit:hover,
 .case-targeted-notice{border-left:3px solid #318cad;padding-left:11px;color:#aebbc3;line-height:1.55;font-size:11px;margin:16px 0 0}
 .case-targeted-notice strong{color:#d3e9f2}
 @media(max-width:720px){.case-targeted-head,.case-targeted-actions{align-items:stretch;flex-direction:column}.case-targeted-tag{white-space:normal}}
+
+
+/* CBS party search + follow-up case handoff, over the existing BONO OS layout */
+.case-cbs-handoff{display:grid;gap:14px;margin:14px 0}
+.case-cbs-handoff-panel{background:#192026;border:1px solid #344d5a;border-radius:7px;padding:19px 22px;min-width:0}
+.case-cbs-handoff-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:15px}
+.case-cbs-handoff-head>div>strong{font-size:15px;color:#f0f7fa}
+.case-cbs-handoff-head p{font-size:12px;color:#b0c1cc;line-height:1.5;margin:6px 0 0}
+.case-cbs-handoff .case-query-grid{margin:0}
+.case-cbs-handoff .case-targeted-actions{padding-top:15px;display:flex;align-items:center;justify-content:space-between;gap:14px}
+.case-cbs-handoff .case-targeted-actions small{font-size:11px;color:#a7cfe0;line-height:1.5}
+.case-cbs-handoff button:disabled,.case-cbs-handoff select:disabled{opacity:.53;cursor:not-allowed}
+.case-cbs-handoff-results{margin-top:13px;border:1px solid #385663;border-radius:5px;background:#122631;padding:12px 15px;display:flex;flex-direction:column;gap:9px}
+.case-cbs-handoff-results[hidden]{display:none}
+.case-cbs-handoff-results>strong{font-size:12px;color:#d2e8f1}
+.case-handoff-link{display:block;padding:12px 14px;border-radius:4px;background:#204051;border:1px solid #416d7f;color:#e2f5ff;text-decoration:none;font-size:12px;font-weight:600}
+.case-handoff-link:hover{background:#28576c;color:#fff}
+@media(max-width:760px){.case-cbs-handoff-head,.case-cbs-handoff .case-targeted-actions{flex-direction:column;align-items:stretch}}
