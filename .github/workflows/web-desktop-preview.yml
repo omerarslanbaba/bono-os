@@ -191,7 +191,9 @@ jobs:
             coreHealthUri = 'http://127.0.0.1:47831/health'
             previewOrigin = 'loopback ephemeral same-origin proxy'
             corePackageVersion = '0.9.0'
-            chromeExtensionVersion = '0.3.6'
+            chromeExtensionManifestVersion = '0.3.6'
+            chromeExtensionRuntimeMarker = '0.3.8'
+            chromeExtensionCompatible = $false
             uiSourceCommit = '313cd1261cc9570b5b7b867bae70b28877bcc2f2'
             uyapSourceCommit = 'b7d438995d94a6901ba4c83d2bf68ae0ca83c702'
             archiveSourceCommit = 'dca93cd26cf94bc2d2d379c368f6e45f7a66bf30'
