@@ -106,9 +106,9 @@ const server=http.createServer((req,res)=>{
     values('POST','avukat.uyap.gov.tr','/search_phrase_detayli.ajx',200,'application/json','[]',?)`)
     .run(JSON.stringify({query:{q:"observed"},body:{observedCourtField:"X",observedYearField:2026},headers:{"Content-Type":"application/json"}}));
   r=await get("/api/uyap/case-search-schema");
-  must(r.json.state==="observed"&&r.json.observed===true,"observed schema not detected");
+  must(r.json.state==="observed_unverified"&&r.json.observed===true,"unverified observed schema not detected");
   must(r.json.requestShape.body.observedCourtField==="string"&&r.json.requestShape.body.observedYearField==="number","observed shape altered");
-  must(r.json.targetedSearch.ready===false&&r.json.targetedSearch.reason==="target_field_bindings_unverified","Core guessed semantic bindings");
+  must(r.json.targetedSearch.ready===false&&r.json.targetedSearch.reason==="observed_schema_missing_required_fields","Core guessed semantic bindings");
 
   must(uyap.sessionState().manualDownloadPaused===true,"document sync contract flow cleared manual pause");
 
