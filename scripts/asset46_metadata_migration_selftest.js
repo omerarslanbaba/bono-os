@@ -77,6 +77,20 @@ try{
   assert(path.resolve(remote.filed_path).toLowerCase()===path.resolve(target).toLowerCase()&&remote.status==="filed"&&Number(remote.local_asset_id)===46,"remote row not canonical after apply");
   assert(path.resolve(asset.archive_path).toLowerCase()===path.resolve(target).toLowerCase(),"asset archive_path not canonical after apply");
 
+  const applyAgain=run(["--apply","--confirm","ASSET46_CANONICAL"]);
+  assert(applyAgain.status===0,"second apply failed: "+(applyAgain.stderr||applyAgain.stdout));
+  assert(applyAgain.data?.ok===true&&applyAgain.data?.sourceLocationPreserved===true&&applyAgain.data?.canonicalLocationPresent===true,"second apply verification failed");
+  check=new DatabaseSync(dbPath,{readOnly:true});
+  const secondLocations=check.prepare("SELECT local_path FROM asset_locations WHERE asset_id=46 ORDER BY id").all().map(x=>path.resolve(x.local_path).toLowerCase());
+  const secondRemote=check.prepare("SELECT filed_path,status,local_asset_id FROM uyap_remote_documents WHERE id=74").get();
+  const secondAsset=check.prepare("SELECT archive_path,archive_policy FROM local_assets WHERE id=46").get();
+  check.close();
+  assert(secondLocations.length===2,"second apply created duplicate asset_location rows");
+  assert(secondLocations.filter(x=>x===path.resolve(target).toLowerCase()).length===1,"canonical asset_location duplicated on second apply");
+  assert(secondLocations.includes(path.resolve(source).toLowerCase()),"second apply lost source asset_location");
+  assert(path.resolve(secondRemote.filed_path).toLowerCase()===path.resolve(target).toLowerCase(),"second apply changed remote filed_path away from canonical");
+  assert(path.resolve(secondAsset.archive_path).toLowerCase()===path.resolve(target).toLowerCase(),"second apply changed asset archive_path away from canonical");
+
   const snapshotPath=apply.data.snapshotPath;
   assert(snapshotPath&&fs.existsSync(snapshotPath),"snapshot missing");
   const rollback=run(["--rollback",snapshotPath,"--confirm","ASSET46_ROLLBACK"]);
@@ -99,6 +113,7 @@ try{
     applyVerified:true,
     sourcePreservedAfterApply:true,
     canonicalLocationAdded:true,
+    repeatedApplyIdempotent:true,
     snapshotCreated:true,
     rollbackVerified:true,
     canonicalPhysicalCopyPreservedAfterRollback:true
