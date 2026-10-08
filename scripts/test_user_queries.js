@@ -8,10 +8,10 @@ db.exec("INSERT INTO cases(id,court,court_file_no,uyap_birim_id,uyap_dosya_id) V
 db.prepare("INSERT INTO uyap_endpoints(endpoint_key,method,host,path,enabled) VALUES('case.search','POST','avukat.uyap.gov.tr','/avukat_mahkemeleri_sorgula.ajx',1)").run();
 for(let i=0;i<270;i++)db.prepare("INSERT INTO uyap_command_queue(command_type,endpoint_key,payload_json) VALUES('fetch_json','case.search',?)").run(JSON.stringify({token:'PRIVATE_TOKEN',context:{caseId:1},name:'PRIVATE_PERSON'}));
 const ids=db.prepare('SELECT id FROM uyap_command_queue ORDER BY id').all().map(x=>x.id),manifest={schema:1,verified:true,queueIdDigest:policy.digest(ids)};
-assert.throws(()=>policy.migrate(db,{backupManifest:manifest,afterRow:n=>{if(n===100)throw Error('synthetic_interruption');}}),/interruption/);
+assert.throws(()=>policy.migrate(db,{expectedQueued:270,backupManifest:manifest,afterRow:n=>{if(n===100)throw Error('synthetic_interruption');}}),/interruption/);
 assert.equal(db.prepare("SELECT count(*) n FROM uyap_command_queue WHERE status='queued'").get().n,270);
 assert.equal(db.prepare("SELECT count(*) n FROM sqlite_master WHERE name='uyap_query_history'").get().n,0);
-assert.equal(policy.migrate(db,{backupManifest:manifest}).retired,270);assert(policy.migrate(db,{backupManifest:manifest}).alreadyApplied);
+assert.equal(policy.migrate(db,{expectedQueued:270,backupManifest:manifest}).retired,270);assert(policy.migrate(db,{expectedQueued:270,backupManifest:manifest}).alreadyApplied);
 assert.throws(()=>db.prepare("UPDATE uyap_command_queue SET status='queued' WHERE id=1").run(),/retired/);assert.throws(()=>db.prepare('DELETE FROM uyap_command_queue WHERE id=1').run(),/retired/);
 const service=policy.install(db,uyap);assert.equal(uyap.claimNext('avukat.uyap.gov.tr','query'),null);
 assert.equal(uyap.reportResult(1,{ok:true,status:200,data:{}}).reason,'inactive_user_command');
