@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>BONO OS Native</AssemblyName>
+    <RootNamespace>BonoNative</RootNamespace>
+    <ApplicationIcon>Assets\bono-os.ico</ApplicationIcon>
+    <Product>BONO OS</Product>
+    <Title>BONO OS</Title>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\bono-os-logo.png" />
+  </ItemGroup>
+</Project>

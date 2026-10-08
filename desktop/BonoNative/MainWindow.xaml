@@ -1,0 +1,205 @@
+﻿<Window x:Class="BonoNative.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="BONO OS" Height="900" Width="1480" MinHeight="700" MinWidth="1100"
+        WindowStartupLocation="CenterScreen" Background="{StaticResource Bg}">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="258"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="#17181C" BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
+            <Grid Margin="19,26">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="18"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="Assets/bono-os-logo.png" Width="50" Height="50" Stretch="Uniform" Margin="0,0,10,0"/>
+                        <StackPanel>
+                            <TextBlock Text="BONO OS" Foreground="{StaticResource Text}" FontWeight="SemiBold" FontSize="23"/>
+                            <TextBlock Text="Hukuk Operasyon Sistemi" Foreground="{StaticResource Muted}" FontSize="10"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Row="2">
+                    <TextBlock Text="ÇALIŞMA ALANI" Foreground="{StaticResource Muted}" FontSize="10" Margin="12,6,0,14"/>
+                    <Button x:Name="NavHome" Content="◫    Bugün" Click="NavHome_Click"/>
+                    <Button x:Name="NavFiles" Content="⚖    Dosyalarım" Click="NavFiles_Click"/>
+                    <Button x:Name="NavUyap" Content="▤    UYAP Dosyaları" Click="NavUyap_Click"/>
+                    <Button x:Name="NavHearings" Content="◷    Duruşmalar" Click="NavHearings_Click"/>
+                    <Button x:Name="NavSystem" Content="●    Sistem" Click="NavSystem_Click"/>
+                </StackPanel>
+
+                <StackPanel Grid.Row="3">
+                    <TextBlock Text="BONO OS  ·  HUKUK OPERASYON" FontSize="10" Foreground="{StaticResource Muted}" Margin="2,0,0,12"/>
+                    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="10">
+                        <StackPanel>
+                            <TextBlock Text="Çekirdek" Foreground="{StaticResource Muted}" FontSize="11"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                <Ellipse x:Name="CoreDot" Width="8" Height="8" Fill="#777" Margin="0,0,7,0"/>
+                                <TextBlock x:Name="CoreStatusText" Text="Bağlanıyor…" Foreground="{StaticResource Text}" FontSize="12"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Column="1" Margin="26,21,27,23">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="20"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock x:Name="PageTitle" Text="Bugün" Foreground="{StaticResource Text}" FontSize="30" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="PageSubtitle" Text="Ofis ve UYAP akışının canlı özeti" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBox x:Name="GlobalSearch" Width="300" Height="39" VerticalContentAlignment="Center" Margin="0,0,12,0" ToolTip="FÖY, müvekkil veya dosya ara" TextChanged="GlobalSearch_TextChanged"/>
+                    <Button Content="↻  Yenile" Width="110" Height="39" HorizontalContentAlignment="Center" Click="Refresh_Click"/>
+                </StackPanel>
+            </Grid>
+
+            <Grid Grid.Row="2">
+                <!-- HOME -->
+                <ScrollViewer x:Name="HomePage" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <UniformGrid Columns="4" Margin="0,0,0,18">
+                            <Border Style="{x:Null}" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="16" Margin="0,0,10,0">
+                                <StackPanel><TextBlock Text="TOPLAM FÖY" Foreground="{StaticResource Muted}"/><TextBlock x:Name="CardFiles" Text="—" Foreground="{StaticResource Text}" FontSize="30" FontWeight="SemiBold" Margin="0,6,0,0"/></StackPanel>
+                            </Border>
+                            <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="16" Margin="0,0,10,0">
+                                <StackPanel><TextBlock Text="UYAP DOSYALARI" Foreground="{StaticResource Muted}"/><TextBlock x:Name="CardCases" Text="—" Foreground="{StaticResource Text}" FontSize="30" FontWeight="SemiBold" Margin="0,6,0,0"/></StackPanel>
+                            </Border>
+                            <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="16" Margin="0,0,10,0">
+                                <StackPanel><TextBlock Text="ARŞİVLENEN EVRAK" Foreground="{StaticResource Muted}"/><TextBlock x:Name="CardIndexed" Text="—" Foreground="{StaticResource Text}" FontSize="30" FontWeight="SemiBold" Margin="0,6,0,0"/></StackPanel>
+                            </Border>
+                            <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="16">
+                                <StackPanel><TextBlock Text="İNDİRME KUYRUĞU" Foreground="{StaticResource Muted}"/><TextBlock x:Name="CardQueue" Text="—" Foreground="{StaticResource Text}" FontSize="30" FontWeight="SemiBold" Margin="0,6,0,0"/></StackPanel>
+                            </Border>
+                        </UniformGrid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="18">
+                                <StackPanel>
+                                    <TextBlock Text="◷   Yaklaşan Duruşmalar" Foreground="{StaticResource Text}" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                                    <DataGrid x:Name="HomeHearingsGrid" Height="390" MouseDoubleClick="HearingRow_DoubleClick" AlternationCount="2">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Tarih" Binding="{Binding DateText}" Width="145"/>
+                                            <DataGridTextColumn Header="Mahkeme" Binding="{Binding Court}" Width="*"/>
+                                            <DataGridTextColumn Header="Dosya" Binding="{Binding FileNo}" Width="120"/>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="18">
+                                <StackPanel>
+                                    <TextBlock Text="▤   UYAP Arşiv Motoru" Foreground="{StaticResource Text}" FontSize="17" FontWeight="SemiBold"/>
+                                    <TextBlock x:Name="UyapStateText" Text="—" Foreground="{StaticResource Accent}" FontSize="15" Margin="0,12,0,16"/>
+                                    <TextBlock Text="Bekleyen indirme" Foreground="{StaticResource Muted}"/>
+                                    <TextBlock x:Name="UyapQueueText" Text="—" Foreground="{StaticResource Text}" FontSize="24" Margin="0,3,0,14"/>
+                                    <TextBlock Text="Hatalı komut" Foreground="{StaticResource Muted}"/>
+                                    <TextBlock x:Name="UyapFailedText" Text="—" Foreground="{StaticResource Text}" FontSize="24" Margin="0,3,0,18"/>
+                                    <Button Content="Arşivi Başlat / Devam Et" HorizontalContentAlignment="Center" Click="ArchiveStart_Click"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- FILES -->
+                <Grid x:Name="FilesPage" Visibility="Collapsed">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="12"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <StackPanel HorizontalAlignment="Left">
+                        <TextBlock Text="DOSYALARDA ARA" Foreground="{StaticResource Muted}" FontSize="11" Margin="2,0,0,5"/>
+                        <TextBox x:Name="FilesSearch" Width="560" Height="42" FontSize="13" VerticalContentAlignment="Center" TextChanged="FilesSearch_TextChanged" ToolTip="FÖY no, müvekkil veya dosya adı ara"/>
+                    </StackPanel>
+                    <DataGrid Grid.Row="2" x:Name="FilesGrid" AlternationCount="2" MouseDoubleClick="FileRow_DoubleClick">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="FÖY" Binding="{Binding FileNo}" Width="100"/>
+                            <DataGridTextColumn Header="Müvekkil" Binding="{Binding Client}" Width="220"/>
+                            <DataGridTextColumn Header="Dosya" Binding="{Binding Title}" Width="*"/>
+                            <DataGridTextColumn Header="Durum" Binding="{Binding Status}" Width="160"/>
+                            <DataGridTextColumn Header="Bağlı Dosya" Binding="{Binding CaseCount}" Width="95"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+
+                <!-- UYAP -->
+                <Grid x:Name="UyapPage" Visibility="Collapsed">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="12"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Dosya Sorgulama" Foreground="{StaticResource Text}" FontSize="19" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                        <WrapPanel Margin="0,0,0,12">
+                            <StackPanel Margin="0,0,12,0"><TextBlock Text="Yargı Türü" Foreground="{StaticResource Muted}"/><ComboBox x:Name="CaseTypeFilter" Width="175" Height="38" SelectedIndex="0" SelectionChanged="CaseFilter_Changed"><ComboBoxItem Content="Tümü"/><ComboBoxItem Content="Ceza"/><ComboBoxItem Content="Hukuk"/><ComboBoxItem Content="İcra"/><ComboBoxItem Content="İdare"/><ComboBoxItem Content="Aile"/><ComboBoxItem Content="İş"/></ComboBox></StackPanel>
+                            <StackPanel Margin="0,0,12,0"><TextBlock Text="Dosya Durumu" Foreground="{StaticResource Muted}"/><ComboBox x:Name="CaseStatusFilter" Width="145" Height="38" SelectedIndex="0" SelectionChanged="CaseFilter_Changed"><ComboBoxItem Content="Tümü"/><ComboBoxItem Content="Açık"/><ComboBoxItem Content="Kapalı"/></ComboBox></StackPanel>
+                            <StackPanel Margin="0,0,12,0"><TextBlock Text="Dosyada Ara" Foreground="{StaticResource Muted}"/><TextBox x:Name="UyapSearch" Width="315" Height="38" VerticalContentAlignment="Center" TextChanged="UyapSearch_TextChanged"/></StackPanel>
+                            <Button Content="Temizle" Height="38" VerticalAlignment="Bottom" Click="ResetCaseFilters_Click"/>
+                        </WrapPanel>
+                    </StackPanel>
+                    <DataGrid Grid.Row="2" x:Name="UyapGrid" AlternationCount="2" MouseDoubleClick="UyapRow_DoubleClick">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="FÖY" Binding="{Binding Foy}" Width="90"/>
+                            <DataGridTextColumn Header="Mahkeme / Birim" Binding="{Binding Court}" Width="*"/>
+                            <DataGridTextColumn Header="Dosya No" Binding="{Binding FileNo}" Width="130"/>
+                            <DataGridTextColumn Header="Tür" Binding="{Binding CaseType}" Width="220"/>
+                            <DataGridTextColumn Header="Durum" Binding="{Binding Status}" Width="90"/>
+                            <DataGridTextColumn Header="Evrak" Binding="{Binding RemoteCount}" Width="80"/>
+                            <DataGridTextColumn Header="İndeks" Binding="{Binding IndexedCount}" Width="80"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+
+                <!-- HEARINGS -->
+                <Grid x:Name="HearingsPage" Visibility="Collapsed">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="14"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <Border Background="{StaticResource Panel}" CornerRadius="7" BorderBrush="{StaticResource Border}" BorderThickness="1" Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="DURUŞMA TAKVİMİ" FontWeight="SemiBold" Foreground="{StaticResource Text}" Margin="0,0,0,7"/>
+                            <Calendar x:Name="HearingCalendar" SelectedDatesChanged="HearingCalendar_SelectedDatesChanged" Background="{StaticResource Panel}"/>
+                        </StackPanel>
+                    </Border>
+                    <DataGrid Grid.Row="2" x:Name="HearingsGrid" AlternationCount="2" MouseDoubleClick="HearingRow_DoubleClick">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Tarih / Saat" Binding="{Binding DateText}" Width="150"/>
+                            <DataGridTextColumn Header="Mahkeme" Binding="{Binding Court}" Width="*"/>
+                            <DataGridTextColumn Header="Dosya No" Binding="{Binding FileNo}" Width="130"/>
+                            <DataGridTextColumn Header="Tür" Binding="{Binding Type}" Width="130"/>
+                            <DataGridTextColumn Header="FÖY" Binding="{Binding Foy}" Width="100"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+
+                <!-- SYSTEM -->
+                <StackPanel x:Name="SystemPage" Visibility="Collapsed">
+                    <Border Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="20" MaxWidth="760" HorizontalAlignment="Left">
+                        <StackPanel>
+                            <TextBlock Text="BONO Core" Foreground="{StaticResource Text}" FontSize="18" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="SystemCoreText" Text="—" Foreground="{StaticResource Muted}" Margin="0,8,0,18"/>
+                            <TextBlock Text="UYAP Entegrasyonu" Foreground="{StaticResource Text}" FontSize="18" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="SystemUyapText" Text="—" Foreground="{StaticResource Muted}" Margin="0,8,0,18"/>
+                            <TextBlock Text="Bu pencere WebView/HTML kullanmaz. Tüm ekranlar native WPF'tir." Foreground="{StaticResource Accent}"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+
+            <TextBlock Grid.Row="3" x:Name="FooterStatus" Text="BONO OS hazır" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,12,0,0"/>
+        </Grid>
+    </Grid>
+</Window>
