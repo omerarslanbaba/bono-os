@@ -566,6 +566,16 @@ public partial class MainWindow : Window
         SetActiveNav(NavFiles);
         await OfficeFilesView.RefreshAsync();
     }
+    async void OfficeFilesView_UyapRequested(object sender, EventArgs e) => await OpenUyapFilesAsync();
+
+    async Task OpenUyapFilesAsync()
+    {
+        ShowPage(UyapPage, "Dosyalarım", "UYAP dosyaları ve evrakları");
+        SetActiveNav(NavFiles);
+        await LoadSummaryAsync();
+        await LoadUyapAsync();
+    }
+
     async void NavUyap_Click(object sender, RoutedEventArgs e)
     {
         ShowPage(UyapPage, "UYAP Dosyaları", "UYAP dosyaları ve evrak arşiv durumu");
