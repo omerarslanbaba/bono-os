@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:BonoNative.Views"
-        Title="BONO OS" Height="900" Width="1480" MinHeight="700" MinWidth="1100"
+        Title="BONO OS" Height="1010" Width="1720" MinHeight="790" MinWidth="1320"
         WindowStartupLocation="CenterScreen" Background="{StaticResource Bg}">
     <Grid>
         <Grid.ColumnDefinitions>
@@ -32,7 +32,7 @@
                     <TextBlock Text="ÇALIŞMA ALANI" Foreground="{StaticResource Muted}" FontSize="10" Margin="12,6,0,14"/>
                     <Button x:Name="NavHome" Content="◫    Bugün" Click="NavHome_Click"/>
                     <Button x:Name="NavFiles" Content="⚖    Dosyalarım" Click="NavFiles_Click"/>
-                    <Button x:Name="NavUyap" Content="▤    UYAP Dosyaları" Click="NavUyap_Click"/>
+                    <Button x:Name="NavUyap" Visibility="Collapsed" Content="▤    UYAP Dosyaları" Click="NavUyap_Click"/>
                     <Button x:Name="NavHearings" Content="◷    Duruşmalar" Click="NavHearings_Click"/>
                     <Button x:Name="NavSystem" Content="●    Sistem" Click="NavSystem_Click"/>
                 </StackPanel>
@@ -234,24 +234,23 @@
                     </DataGrid>
                 </Grid>
 
-                <!-- HEARINGS -->
+                <!-- Three months visible side by side; legacy grid retained only as hidden data-binding compatibility. -->
                 <Grid x:Name="HearingsPage" Visibility="Collapsed">
-                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="14"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                    <Border Background="{StaticResource Panel}" CornerRadius="7" BorderBrush="{StaticResource Border}" BorderThickness="1" Padding="12">
-                        <StackPanel>
-                            <TextBlock Text="DURUŞMA TAKVİMİ" FontWeight="SemiBold" Foreground="{StaticResource Text}" Margin="0,0,0,7"/>
-                            <Calendar x:Name="HearingCalendar" SelectedDatesChanged="HearingCalendar_SelectedDatesChanged" Background="{StaticResource Panel}"/>
-                        </StackPanel>
-                    </Border>
-                    <DataGrid Grid.Row="2" x:Name="HearingsGrid" AlternationCount="2" MouseDoubleClick="HearingRow_DoubleClick">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Tarih / Saat" Binding="{Binding DateText}" Width="150"/>
-                            <DataGridTextColumn Header="Mahkeme" Binding="{Binding Court}" Width="*"/>
-                            <DataGridTextColumn Header="Dosya No" Binding="{Binding FileNo}" Width="130"/>
-                            <DataGridTextColumn Header="Tür" Binding="{Binding Type}" Width="130"/>
-                            <DataGridTextColumn Header="FÖY" Binding="{Binding Foy}" Width="100"/>
-                        </DataGrid.Columns>
-                    </DataGrid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <TextBlock Text="DURUŞMA TAKVİMİ · 3 AY" FontWeight="SemiBold" FontSize="15" Foreground="{StaticResource Text}" Margin="0,0,0,14"/>
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="12" VerticalAlignment="Top">
+                            <Viewbox Stretch="Uniform" StretchDirection="UpOnly"><Calendar x:Name="HearingCalendar" Width="355" Height="340" SelectedDatesChanged="HearingCalendar_SelectedDatesChanged" Background="{StaticResource Panel}"/></Viewbox>
+                        </Border>
+                        <Border Grid.Column="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="12" VerticalAlignment="Top">
+                            <Viewbox Stretch="Uniform" StretchDirection="UpOnly"><Calendar x:Name="HearingCalendarNext" Width="355" Height="340" Background="{StaticResource Panel}"/></Viewbox>
+                        </Border>
+                        <Border Grid.Column="4" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="7" Padding="12" VerticalAlignment="Top">
+                            <Viewbox Stretch="Uniform" StretchDirection="UpOnly"><Calendar x:Name="HearingCalendarThird" Width="355" Height="340" Background="{StaticResource Panel}"/></Viewbox>
+                        </Border>
+                    </Grid>
+                    <DataGrid x:Name="HearingsGrid" Visibility="Collapsed" Height="0" Width="0" IsHitTestVisible="False"/>
                 </Grid>
 
                 <!-- SYSTEM -->
