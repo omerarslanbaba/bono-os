@@ -1,35 +1,123 @@
-name: BONO OS Original Web Desktop Preview
+name: BONO OS WebView2 Desktop Preview
+
 on:
   push:
     branches: [feature/desktop-webview2]
     paths:
       - 'desktop/BonoWebDesktop/**'
+      - 'scripts/web_desktop_updater.ps1'
+      - 'scripts/test_web_desktop_updater.ps1'
+      - 'docs/web-desktop-update.md'
       - '.github/workflows/web-desktop-preview.yml'
   workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
-  windows:
+  windows-release:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Verify original-web calendar logic
-        run: node scripts/test_web_desktop_hearings.js
-      - name: Restore
-        run: dotnet restore desktop/BonoWebDesktop/BonoWebDesktop.csproj -r win-x64
-      - name: Publish independent WebView2 EXE
-        run: dotnet publish desktop/BonoWebDesktop/BonoWebDesktop.csproj -c Release -r win-x64 --self-contained true --no-restore -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist
-      - name: Verify output and hash
+
+      - name: Compute version metadata
+        id: ver
         shell: pwsh
         run: |
-          if (!(Test-Path 'dist/BONO OS Web Desktop.exe')) { throw 'Expected EXE missing' }
-          (Get-FileHash 'dist/BONO OS Web Desktop.exe' -Algorithm SHA256).Hash.ToLowerInvariant() + '  BONO OS Web Desktop.exe' | Set-Content dist/SHA256SUMS.txt -Encoding ascii
+          $short = $env:GITHUB_SHA.Substring(0,8)
+          $version = "0.1.0-webpreview.$env:GITHUB_RUN_NUMBER"
+          [xml]$proj = Get-Content 'desktop/BonoWebDesktop/BonoWebDesktop.csproj'
+          $sdk = ($proj.Project.ItemGroup.PackageReference | Where-Object { $_.Include -eq 'Microsoft.Web.WebView2' }).Version
+          if (-not $sdk) { throw 'Microsoft.Web.WebView2 package version not found' }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "short=$short" >> $env:GITHUB_OUTPUT
+          "webview2sdk=$sdk" >> $env:GITHUB_OUTPUT
+
+      - name: Restore WebView2 project
+        run: dotnet restore desktop/BonoWebDesktop/BonoWebDesktop.csproj -r win-x64
+
+      - name: Publish self-contained single-file preview
+        shell: pwsh
+        run: |
+          dotnet publish desktop/BonoWebDesktop/BonoWebDesktop.csproj -c Release -r win-x64 --self-contained true --no-restore `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:IncludeAllContentForSelfExtract=true `
+            -p:DebugType=None -p:DebugSymbols=false `
+            -p:Version="${{ steps.ver.outputs.version }}" `
+            -p:InformationalVersion="${{ steps.ver.outputs.version }}+${{ steps.ver.outputs.short }}" `
+            -o dist/package
+
+      - name: Verify single executable binary
+        shell: pwsh
+        run: |
+          $exe = 'dist/package/BONO OS Web Desktop.exe'
+          if (!(Test-Path $exe)) { throw 'Expected WebView2 EXE missing' }
+          $allExe = @(Get-ChildItem 'dist/package' -Recurse -File -Filter '*.exe')
+          if ($allExe.Count -ne 1) { throw "Expected exactly one EXE binary, found $($allExe.Count)" }
+          $dlls = @(Get-ChildItem 'dist/package' -Recurse -File -Filter '*.dll')
+          if ($dlls.Count -ne 0) {
+            $dlls | ForEach-Object { Write-Host $_.FullName }
+            throw "Publish left external DLLs; single-file preview is not self-contained as expected."
+          }
+          Get-ChildItem 'dist/package' -Recurse -File | ForEach-Object { Write-Host $_.FullName }
+
+      - name: Create versioned manifest and SHA-256
+        shell: pwsh
+        run: |
+          $exe = 'dist/package/BONO OS Web Desktop.exe'
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          [ordered]@{
+            schemaVersion = 1
+            product = 'BONO OS Web Desktop Preview'
+            version = '${{ steps.ver.outputs.version }}'
+            commit = '${{ github.sha }}'
+            shortCommit = '${{ steps.ver.outputs.short }}'
+            builtAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+            executable = 'BONO OS Web Desktop.exe'
+            sha256 = $hash
+            webView2Runtime = 'Evergreen required'
+            webView2Sdk = '${{ steps.ver.outputs.webview2sdk }}'
+            coreHealthUri = 'http://127.0.0.1:47831/health'
+            channel = 'preview'
+          } | ConvertTo-Json | Set-Content 'dist/package/release-manifest.json' -Encoding utf8
+          "$hash  BONO OS Web Desktop.exe" | Set-Content 'dist/package/SHA256SUMS.txt' -Encoding ascii
+
+      - name: Verify package through updater
+        shell: pwsh
+        run: |
+          ./scripts/web_desktop_updater.ps1 -Mode Plan -PackagePath 'dist/package' -RootPath (Join-Path $env:RUNNER_TEMP 'bono-web-plan') -SkipCoreProbe | Format-List
+
+      - name: WebView2 updater regression tests
+        shell: pwsh
+        run: ./scripts/test_web_desktop_updater.ps1
+
+      - name: Core and WebView2 runtime smoke
+        shell: pwsh
+        run: |
+          $source = Get-Content 'desktop/BonoWebDesktop/MainWindow.xaml.cs' -Raw
+          if (-not $source.Contains('new Uri(AppUri, "health")')) { throw 'Core /health preflight missing' }
+          if (-not $source.Contains('CoreWebView2Environment.GetAvailableBrowserVersionString()')) { throw 'WebView2 Runtime detection missing' }
+          if (-not $source.Contains('WebView2RuntimeNotFoundException')) { throw 'WebView2 Runtime missing-state handling missing' }
+          if (-not $source.Contains('BONO Core çalışmıyor')) { throw 'Explicit Core unavailable message missing' }
+          if ($source.Contains('Process.Start') -or $source.Contains('Process.Kill')) { throw 'Desktop preview must not start/stop Core processes' }
+
+      - name: Package preview ZIP
+        shell: pwsh
+        run: |
+          $name = "BONO-OS-WebView2-Preview-${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.short }}.zip"
+          Compress-Archive -Path 'dist/package/*' -DestinationPath ("dist/" + $name)
+
       - uses: actions/upload-artifact@v4
         with:
-          name: bono-os-original-web-desktop-preview
+          name: bono-os-webview2-preview-${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.short }}
           path: |
-            dist/**
-          retention-days: 7
+            dist/package/BONO OS Web Desktop.exe
+            dist/package/release-manifest.json
+            dist/package/SHA256SUMS.txt
+            dist/BONO-OS-WebView2-Preview-*.zip
+          retention-days: 14
