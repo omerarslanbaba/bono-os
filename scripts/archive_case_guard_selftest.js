@@ -86,24 +86,24 @@ try{
     sha256File(conflictCanonical)===sha(oldBytes)&&sha256File(path.join(caseA,"conflict (2).pdf"))===sha(newBytes),
     {caseAFiles:files(caseA)});
 
-  const protected=path.join(caseA,"protected.pdf");
-  fs.writeFileSync(protected,bytes);
+  const protectedPath=path.join(caseA,"protected.pdf");
+  fs.writeFileSync(protectedPath,bytes);
   const partial=path.join(stage,"partial.pdf");
   fs.writeFileSync(partial,Buffer.from("%PDF-1.4\nTRUNCATED"));
-  const protectedBefore=sha256File(protected);
+  const protectedBefore=sha256File(protectedPath);
   let partialRejected=false;
   try{
     planCaseCanonical({
       source:partial,
       caseArchiveDir:caseA,
       preferredName:"protected.pdf",
-      assetLocations:[protected],
+      assetLocations:[protectedPath],
       expectedSha256:expected
     });
   }catch{partialRejected=true}
   assert("partial_download_cannot_damage_existing_canonical",
-    partialRejected&&sha256File(protected)===protectedBefore,
-    {partialRejected,protectedBefore,protectedAfter:sha256File(protected)});
+    partialRejected&&sha256File(protectedPath)===protectedBefore,
+    {partialRejected,protectedBefore,protectedAfter:sha256File(protectedPath)});
 
   const source3=path.join(stage,"repeat.pdf");
   fs.writeFileSync(source3,bytes);
