@@ -45,7 +45,7 @@ async function req(base,url,options={}){const r=await fetch(base+url,{headers:{"
   const queue=await req(base,"/api/uyap/queue?limit=100");
   must(!queue.body.some(x=>x.command_type==="download_document"),"document.list created an automatic download");
   const session=await req(base,"/api/uyap/session");
-  must(session.body.manualDownloadPaused===true,"document.list changed manual download pause");
+  must(session.body?.session?.manualDownloadPaused===true,"document.list changed manual download pause");
 
   const remoteId=Number(docs.body[0].id);
   const pdf=Buffer.from("%PDF-1.4\\nBONO synthetic canonical archive fixture\\n%%EOF\\n");
