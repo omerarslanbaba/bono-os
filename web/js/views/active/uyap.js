@@ -97,39 +97,54 @@ function statusText(r){
   return /kapalı|closed|archiv|kesinleş|tamamlan/.test(s)?'Kapalı':'Açık';
 }
 function options(values){return [...new Set(values.filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'tr')).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('')}
+// Province/district selectors here filter only locally discovered cases.
+// UYAP-wide locality/authority discovery must be supplied by verified backend metadata.
+const PROVINCES='Adana|Adıyaman|Afyonkarahisar|Ağrı|Aksaray|Amasya|Ankara|Antalya|Ardahan|Artvin|Aydın|Balıkesir|Bartın|Batman|Bayburt|Bilecik|Bingöl|Bitlis|Bolu|Burdur|Bursa|Çanakkale|Çankırı|Çorum|Denizli|Diyarbakır|Düzce|Edirne|Elazığ|Erzincan|Erzurum|Eskişehir|Gaziantep|Giresun|Gümüşhane|Hakkâri|Hatay|Iğdır|Isparta|İstanbul|İzmir|Kahramanmaraş|Karabük|Karaman|Kars|Kastamonu|Kayseri|Kırıkkale|Kırklareli|Kırşehir|Kilis|Kocaeli|Konya|Kütahya|Malatya|Manisa|Mardin|Mersin|Muğla|Muş|Nevşehir|Niğde|Ordu|Osmaniye|Rize|Sakarya|Samsun|Siirt|Sinop|Sivas|Şanlıurfa|Şırnak|Tekirdağ|Tokat|Trabzon|Tunceli|Uşak|Van|Yalova|Yozgat|Zonguldak'.split('|');
+function caseProvince(r){
+ const normalized=String(r.province||r.city||'').trim();
+ if(normalized)return PROVINCES.find(p=>p.toLocaleLowerCase('tr-TR')===normalized.toLocaleLowerCase('tr-TR'))||'';
+ const court=String(r.court||'').trim();
+ return PROVINCES.find(p=>court.toLocaleLowerCase('tr-TR').startsWith(p.toLocaleLowerCase('tr-TR')+' '))||'';
+}
+function caseDistrict(r){return String(r.district||r.court_district||'').trim()}
 function queryForm(rows){
   const years=rows.map(r=>String(r.court_file_no||'').match(/(20\d{2})\//)?.[1]);
   return `<div class="case-query"><div class="case-query-grid">
   <label>Yargı Türü<select id="filterType"><option value="">Tümü</option>${JUDGMENT_TYPES.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('')}</select></label>
   <label>Dosya Durumu<div class="case-state-toggle" role="group" aria-label="Dosya Durumu"><button type="button" class="state-option active" data-state="Açık">Açık</button><button type="button" class="state-option" data-state="Kapalı">Kapalı</button></div></label>
-  <label>Yargı Birimi<select id="filterUnit"><option value="">Tümü</option></select></label>
+  <label>İl<select id="filterProvince"><option value="">Tümü</option>${options(rows.map(caseProvince))}</select></label>\n  <label>İlçe<select id="filterDistrict"><option value="">Tümü</option></select></label>\n  <label>Yargı Birimi<select id="filterUnit"><option value="">Tümü</option></select></label>
   <label>Dosya Yıl / No<div class="case-year-row"><select id="filterYear"><option value="">Tümü</option>${options(years)}</select><input id="filterNo" placeholder="Dosya No"></div></label>
   <label>Mahkeme<select id="filterCourt"><option value="">Tümü</option></select></label>
   <label>Dosyada Ara<input id="filterQuery" placeholder="Föy no, mahkeme, esas no, müvekkil veya taraf"></label>
-  </div><div class="case-query-actions"><span id="filterCount"></span><button id="resetFilters" type="button" class="subtle-action">Temizle</button><button id="applyFilters" type="button" class="primary-action">⌕ Sorgula</button></div></div>`;
+  </div><p class="case-query-local-note">Bu bölüm şimdilik BONO’da kayıtlı dosyaları filtreler. UYAP’ta yeni dosya arama bağlantısı henüz etkin değil. İlçe yalnız doğrulanmış kayıt bilgisi varsa gösterilir.</p><div class="case-query-actions"><span id="filterCount"></span><button id="resetFilters" type="button" class="subtle-action">Temizle</button><button id="applyFilters" type="button" class="primary-action">⌕ Sorgula</button></div></div>`;
 }
 function bindQuery(rows){
- const by=id=>document.getElementById(id),t=by('filterType'),u=by('filterUnit'),c=by('filterCourt');
+ const by=id=>document.getElementById(id),t=by('filterType'),u=by('filterUnit'),c=by('filterCourt'),province=by('filterProvince'),district=by('filterDistrict');
  let selectedState='Açık';
  function set(el,vals){const old=el.value;el.innerHTML='<option value="">Tümü</option>'+options(vals);el.value=vals.includes(old)?old:''}
  function courts(){
-   set(c,rows.filter(r=>(!t.value||rootType(r)===t.value)&&(!u.value||unit(r)===u.value)).map(r=>r.court));
+   set(c,rows.filter(r=>(!t.value||rootType(r)===t.value)&&(!u.value||unit(r)===u.value)&&(!province.value||caseProvince(r)===province.value)&&(!district.value||caseDistrict(r)===district.value)).map(r=>r.court));
+ }
+ function districts(){
+   set(district,rows.filter(r=>(!province.value||caseProvince(r)===province.value)&&(!t.value||rootType(r)===t.value)).map(caseDistrict));
+   district.disabled=!rows.some(r=>caseDistrict(r));
+   courts();
  }
  function units(){
    const vals=t.value?(JUDICIAL_UNITS[t.value]||[]):JUDGMENT_TYPES.flatMap(x=>JUDICIAL_UNITS[x]||[]);
    set(u,vals);
-   courts();
+   districts();
  }
  function apply(){
    const accepted=new Set(rows.filter(r=>{
     const number=String(r.court_file_no||''),match=number.match(/(20\d{2})\s*\/\s*(\d+)/);
-    return (!t.value||rootType(r)===t.value)&&(!u.value||unit(r)===u.value)&&(!c.value||r.court===c.value)&&(statusText(r)===selectedState)&&(!by('filterYear').value||match?.[1]===by('filterYear').value)&&(!by('filterNo').value||String(match?.[2]||'').includes(by('filterNo').value.trim()))&&(!by('filterQuery').value||String([r.office_file_no,r.court,r.case_type,r.court_file_no,r.client_name,r.party_names].join(' ')).toLocaleLowerCase('tr-TR').includes(by('filterQuery').value.toLocaleLowerCase('tr-TR').trim()));
+    return (!t.value||rootType(r)===t.value)&&(!u.value||unit(r)===u.value)&&(!c.value||r.court===c.value)&&(!province.value||caseProvince(r)===province.value)&&(!district.value||caseDistrict(r)===district.value)&&(statusText(r)===selectedState)&&(!by('filterYear').value||match?.[1]===by('filterYear').value)&&(!by('filterNo').value||String(match?.[2]||'').includes(by('filterNo').value.trim()))&&(!by('filterQuery').value||String([r.office_file_no,r.court,r.case_type,r.court_file_no,r.client_name,r.party_names].join(' ')).toLocaleLowerCase('tr-TR').includes(by('filterQuery').value.toLocaleLowerCase('tr-TR').trim()));
    }).map(x=>String(x.id)));
    document.querySelectorAll('.case-list-row').forEach(e=>e.hidden=!accepted.has(e.dataset.caseId));
    by('filterCount').textContent=accepted.size+' / '+rows.length+' dosya listeleniyor.';
  }
  document.querySelectorAll('.state-option').forEach(b=>b.onclick=()=>{selectedState=b.dataset.state;document.querySelectorAll('.state-option').forEach(x=>x.classList.toggle('active',x===b));apply()});
- t.onchange=units;u.onchange=courts;by('applyFilters').onclick=apply;
+ t.onchange=units;u.onchange=courts;province.onchange=districts;district.onchange=courts;by('applyFilters').onclick=apply;
  by('resetFilters').onclick=()=>{document.querySelectorAll('.case-query input,.case-query select').forEach(e=>e.value='');selectedState='Açık';document.querySelectorAll('.state-option').forEach(x=>x.classList.toggle('active',x.dataset.state==='Açık'));units();apply()};
  by('filterQuery').oninput=apply;
  by('filterNo').oninput=apply;
