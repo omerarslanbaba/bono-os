@@ -50,3 +50,22 @@ assert.match(css,/\.case-document-viewer/);
 assert.match(css,/\.case-document-pdf/);
 assert.match(css,/\.case-targeted-search/);
 console.log('PASS case UI: JS syntax, single-case list inquiry, no automatic download, source-grounded party fields, empty state style');
+
+
+const handoff=fs.readFileSync('web/js/views/active/cbs-case-handoff.js','utf8');
+new vm.Script(handoff.replace(/^export /gm,''),{filename:'cbs-case-handoff.js'});
+assert.match(src,/mountCbsCaseHandoff\(api,cbsSchema\)/);
+assert.match(src,/api\.uyapCbsPartySearchSchema\(\)/);
+assert.match(handoff,/api\.uyapCbsUnits\(Number\(province\.element\.value\)\)/);
+assert.match(handoff,/api\.searchUyapCbsParty\(\{/);
+assert.match(handoff,/api\.uyapCbsPartySearchStatus\(reply\.searchId\)/);
+assert.match(handoff,/uyap\.targeted-cbs-party-search\.v1/);
+assert.match(handoff,/maxCandidates:25/);
+assert.match(handoff,/days>120/);
+assert.match(handoff,/api\.uyapCases\(\)/);
+assert.match(handoff,/setTimeout\(check,5000\)/);
+assert.match(handoff,/location\.hash==="#uyap"/);
+assert.match(handoff,/caseId\?\?item\.id/);
+assert.doesNotMatch(handoff,/Efe Lefer|api\.syncUyapDocuments|download-missing|queueMissingUyapDocuments/);
+assert.match(css,/\.case-cbs-handoff-panel/);
+console.log('PASS CBS case handoff: syntax, observed-contract API, 120-day/25-candidate limits, external case watcher, no download or hardcoded client');
