@@ -52,7 +52,7 @@ public partial class OfficeFilesWorkspace : UserControl
             foreach (var row in json.RootElement.EnumerateArray())
             {
                 next.Add(new OfficeFileItem(
-                    Read(row, "file_no"), Read(row, "client_name"),
+                    ReadNumber(row, "id"), Read(row, "file_no"), Read(row, "client_name"),
                     Read(row, "title"), Read(row, "status"),
                     ReadNumber(row, "case_count")));
             }
@@ -121,12 +121,15 @@ public partial class OfficeFilesWorkspace : UserControl
         ApplyFilter();
     }
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshAsync();
-    private void OpenFile_DoubleClick(object sender, MouseButtonEventArgs e)
+    private async void OpenFile_DoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (RowsGrid.SelectedItem is OfficeFileItem file)
-            FileOpened?.Invoke(this, file);
+        if (RowsGrid.SelectedItem is not OfficeFileItem file || file.Id <= 0) return;
+        DetailView.Visibility = Visibility.Visible;
+        await DetailView.OpenAsync(file.Id);
     }
 
+    private void DetailBack_Click(object sender, EventArgs e) => DetailView.Visibility = Visibility.Collapsed;
+
     public sealed record OfficeFileItem(
-        string FileNo, string Client, string Title, string Status, int CaseCount);
+        int Id, string FileNo, string Client, string Title, string Status, int CaseCount);
 }
