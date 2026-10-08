@@ -150,7 +150,7 @@ public partial class MainWindow : Window
             {
                 await LoadSummaryAsync();
                 if (UyapPage.Visibility == Visibility.Visible) await LoadUyapAsync();
-                else if (FilesPage.Visibility == Visibility.Visible) await LoadFilesAsync();
+                else if (OfficeFilesView.Visibility == Visibility.Visible) await OfficeFilesView.RefreshAsync();
                 else if (HearingsPage.Visibility == Visibility.Visible || HomePage.Visibility == Visibility.Visible) await LoadHearingsAsync();
                 FooterStatus.Text = "Canlı · " + DateTime.Now.ToString("HH:mm:ss");
             }
@@ -383,9 +383,11 @@ public partial class MainWindow : Window
     {
         HomePage.Visibility = Visibility.Collapsed;
         FilesPage.Visibility = Visibility.Collapsed;
+        OfficeFilesView.Visibility = Visibility.Collapsed;
         UyapPage.Visibility = Visibility.Collapsed;
         HearingsPage.Visibility = Visibility.Collapsed;
         SystemPage.Visibility = Visibility.Collapsed;
+        if (ReferenceEquals(page, FilesPage)) page = OfficeFilesView;
         page.Visibility = Visibility.Visible;
         PageTitle.Text = title;
         PageSubtitle.Text = subtitle;
@@ -421,7 +423,7 @@ public partial class MainWindow : Window
     {
         ShowPage(FilesPage, "Dosyalarım", "FÖY numarası, müvekkil veya dosya adıyla ara");
         SetActiveNav(NavFiles);
-        await LoadFilesAsync();
+        await OfficeFilesView.RefreshAsync();
     }
     async void NavUyap_Click(object sender, RoutedEventArgs e)
     {
@@ -442,6 +444,15 @@ public partial class MainWindow : Window
         await LoadSummaryAsync();
     }
 
+    // The office workspace exposes its selection through an event; UYAP operations remain untouched.
+    async void OfficeFilesView_FileOpened(object sender, BonoNative.Views.OfficeFilesWorkspace.OfficeFileItem file)
+    {
+        ShowPage(UyapPage, "Bağlı UYAP Dosyaları", file.FileNo + " · " + file.Client);
+        SetActiveNav(NavUyap);
+        UyapSearch.Text = file.FileNo;
+        await LoadUyapAsync();
+    }
+
     // Satır etkileşimleri aynı native pencere içinde ilgili kayıtları açar.
     async void FileRow_DoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
@@ -459,8 +470,8 @@ public partial class MainWindow : Window
         {
             ShowPage(FilesPage, "Dosyalarım", row.Court + " · " + row.FileNo);
             SetActiveNav(NavFiles);
-            FilesSearch.Text = row.Foy;
-            await LoadFilesAsync();
+            OfficeFilesView.SetSearch(row.Foy);
+            await OfficeFilesView.RefreshAsync();
         }
         else
         {
@@ -484,6 +495,7 @@ public partial class MainWindow : Window
     {
         if (FilesSearch == null || GlobalSearch == null) return;
         FilesSearch.Text = GlobalSearch.Text;
+        OfficeFilesView.SetSearch(GlobalSearch.Text);
         if (!string.IsNullOrWhiteSpace(GlobalSearch.Text))
         {
             ShowPage(FilesPage, "Dosyalarım", "Föy, müvekkil veya dosya adına göre arama");

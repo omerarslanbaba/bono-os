@@ -1,0 +1,67 @@
+<UserControl x:Class="BonoNative.Views.OfficeFileDetailView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Background="#121317">
+ <Grid Margin="24,20">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="12"/><RowDefinition Height="Auto"/><RowDefinition Height="16"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+  <DockPanel>
+   <Button DockPanel.Dock="Left" Content="← Dosyalarıma dön" Click="Back_Click" Background="#26333A" Foreground="White" Padding="12,8" Margin="0,0,20,0"/>
+   <StackPanel>
+    <TextBlock x:Name="FoyText" Foreground="#37B9E7" FontWeight="SemiBold" FontSize="14"/>
+    <TextBlock x:Name="TitleText" Text="FÖY Detayı" Foreground="#F1F4F6" FontWeight="SemiBold" FontSize="25" TextWrapping="Wrap"/>
+   </StackPanel>
+  </DockPanel>
+  <TextBlock x:Name="ErrorText" Grid.Row="2" Foreground="#F0B46C" TextWrapping="Wrap"/>
+  <Grid Grid.Row="4">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+   <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel>
+     <Border Background="#1B1D21" BorderBrush="#33383E" BorderThickness="1" CornerRadius="8" Padding="18" Margin="0,0,0,14">
+      <StackPanel>
+       <TextBlock Text="DOSYA BİLGİLERİ" Foreground="#37B9E7" FontWeight="SemiBold" Margin="0,0,0,12"/>
+       <TextBlock x:Name="ClientText" Foreground="#F1F4F6" FontSize="18" FontWeight="SemiBold"/>
+       <TextBlock x:Name="StatusText" Foreground="#A6AFB7" Margin="0,6,0,0"/>
+       <TextBlock x:Name="OpenedText" Foreground="#A6AFB7" Margin="0,6,0,0"/>
+      </StackPanel>
+     </Border>
+     <Border Background="#1B1D21" BorderBrush="#33383E" BorderThickness="1" CornerRadius="8" Padding="18">
+      <StackPanel>
+       <TextBlock Text="BAĞLANTILI DAVA DOSYALARI" Foreground="#37B9E7" FontWeight="SemiBold" Margin="0,0,0,10"/>
+       <DataGrid x:Name="CasesGrid" IsReadOnly="True" AutoGenerateColumns="False" Background="#1B1D21" Foreground="White" RowHeight="38" HeadersVisibility="Column" BorderThickness="0">
+        <DataGrid.Columns>
+         <DataGridTextColumn Header="Mahkeme" Binding="{Binding Court}" Width="*"/>
+         <DataGridTextColumn Header="Esas no" Binding="{Binding FileNo}" Width="125"/>
+         <DataGridTextColumn Header="Durum" Binding="{Binding Status}" Width="85"/>
+        </DataGrid.Columns>
+       </DataGrid>
+       <TextBlock x:Name="CasesEmpty" Foreground="#A6AFB7" Text="Bağlantılı dava dosyası bulunamadı."/>
+      </StackPanel>
+     </Border>
+    </StackPanel>
+   </ScrollViewer>
+   <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+    <StackPanel>
+     <Border Background="#1B1D21" BorderBrush="#33383E" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,14">
+      <StackPanel>
+       <TextBlock Text="GÖREVLER" Foreground="#37B9E7" FontWeight="SemiBold" Margin="0,0,0,10"/>
+       <ItemsControl x:Name="TasksList">
+        <ItemsControl.ItemTemplate><DataTemplate><StackPanel Margin="0,0,0,11"><TextBlock Text="{Binding Title}" Foreground="White" TextWrapping="Wrap"/><TextBlock Text="{Binding Detail}" Foreground="#A6AFB7" FontSize="11"/></StackPanel></DataTemplate></ItemsControl.ItemTemplate>
+       </ItemsControl>
+       <TextBlock x:Name="TasksEmpty" Foreground="#A6AFB7" Text="Kayıtlı görev bulunamadı."/>
+      </StackPanel>
+     </Border>
+     <Border Background="#1B1D21" BorderBrush="#33383E" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,14">
+      <StackPanel>
+       <TextBlock Text="SÜRELER" Foreground="#37B9E7" FontWeight="SemiBold" Margin="0,0,0,10"/>
+       <ItemsControl x:Name="DeadlinesList">
+        <ItemsControl.ItemTemplate><DataTemplate><StackPanel Margin="0,0,0,11"><TextBlock Text="{Binding Title}" Foreground="White" TextWrapping="Wrap"/><TextBlock Text="{Binding Detail}" Foreground="#A6AFB7" FontSize="11"/></StackPanel></DataTemplate></ItemsControl.ItemTemplate>
+       </ItemsControl>
+       <TextBlock x:Name="DeadlinesEmpty" Foreground="#A6AFB7" Text="Kayıtlı süre bulunamadı."/>
+      </StackPanel>
+     </Border>
+     <TextBlock Text="Duruşmalar ve evraklar: ayrı API bağlantıları doğrulandıktan sonra eklenecek." Foreground="#A6AFB7" TextWrapping="Wrap"/>
+    </StackPanel>
+   </ScrollViewer>
+  </Grid>
+ </Grid>
+</UserControl>
