@@ -47,8 +47,8 @@ const api=fs.readFileSync(path.join(root,"web","js","api.js"),"utf8");
 const mainWindow=fs.readFileSync(path.join(root,"desktop","BonoWebDesktop","MainWindow.xaml.cs"),"utf8");
 
 for(const needle of [
-  "/api/uyap/cases/",
   "document-sync-status",
+  "sync-documents",
   "/api/uyap/case-search",
   "/api/uyap/cbs-party-search",
   "handleDocumentViewRequest(req,res,db)"
