@@ -18,6 +18,7 @@
     "test:uyap-targeted-cbs-party-search": "node scripts/test_uyap_targeted_cbs_party_search.js",
     "test:uyap-batch-safety": "node scripts/test_uyap_batch_safety.js",
     "test:integration-manifest": "node scripts/test_integration_manifest.js",
-    "test:single-file-windows-pipeline": "node scripts/test_single_file_windows_pipeline.js"
+    "test:single-file-windows-pipeline": "node scripts/test_single_file_windows_pipeline.js",
+    "test:uyap-case-document-contract": "node scripts/test_uyap_case_document_contract.js"
   }
 }
