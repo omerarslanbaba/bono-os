@@ -17,11 +17,13 @@ async function req(base,url,options={}){const r=await fetch(base+url,{headers:{"
  fs.mkdirSync(archiveRoot,{recursive:true});
  const env={...process.env,BONO_DB_PATH:dbPath,BONO_PORT:String(port),BONO_DISABLE_WORKER:"1",USERPROFILE:user};
  const seed=[
-  "const db=require(\"./bridge/db\");",
+  "const db=require(\"./bridge/db\");const policy=require(\"./bridge/uyap_user_queries\");",
   "function setting(k,v){db.prepare(\"insert into app_settings(key,value) values(?,?) on conflict(key) do update set value=excluded.value\").run(k,v)}",
   "setting(\"uyap_integration_mode\",\"browser_readonly\");setting(\"uyap_session_state\",\"ready\");setting(\"uyap_manual_download_pause\",\"1\");setting(\"uyap_document_download_state\",\"paused_manual\");",
-  "db.prepare(\"insert or replace into uyap_endpoints(endpoint_key,method,host,path,purpose,enabled,min_interval_ms) values(?,?,?,?,?,?,?)\").run(\"document.list\",\"POST\",\"avukat.uyap.gov.tr\",\"/dosya_evrak_bilgileri.ajx\",\"docs\",1,0);",
-  "db.prepare(\"insert into cases(id,external_id,court,court_file_no,case_type,status,client_name,uyap_dosya_id) values(?,?,?,?,?,?,?,?)\").run(101,\"uyap:fixture:101\",\"Eskişehir Cumhuriyet Başsavcılığı\",\"2026/101\",\"Soruşturma\",\"open\",\"Fixture Müvekkil\",\"DOSYA-101\");",
+  "db.prepare(\"insert or replace into uyap_endpoints(endpoint_key,method,host,path,purpose,enabled,min_interval_ms) values(?,?,?,?,?,?,?)\").run(\"document.list\",\"POST\",\"avukat.uyap.gov.tr\",\"/list_dosya_evraklar.ajx\",\"docs\",1,0);",
+  "db.prepare(\"insert into cases(id,external_id,court,court_file_no,case_type,status,client_name,uyap_dosya_id,uyap_birim_id) values(?,?,?,?,?,?,?,?,?)\").run(101,\"uyap:fixture:101\",\"Kocaeli 1. Asliye Hukuk Mahkemesi\",\"2026/101\",\"Hukuk\",\"open\",\"Fixture Müvekkil\",\"DOSYA-101\",\"BIRIM-101\");",
+  "policy.migrate(db,{expectedQueued:0,backupManifest:{schema:1,verified:true,queueIdDigest:policy.digest([])},migrationId:\"pipeline-zero\"});",
+  "policy.certifyBinding(db,{caseId:101,kind:\"verified_portal_binding\",adapter:\"court_documents_v1\",evidenceRef:\"observation:00000000-0000-4000-8000-000000000101\",unitId:\"BIRIM-101\",caseNo:\"2026/101\",dosyaId:\"DOSYA-101\"});",
   "try{db.close()}catch{}"
  ].join("\n");
  const seeded=spawnSync(process.execPath,["-e",seed],{cwd:process.cwd(),env,encoding:"utf8"});
@@ -30,12 +32,12 @@ async function req(base,url,options={}){const r=await fetch(base+url,{headers:{"
  const base="http://127.0.0.1:"+port;
  try{
   let healthy=false;for(let i=0;i<80;i++){try{if((await req(base,"/health")).status===200){healthy=true;break}}catch{}if(server.exitCode!=null)break;await sleep(100)}must(healthy,"isolated Core did not start\n"+out+"\n"+err);
-  const start=await req(base,"/api/uyap/cases/101/sync-documents",{method:"POST",body:"{}"});
+  const requestKey=crypto.randomUUID();\n  const start=await req(base,"/api/uyap/cases/101/query",{method:"POST",headers:{"X-Bono-User-Action":"1","Origin":base},body:JSON.stringify({requestKey,refresh:true})});
   must(start.status===202&&start.body.commandId,"document.list command not accepted");
   const commandId=Number(start.body.commandId);
   const claim=await req(base,"/api/uyap/commands/next?host=avukat.uyap.gov.tr&lane=query");
   must(claim.status===200&&Number(claim.body.id)===commandId&&claim.body.endpointKey==="document.list","fake extension did not claim document.list");
-  const payload={tumEvraklar:[{evrakId:"PIPE-1",dosyaId:"DOSYA-101",tur:"Gerekçeli Karar",onaylandigiTarih:"09/10/2026",birimEvrakNo:"1"}]};
+  const payload={tumEvraklar:[{evrakId:"PIPE-1",dosyaId:"DOSYA-101",tur:"Gerekçeli Karar",onaylandigiTarih:"09/10/2026",birimEvrakNo:"1",dosyaAdi:"gerekceli.pdf"}]};
   const result=await req(base,"/api/uyap/commands/"+commandId+"/result",{method:"POST",body:JSON.stringify({ok:true,status:200,contentType:"application/json",data:payload})});
   must(result.status===200&&result.body.ok===true,"document.list fake result rejected");
   const sync=await req(base,"/api/uyap/cases/101/document-sync-status");
@@ -71,6 +73,6 @@ async function req(base,url,options={}){const r=await fetch(base+url,{headers:{"
   must(Buffer.compare(bytes,pdf)===0,"archived content bytes differ");
   const wrong=await req(base,"/api/cases/999/documents/"+remoteId+"/view");must(wrong.status===404,"wrong-case archive access was not rejected");
 
-  console.log(JSON.stringify({ok:true,documentList:true,metadataMaterialized:true,noAutomaticDownload:true,manualDownloadPausePreserved:true,archiveHandoff:"synthetic-isolated-windows-canonical",pdfView:true,shaVerified:true,wrongCaseRejected:true,archiveRoot}));
+  console.log(JSON.stringify({ok:true,userControlledQuery:true,documentList:true,queryHistory:true,metadataMaterialized:true,noAutomaticDownload:true,manualDownloadPausePreserved:true,archiveHandoff:"synthetic-isolated-windows-canonical",pdfView:true,shaVerified:true,wrongCaseRejected:true,archiveRoot}));
  }finally{if(server.exitCode==null)server.kill();await sleep(100);try{fs.rmSync(root,{recursive:true,force:true})}catch{}}
 })().catch(e=>{console.error(e);process.exit(1)});
