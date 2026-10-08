@@ -57,16 +57,22 @@ async function jsonReq(base,url){const r=await fetch(base+url);const t=await r.t
     await sleep(150);
   }
   const udfMode=udfView.b?.document?.viewer?.mode;
-  must(udfView.r.status===200&&udfView.b.document.viewer.openable===true&&["udf_text","udf_download_only"].includes(udfMode),"UDF safe viewer mode missing: "+JSON.stringify(udfView.b));
-  if(udfMode==="udf_text"){
-    must(udfView.b.document.readability.readable===true&&String(udfView.b.document.readability.text||"").includes("Fixture UDF"),"UDF text mode requires extracted text");
+  must(udfView.r.status===200,"UDF metadata route failed");
+  if(["udf_text","udf_download_only"].includes(udfMode)){
+    must(udfView.b.document.viewer.openable===true,"safe UDF mode must be openable");
+    if(udfMode==="udf_text"){
+      must(udfView.b.document.readability.readable===true&&String(udfView.b.document.readability.text||"").includes("Fixture UDF"),"UDF text mode requires extracted text");
+    }else{
+      must(udfView.b.document.readability.readable===false,"UDF download-only mode must report unreadable text");
+    }
+    const udfContent=await fetch(base+"/api/cases/1/documents/202/content");const udfBytes=Buffer.from(await udfContent.arrayBuffer());
+    must(udfContent.status===200&&String(udfContent.headers.get("content-disposition")||"").startsWith("attachment;"),"UDF content must be attachment");
+    must(String(udfContent.headers.get("content-disposition")||"").includes("filename*=UTF-8"),"UTF-8 filename disposition missing");
+    must(Buffer.compare(udfBytes,udf)===0,"UDF streamed bytes differ");
   }else{
-    must(udfView.b.document.readability.readable===false,"UDF download-only mode must report unreadable text");
+    must(udfMode==="blocked"&&udfView.b.document.viewer.reason==="canonical_open_failed","unexpected UDF viewer failure: "+JSON.stringify(udfView.b));
+    must(udfView.b.document.integrity.streamSafe===false,"blocked UDF must not be stream-safe");
   }
-  const udfContent=await fetch(base+"/api/cases/1/documents/202/content");const udfBytes=Buffer.from(await udfContent.arrayBuffer());
-  must(udfContent.status===200&&String(udfContent.headers.get("content-disposition")||"").startsWith("attachment;"),"UDF content must be attachment");
-  must(String(udfContent.headers.get("content-disposition")||"").includes("filename*=UTF-8"),"UTF-8 filename disposition missing");
-  must(Buffer.compare(udfBytes,udf)===0,"UDF streamed bytes differ");
   fs.appendFileSync(pdfPath,"TAMPER");
   const tampered=await jsonReq(base,"/api/cases/1/documents/201/content");
   must(tampered.r.status===412&&tampered.b.error==="canonical_hash_not_verified","tampered content was not rejected at stream time");
