@@ -326,11 +326,13 @@ function bindCaseDocumentControls(caseId){
     try{
       const d=await api.uyapDownloadSummary(caseId);if(!alive())return;
       const missing=Math.max(0,Number(d.missingDownloadable??0));
-      const active=Math.max(0,Number(d.queued??0));
-      downloadCapacity=Math.max(0,Math.min(200-active,missing));
+      const active=Math.max(0,Number(d.activeCommands??0));
+      const reportedCapacity=Number(d.capacity);
+      if(!Number.isFinite(reportedCapacity)||reportedCapacity<0)throw new Error('Core indirme kapasitesi bilinmiyor');
+      downloadCapacity=Math.max(0,Math.min(200,Math.floor(reportedCapacity),missing));
       downloadButton.disabled=downloadCapacity===0;
       downloadButton.textContent=downloadCapacity?'Eksik Evrakları Kuyruğa Ekle ('+downloadCapacity+')':'İndirilecek evrak yok / kapasite dolu';
-      downloadNotice.textContent='Eksik: '+missing+' · Kuyruk: '+active+' · İndirmeler ayrıca onay gerektirir';
+      downloadNotice.textContent='Eksik: '+missing+' · Aktif: '+active+' · Kapasite: '+Math.floor(reportedCapacity)+(d.manualDownloadPaused?' · İndirmeler manuel duraklatılmış':'')+' · İndirme ayrıca onay gerektirir';
     }catch{if(alive()){downloadButton.disabled=true;downloadNotice.textContent='İndirme durumu okunamadı; işlem devre dışı';}}
   }
   async function poll(){
