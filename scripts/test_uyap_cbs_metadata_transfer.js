@@ -1,0 +1,25 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {prepareMetadataTransfer:prepare}=require('../bridge/uyap_cbs_metadata_transfer');
+const item=(source='SYN-A',id='DOC-A',options={})=>({kind:'main',source:{uyapDosyaId:source,evrakId:id},relationshipState:'verified',sourceMatchesTarget:true,logicalKey:JSON.stringify([source,id]),metadata:{ggEvrakId:'GG-SYN'},view:'tumEvraklar',groupReference:'group:0',permission:'unknown',...options});
+const parsed=(list=[item()])=>({contractVersion:'bono.cbs-document-list.v1',state:'parsed',parseState:'parsed',binding:{verified:true},completeness:{capture:true,structure:true,list:'unknown'},occurrences:list,logicalDocuments:[...new Set(list.map(d=>d.logicalKey))].map(key=>({key}))});
+const proof=()=>({origin:'trusted_core',caseIdentity:{verified:true,identity:{uyapDosyaId:'SYN-A'}},capture:{verified:true,sessionBound:true,causallyBound:true,targetDosyaId:'SYN-A',eventId:'EV-SYN'},eventId:'EV-SYN',visibleFromUyapDosyaId:'SYN-A',pagination:{verifiedComplete:true,pagesObserved:1}});
+const cases=[];function test(name,fn){fn();cases.push(name);}
+const block=(p,e,reason)=>assert.equal(prepare(p,e).reason,reason);
+test('one case: ready for review but no import/download',()=>{const r=prepare(parsed(),proof());assert.equal(r.state,'ready_for_core_review');assert.equal(r.metadataImportAllowed,false);assert.equal(r.downloadAllowed,false)});
+test('multiple documents same source',()=>assert.equal(prepare(parsed([item(),item('SYN-A','DOC-B')]),proof()).records.length,2));
+test('dynamic groups are provenance only',()=>{const p=parsed([item('SYN-A','DOC-A',{groupReference:'group:42'})]);assert.equal(prepare(p,proof()).records[0].provenance.groupReference,'group:42')});
+test('same group different source rejected',()=>block(parsed([item(),item('OTHER','DOC-B',{sourceMatchesTarget:false,relationshipState:'unknown'})]),proof(),'foreign_or_unverified_source'));
+test('attachment missing independent source rejected',()=>block(parsed([item(),item(null,'ATT',{kind:'attachment'})]),proof(),'document_source_unverified'));
+test('attachment lacks parent verification rejected',()=>block(parsed([item('SYN-A','ATT',{kind:'attachment',parentReference:'occurrence:0',reportedParentId:'PARENT',parentIdentityEquality:'unknown'})]),proof(),'attachment_parent_unverified'));
+test('recent duplicate only one record',()=>{const x=item(),y={...item(),view:'son20Evrak'};assert.equal(prepare(parsed([x,y]),proof()).records.length,1)});
+test('missing identity rejected',()=>block(parsed([item('', 'DOC-A')]),proof(),'document_source_unverified'));
+test('incorrect target rejected',()=>{const x=proof();x.visibleFromUyapDosyaId='OTHER';block(parsed(),x,'target_identity_mismatch')});
+test('wrong session binding rejected',()=>{const x=proof();x.capture.sessionBound=false;block(parsed(),x,'trusted_core_proof_required')});
+test('HMAC-only observation rejected',()=>block({contractVersion:'uyap.controlled-observation.v3'},proof(),'parser_contract_unverified'));
+test('unverified related file rejected',()=>block(parsed([item('SYN-RELATED','D',{relationshipState:'user_selected_unverified',sourceMatchesTarget:false})]),proof(),'foreign_or_unverified_source'));
+test('without consent no download grant',()=>assert.equal(prepare(parsed(),proof()).downloadAllowed,false));
+test('parsed but import denied on unknown pagination',()=>{const x=proof();delete x.pagination;block(parsed(),x,'pagination_unverified')});
+test('permission denied rejected',()=>block(parsed([item('SYN-A','DOC-A',{permission:'reported_denied'})]),proof(),'document_permission_denied'));
+test('conflicting logical identity rejected',()=>block(parsed([item('SYN-A','DOC-A',{logicalKey:'bad'})]),proof(),'logical_identity_conflict'));
+console.log(`${cases.length} synthetic scenarios PASS`);
