@@ -11,6 +11,8 @@ module.exports=async function handle(req,res,{path,origin,service,json,readBody}
   try{const body=await readBody(req);if(path==='/api/uyap/download-pause'){if(body.confirmed!==true||typeof body.paused!=='boolean')throw Error('separate_download_pause_consent_required');json(res,200,service.downloadPause(body.paused));return true;}
    const out=m[2]==='approved-downloads'?service.beginDownloads(Number(m[1]),body):service.begin(Number(m[1]),body);json(res,out.state==='cache_hit'?200:202,{ok:true,id:out.commandId,...out});}catch(e){json(res,409,{ok:false,error:e.message});}return true;
  }
+ // Diagnostic heartbeat cannot enqueue work; server validates its fixed scalar schema.
+ if(req.method==='POST'&&path==='/api/uyap/bridge-state')return false;
  // Legacy producers cannot create an executable query or clear a download pause.
  if(req.method==='POST'&&path.startsWith('/api/uyap/')&&!/^\/api\/uyap\/commands\/\d+\/result$/.test(path)){
   json(res,409,{error:'unsupported_or_separate_user_consent_required'});return true;

@@ -233,7 +233,7 @@
   }
 
   async function executeCommand(command) {
-    const baseResult = { id: command.id, ok: false, status: 0 };
+    const baseResult = { id: command.id, executionContext:command.executionContext, ok: false, status: 0 };
     try {
       if (!command || !command.id) throw new Error("Geçersiz komut");
       if (command.host !== location.hostname) throw new Error("Komut başka UYAP hostu için");
@@ -324,22 +324,24 @@
         return;
       }
 
-      let dataKeys = [], data = null;
+      let dataKeys = [], data = null, parseError='non_json_response';
       if (/json/i.test(contentType)) {
         try {
           const parsed = await response.clone().json();
           dataKeys = safeKeys(parsed);
           const serialized = JSON.stringify(parsed);
-          if (serialized.length <= 1500000) data = parsed;
-        } catch {}
+          if (serialized.length <= 1500000) {data = parsed;parseError=null;}else parseError='response_too_large';
+        } catch {parseError='invalid_json_response';}
       }
+      const applicationError=window.BONO_OBSERVATION_CONTRACTS?.applicationError(data);
       post("command_result", {
         ...baseResult,
-        ok: response.ok,
+        ok: response.ok&&!parseError&&!applicationError,
         status: response.status,
         contentType,
         dataKeys,
-        data
+        data,
+        error:applicationError?'uyap_application_denied':parseError||undefined
       });
     } catch (e) {
       post("command_result", {
@@ -370,5 +372,5 @@
     if(msg.type === "auth_probe") authProbe();
   });
 
-  post("probe_ready", { host: location.hostname, path: location.pathname });
+  post("probe_ready", { host: location.hostname, path: location.pathname,probeVersion:2,buildId:controlledConfig.buildId,documentId:controlledConfig.documentId });
 })();

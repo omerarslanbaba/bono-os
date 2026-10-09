@@ -11,6 +11,8 @@ const db=require("./db");
 const jobs=require("./jobs");
 const uyap=require("./uyap");
 const userQueries=require("./uyap_user_queries").install(db,uyap);
+let bridgeState=null;
+const bridgeStates=new Set(['probe_not_ready','probe_conflict','session_unverified','idle','core_unavailable','command_received','returning_result','result_delivery_failed']);
 const v04=require("./v04");
 const udfAdapter=require("./udf_adapter");
 const deadlineEngine=require("./deadline_engine");
@@ -263,7 +265,13 @@ const server=http.createServer(async(req,res)=>{
       observationCount:uyap.observations(10000).length,
       queue:uyap.queue(20)
     });
-    if(req.method==="GET"&&p==="/api/uyap/session") return json(res,200,{session:uyap.sessionState(),rate:uyap.rateState()});
+    if(req.method==='POST'&&p==='/api/uyap/bridge-state'){
+      const b=await readBody(req);
+      if(!bridgeStates.has(b.state)||!Number.isSafeInteger(b.tabId)||b.frameId!==0)return json(res,400,{ok:false,error:'invalid_bridge_state'});
+      if(!bridgeState||!bridgeState.commandId||b.commandId||Date.now()-bridgeState.at>15000)bridgeState={state:b.state,commandId:Number.isSafeInteger(b.commandId)?b.commandId:null,tabId:b.tabId,frameId:0,at:Date.now()};
+      return json(res,200,{ok:true});
+    }
+    if(req.method==="GET"&&p==="/api/uyap/session") return json(res,200,{session:uyap.sessionState(),rate:uyap.rateState(),bridge:bridgeState&&Date.now()-bridgeState.at<30000?bridgeState:{state:bridgeState?'bridge_stale':'bridge_not_seen'}});
     if(req.method==="GET"&&p==="/api/uyap/observations") return json(res,200,uyap.observations(Number(u.searchParams.get("limit")||300)));
     if(req.method==="GET"&&p==="/api/uyap/endpoints") return json(res,200,uyap.endpoints());
     if(req.method==="GET"&&p==="/api/uyap/queue") return json(res,200,uyap.queue(Number(u.searchParams.get("limit")||100)));

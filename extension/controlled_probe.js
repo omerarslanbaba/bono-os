@@ -16,13 +16,13 @@
    return {element:panel,title,reference:panels.get(panel)};
   }
   const send=(type,data)=>root.postMessage({channel:'BONO_UYAP_PAGE',type,data},'*');
-  function stop(){const old=active;active=null;action=null;anchor=null;causalAction=null;if(old)send('observation_stopped',{sessionId:old.id,documentId:config.documentId});}
+  function stop(reason="context_click"){const old=active;active=null;action=null;anchor=null;causalAction=null;if(old)send('observation_stopped',{sessionId:old.id,documentId:config.documentId,reason});}
   function snapshot(url,body,method){
    if(!active)return null;
    if(Date.now()>active.expires){stop();return null;}
    let parsed;try{parsed=new URL(url,location.href);}catch{return null;}
    if(parsed.origin!==location.origin||!paths.has(parsed.pathname))return null;
-   if(!action){stop();return null;}
+   if(!action){stop("request_without_action");return null;}
    const provenance=causalAction===action&&action.originEvent?.eventPhase!==0?"synchronous_target_panel_action":"unknown";
    let bodyObject={};try{bodyObject=typeof body==='string'?JSON.parse(body):body instanceof URLSearchParams?Object.fromEntries(body):{};}catch{try{bodyObject=Object.fromEntries(new URLSearchParams(body));}catch{}}
    return {sessionId:active.id,documentId:config.documentId,eventId:crypto.randomUUID(),observedAt:new Date().toISOString(),url:parsed.origin+parsed.pathname,method:String(method||'GET').toUpperCase(),action:{kind:action.kind,caseNo:action.caseNo,at:action.at,id:action.id,panelReference:action.panelReference},sequence:++sequence,panelContext:{reference:action.panelReference,caseNo:active.caseNo,unitName:active.unitName},initiator:provenance,request:{body:{dosyaId:bodyObject.dosyaId,pageNumber:bodyObject.pageNumber},query:{dosyaId:parsed.searchParams.get('dosyaId')||undefined}}};
@@ -32,7 +32,7 @@
    if(snapshot.action.kind==='observed_target_row_open'){
     const tabs=Array.from(document.querySelectorAll('[role="tab"]')).filter(e=>e.getClientRects().length>0&&normalize(e.textContent)==='Evrak');
     const panel=tabs.length===1?panelFor(tabs[0]):null;
-    if(!panel){stop();return;}
+    if(!panel){stop("panel_unverified");return;}
     if(action.panelElement&&action.panelElement!==panel.element){stop();return;}
     action.panelElement=panel.element;action.titleElement=panel.title;
     snapshot.action.panelReference=panel.reference;snapshot.panelContext.reference=panel.reference;
@@ -77,7 +77,7 @@
   };
   root.addEventListener('message',event=>{
    if(event.source!==root||event.data?.channel!=='BONO_UYAP_CONTENT')return;
-   if(event.data.type==='observation_disarm'){stop();return;}
+   if(event.data.type==='observation_disarm'){stop('user_stop');return;}
    if(event.data.type==='observation_arm'){
     const s=event.data.session;
     if(s.documentId!==config.documentId||s.buildId!==config.buildId)return;
@@ -86,7 +86,7 @@
   });
   root.addEventListener('click',event=>{
    if(!active||!event.isTrusted)return;
-   if(action){stop();return;}
+   if(action){stop("second_action");return;}
    for(const element of event.composedPath()){
     if(typeof element?.textContent!=='string')continue;
     if(element.getAttribute?.('id')==='dosya-goruntule'){
@@ -99,7 +99,7 @@
     const label=catalog.groupLabel(element.textContent.trim());
     const documentTab=element.getAttribute?.('role')==='tab'&&normalize(element.textContent)==='Evrak';
     if(documentTab||(label.caseNo===active.caseNo&&label.type==='cbs_investigation')){
-     const panel=panelFor(element);if(!panel){stop();return;}
+     const panel=panelFor(element);if(!panel){stop("panel_unverified");return;}
      anchor=element;action={kind:documentTab?'observed_target_documents_tab':'observed_target_group_click',caseNo:active.caseNo,at:Date.now(),id:crypto.randomUUID(),panelReference:panel.reference};
      action.originEvent=event;action.panelElement=panel.element;action.titleElement=panel.title;
      causalAction=action;return;

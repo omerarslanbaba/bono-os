@@ -52,6 +52,11 @@ function authenticatedObservation(data) {
   } catch { return false; }
 }
 const probedActions=new Set();
+const claimedCommands=new Map();
+async function reportBridgeStatus(sender,message){
+ if(!sender.tab?.id||Number(sender.frameId||0)!==0||new URL(sender.tab.url||'').origin!=='https://avukat.uyap.gov.tr')return;
+ await fetch(LOCAL+'/api/uyap/bridge-state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:message.state,commandId:message.commandId,tabId:sender.tab.id,frameId:0,buildId:message.buildId})});
+}
 async function senderCanExecute(sender) {
   if (!sender?.tab?.id || Number(sender.frameId||0)!==0) return false;
   const tabId = Number(sender.tab.id);
@@ -61,9 +66,12 @@ async function senderCanExecute(sender) {
   }
   try {
     const r=await fetch(LOCAL+"/api/uyap/user-query-state",{cache:"no-store"});
-    const action=r.ok?await r.json():{};
-    if(sender.tab.active&&action.pending&&action.actionId&&!probedActions.has(action.actionId)){probedActions.add(action.actionId);await chrome.tabs.sendMessage(tabId,{type:"BONO_AUTH_PROBE"},{frameId:0});}
-  } catch {}
+    if(!r.ok)throw Error('core_unavailable');
+    const action=await r.json();
+    const tab=await chrome.tabs.get(tabId);
+    if(new URL(tab.url).origin!=='https://avukat.uyap.gov.tr')return false;
+    if(action.pending&&action.actionId&&!probedActions.has(action.actionId)){probedActions.add(action.actionId);try{await chrome.tabs.sendMessage(tabId,{type:"BONO_AUTH_PROBE"},{frameId:0});}catch{probedActions.delete(action.actionId);throw Error('probe_unavailable');}}
+  } catch(e){throw Error(e.message==='probe_unavailable'?'probe_unavailable':'core_unavailable');}
   return false;
 }
 async function wakeUyapTabs() { /* No automatic portal requests. */ }
@@ -94,6 +102,7 @@ chrome.tabs.onRemoved.addListener(async tabId=>{
 chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   if(!message)return;
   if(OBSERVATION_ONLY){handleObservationMessage(message,sender).then(sendResponse).catch(()=>sendResponse({ok:false,error:"observation_unavailable"}));return true;}
+  if(message.type==='BONO_BRIDGE_STATUS'){reportBridgeStatus(sender,message).then(()=>sendResponse({ok:true})).catch(()=>sendResponse({ok:false}));return true;}
   if(message.type==="BONO_CAPTURE"){
     (async()=>{
       const p=message.payload||{},data=p.data||{},tabId=sender.tab?.id,frameId=Number(sender.frameId||0);
@@ -103,7 +112,7 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
           const status=Number(data.status||0);
           let path="";
           try{path=new URL(data.url||"").pathname}catch{}
-          if((status===401||status===403)&&path==="/get_avukat_id.ajx"){
+          if(path==="/get_avukat_id.ajx"&&!authenticatedObservation(data)){
             await setTabAuth(tabId,false);
           }else if(authenticatedObservation(data)){
             await setTabAuth(tabId,true);
@@ -117,20 +126,25 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
       const r=await fetch(LOCAL+"/events",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({capturedAt:new Date().toISOString(),sourceUrl:sender.tab?.url||"",tabId:tabId??null,frameId,payload:p})});
       sendResponse({ok:r.ok});
-    })().catch(e=>sendResponse({ok:false,error:e.message}));
+    })().catch(e=>sendResponse({ok:false,reason:['probe_unavailable','core_unavailable'].includes(e.message)?e.message:'core_unavailable'}));
     return true;
   }
   if(message.type==="BONO_POLL"){
     (async()=>{
+      const senderUrl=new URL(sender.tab?.url||'');
+      if(!sender.tab?.id||Number(sender.frameId||0)!==0||senderUrl.protocol!=='https:'||!senderUrl.hostname.endsWith('.uyap.gov.tr')||message.host!==senderUrl.hostname){sendResponse({ok:false,reason:'wrong_executor_context'});return;}
       if(!(await senderCanExecute(sender))){sendResponse({ok:true,command:null,reason:"tab_not_authenticated"});return;}
       const command=await nextCommand(String(message.host||""),String(message.lane||"any"));
+      if(command?.id){for(const [id,c] of claimedCommands)if(Date.now()-c.at>600000)claimedCommands.delete(id);claimedCommands.set(Number(command.id),{tabId:sender.tab.id,frameId:0,at:Date.now()});}
       sendResponse({ok:true,command});
-    })().catch(e=>sendResponse({ok:false,error:e.message}));
+    })().catch(e=>sendResponse({ok:false,reason:e.message==='probe_unavailable'?'probe_unavailable':'core_unavailable'}));
     return true;
   }
   if(message.type==="BONO_RESULT"){
     (async()=>{
       const data=message.data||{},tabId=sender.tab?.id;
+      const claim=claimedCommands.get(Number(data.id));
+      if(!claim||claim.tabId!==tabId||Number(sender.frameId||0)!==claim.frameId){sendResponse({ok:false,reason:'executor_context_mismatch'});return;}
       if(tabId&&Number(sender.frameId||0)===0){
         const ct=String(data.contentType||"");
         if(Number(data.status||0)===401||Number(data.status||0)===403){
@@ -144,7 +158,8 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
       const r=await fetch(LOCAL+"/api/uyap/commands/"+encodeURIComponent(data.id)+"/result",{
         method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)
       });
-      sendResponse({ok:r.ok});
+      const result=await r.json();
+      sendResponse({ok:r.ok&&result.ok===true,received:r.ok,reason:result.reason||null});
     })().catch(e=>sendResponse({ok:false,error:e.message}));
     return true;
   }
@@ -158,10 +173,10 @@ async function observationRequest(route,body){
  if(!response.ok)throw new Error('observation_core_unavailable');
  return response.json();
 }
-async function stopObservation(){
+async function stopObservation(reason="user_stop"){
  const old=observationSession;observationSession=null;
  if(old)try{await chrome.tabs.sendMessage(old.tabId,{type:'BONO_OBSERVATION_DISARM'},{frameId:old.frameId});}catch{}
- try{await observationRequest('/observation/stop',{});}catch{}
+ try{await observationRequest('/observation/stop',{reason});}catch{}
 }
 async function handleObservationMessage(message,sender){
  const ownUI=sender.id===chrome.runtime.id&&sender.url===chrome.runtime.getURL('observation.html');
@@ -187,7 +202,7 @@ async function handleObservationMessage(message,sender){
  if(message.type==='BONO_CAPTURE'&&observationSession){
   const s=observationSession,d=message.payload?.data||{};
   if(sender.tab?.id!==s.tabId||Number(sender.frameId||0)!==s.frameId||d.documentId!==s.documentId||d.sessionId!==s.id)return {ok:false,ignored:true};
-  if(message.payload.kind==='observation_stopped'){await stopObservation();return {ok:true};}
+  if(message.payload.kind==='observation_stopped'){await stopObservation(d.reason||'context_stop');return {ok:true};}
   if(message.payload.kind!=='network_observation')return {ok:false,ignored:true};
   const result=await observationRequest('/events',{sessionId:s.id,documentId:s.documentId,tabId:s.tabId,frameId:s.frameId,payload:message.payload});
   if(result.state==='stopped')await stopObservation();

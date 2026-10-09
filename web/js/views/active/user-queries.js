@@ -42,7 +42,7 @@ export async function mountUserQueries(caseId,onComplete,{documentCount=0}={}){
    const row=state.rows.find(r=>Number(r.command_id)===Number(monitoredId));
    if(!row){notice.textContent='Sonuç belirsiz: komut henüz geçmiş API’sinde görünmüyor. Yeni sorgu gönderilmedi.';}
    else if(['queued','running'].includes(row.state)){notice.textContent=(queryLabels[row.state]||'Sonuç belirsiz')+(state.reason?' · '+state.reason:'');}
-   else {monitoredId=null;enable();notice.textContent=queryLabels[row.state]||'Sonuç belirsiz';if(row.state==='completed'){await onComplete('Sorgu tamamlandı; kayıtlı dosya ve sorgu durumu yenilendi.');stop();}return;}
+   else {monitoredId=null;enable();notice.textContent=queryLabels[row.state]||'Sonuç belirsiz';if(row.state==='completed'){await onComplete(row.operation==='cbs.search'?'CBS dosya kimliği sorgusu tamamlandı. Evrak grup aidiyeti doğrulanmadığından evrak listesi aktarılmadı; indirme açılmadı.':'Sorgu tamamlandı; kayıtlı dosya ve sorgu durumu yenilendi.');stop();}return;}
   }catch(e){if(alive())notice.textContent='Sorgu durumu izlenemedi: '+e.message+' · yeni sorgu gönderilmedi.';}
   if(alive())timer=setTimeout(monitor,2500);
  }

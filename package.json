@@ -21,6 +21,7 @@
     "test:single-file-windows-pipeline": "node scripts/test_single_file_windows_pipeline.js",
     "test:uyap-case-document-contract": "node scripts/test_uyap_case_document_contract.js",
     "test:document-view-http-stable": "node scripts/test_document_view_http_stable.js",
+    "test:bridge-user-query-e2e": "node scripts/test_bridge_user_query_e2e.js",
     "test:uyap-user-queries": "node scripts/test_user_queries.js && node scripts/test_user_query_extension.js && node scripts/test_webview2_uyap_single_case_e2e.js && node scripts/test_webview2_uyap_targeted_search_e2e.js",
     "test:uyap-cbs-list-adapter": "node scripts/test_uyap_cbs_list_adapter.js",
     "test:uyap-cbs-user-query": "node scripts/test_uyap_cbs_user_query_integration.js",

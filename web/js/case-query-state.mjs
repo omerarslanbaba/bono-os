@@ -15,6 +15,8 @@ export function queryOverview(rows=[],docCount=0){
 export function queryWaitReason(row,sessionInfo={}){
  if(!row||!['queued','running'].includes(row.state))return '';
  const session=sessionInfo.session||{},rate=sessionInfo.rate||{};
+ const bridge=sessionInfo.bridge||{},reasons={bridge_not_seen:'Chrome Bridge bağlantısı henüz görülmedi.',bridge_stale:'Chrome Bridge bağlantısından güncel haber alınamıyor.',probe_not_ready:'Chrome sayfa yürütücüsü hazır değil.',probe_conflict:'Chrome sayfasında eski yürütücü sürümü var.',session_unverified:'Chrome UYAP oturumu henüz doğrulanamadı.',core_unavailable:'Bridge Core bağlantısını kuramıyor.',result_delivery_failed:'Komut sonucu Core’a iletilemedi; sorgu tekrarlanmadı.',returning_result:'UYAP yanıtı Core’a iletiliyor.'};
+ if(reasons[bridge.state]&&(!bridge.commandId||Number(bridge.commandId)===Number(row.command_id)))return reasons[bridge.state];
  if(session.state&&session.state!=='ready')return 'Oturum/bağlantı engeli: '+session.state;
  if(rate.state&&rate.state!=='ready')return 'Sorgu devresi: '+rate.state;
  return row.state==='queued'?'Core’da sırada; yürütücünün alma nedeni API’de bildirilmedi.':'Core yürütülüyor olarak bildiriyor.';

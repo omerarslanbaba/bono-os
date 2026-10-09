@@ -8,6 +8,7 @@
 
   const LOCAL = "http://127.0.0.1:47831";
   const active = new Map();
+  const polling=new Set();
   const laneOf = command => command?.lane || (command?.commandType === "download_document" ? "download" : "query");
 
   const runtimeAlive = () => {
@@ -56,16 +57,27 @@
     if (!data?.id) return;
     let slot = null;
     for (const [lane, x] of active.entries()) {
-      if (Number(x?.id) === Number(data.id)) { slot = lane; break; }
+      if (Number(x?.id) === Number(data.id)&&data.executionContext?.id===x.executionId&&data.executionContext?.documentId===documentId) { slot = lane; break; }
     }
-    if (slot) {
-      const x = active.get(slot);
-      if (x?.timer) clearTimeout(x.timer);
-      active.delete(slot);
+    if(!slot)return;
+    const x=active.get(slot);if(x.delivering)return;x.delivering=true;
+    if(x.timer)clearTimeout(x.timer);
+    for(let attempt=0;attempt<3;attempt++){
+      try{
+        const ack=await chrome.runtime.sendMessage({type:'BONO_RESULT',data});
+        if(ack?.received){active.delete(slot);return;}
+      }catch{}
+      if(attempt<2)await new Promise(resolve=>setTimeout(resolve,1000));
     }
-    try {
-      await chrome.runtime.sendMessage({ type: "BONO_RESULT", data });
-    } catch {}
+    // Keep the lane blocked: retrying the portal command would duplicate the user's query.
+    x.deliveryFailed=true;
+    reportBridge('result_delivery_failed',x.id);
+  }
+
+  let lastBridgeStatus='',lastBridgeAt=0;
+  function reportBridge(state,commandId=null){
+    const key=state+':'+commandId;if(key===lastBridgeStatus&&Date.now()-lastBridgeAt<5000)return;lastBridgeStatus=key;lastBridgeAt=Date.now();
+    try{chrome.runtime.sendMessage({type:'BONO_BRIDGE_STATUS',state,commandId,documentId,buildId:config.buildId}).catch(()=>{});}catch{}
   }
 
   function dispatchCommand(command, laneHint = null) {
@@ -76,12 +88,13 @@
     const timer = setTimeout(() => {
       const x = active.get(lane);
       if (x && Number(x.id) === Number(command.id)) {
-        active.delete(lane);
-        postResult({ id: command.id, ok: false, status: 0, error: "Komut zaman aşımına uğradı" });
+        postResult({ id: command.id,executionContext:{id:x.executionId,documentId}, ok: false, status: 0, error: "execution_unknown" });
       }
     }, 120000);
-    active.set(lane, { id: command.id, timer });
-    window.postMessage({ channel: "BONO_UYAP_CONTENT", type: "execute_command", command }, "*");
+    const executionId=crypto.randomUUID();
+    active.set(lane, { id: command.id, timer,executionId });
+    reportBridge('command_received',command.id);
+    window.postMessage({ channel: "BONO_UYAP_CONTENT", type: "execute_command", command:{...command,executionContext:{id:executionId,documentId}} }, "*");
     return true;
   }
 
@@ -124,14 +137,16 @@
   });
 
   async function pollLane(lane) {
-    if(observationOnly||!probeStatus.ready)return;
-    if (active.has(lane)) return;
+    if(observationOnly)return;
+    if(!probeStatus.ready){reportBridge(probeStatus.error==='old_probe_present'?'probe_conflict':'probe_not_ready');return;}
+    if (active.has(lane)) {const x=active.get(lane);reportBridge(x.deliveryFailed?'result_delivery_failed':x.delivering?'returning_result':'command_received',x.id);return;}
+    if(polling.has(lane))return;polling.add(lane);
     try {
       const reply = await chrome.runtime.sendMessage({ type: "BONO_POLL", host: location.hostname, lane });
       const command = reply?.command;
-      if (!reply?.ok || !command?.id) return;
+      if (!reply?.ok || !command?.id) {reportBridge(reply?.reason==='tab_not_authenticated'?'session_unverified':reply?.reason==='probe_unavailable'?'probe_not_ready':reply?.ok?'idle':'core_unavailable');return;}
       dispatchCommand(command, lane);
-    } catch {}
+    } catch {reportBridge('core_unavailable');}finally{polling.delete(lane);}
   }
 
   injectProbe();
