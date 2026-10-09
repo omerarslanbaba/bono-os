@@ -248,17 +248,18 @@
   ],
   "releaseCandidate": {
     "label": "end-of-day-unified-live-maintenance-candidate",
-    "codeHeadBeforeManifest": "42b9a34161f054ec411e34c9eb3b53a5722e769d",
     "requiresFinalWindowsCi": true,
     "liveInstalled": false,
     "liveUyapAccepted": false,
     "liveMaintenanceBundle": {
       "prepared": true,
-      "sourceHead": "42b9a34161f054ec411e34c9eb3b53a5722e769d",
-      "buildId": "ae302b4d2408f040e8cced06859cf23e43aa45c9d279de977578e3bee88c8eb1",
+      "payloadSourceHead": "90effb56cafd6da40140a45447e8fc4521541e0d",
+      "buildId": "6987cf76e1dc3b2008be551d09b265be8d8f3d716dd1dd3f711de9a9b5a57d2f",
       "extensionBuildId": "087650129aef5124dac2689b6f87f873666c3d5563f443c8bb6ea5328b4465b6",
-      "payloadFiles": 16,
+      "extensionVersion": "0.4.0",
+      "payloadFiles": 26,
       "tools": 4,
+      "preimageVerifiedAgainstLiveRoot": true,
       "liveApplied": false
     }
   },
@@ -271,6 +272,22 @@
     "dbWalShmPresent": true,
     "case93Present": true,
     "case93FileNo": "2026/51832",
-    "case93RemoteDocumentCount": 0
+    "case93RemoteDocumentCount": 0,
+    "extensionId": "cgdjpaahcodaibomjekefkgfbeglnijf",
+    "extensionSourcePath": "AppData/Local/BONO OS/extension",
+    "existingDesktopShortcutTarget": "AppData/Local/BONO OS/desktop/BonoDesktop/bin/Release/net8.0-windows/win-x64/publish/BONO OS.exe",
+    "baseline": {
+      "clients": 27,
+      "officeFiles": 12,
+      "cases": 111,
+      "parties": 24,
+      "remoteDocuments": 5778,
+      "localAssets": 2128,
+      "assetLocations": 2489,
+      "case93RemoteDocuments": 0,
+      "archiveFiles": 460,
+      "archiveDirectories": 108,
+      "archiveBytes": 333207676
+    }
   }
 }
