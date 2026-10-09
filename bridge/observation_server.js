@@ -25,7 +25,7 @@ function start(env=process.env){
    let bytes=0,text='';for await(const chunk of req){bytes+=chunk.length;if(bytes>512000)throw new Error('payload_limit');text+=chunk;}
    let input;try{input=JSON.parse(text);}catch{throw new Error('invalid_json');}
    if(route==='/observation/start')return reply(res,200,controller.start(input));
-   if(route==='/observation/stop')return reply(res,200,controller.stop(['user_stop','context_stop','context_click','request_without_action','panel_unverified','second_action'].includes(input.reason)?input.reason:'context_stop'));
+   if(route==='/observation/stop')return reply(res,200,controller.stop(['user_stop','context_stop','context_click','request_without_action','panel_unverified','second_action','expired','unclassified_context_stop','unrecognized_click','keyboard_context_change','page_context_change','row_identity_mismatch','anchor_detached','row_context_changed','panel_replaced','panel_context_changed'].includes(input.reason)?input.reason:'context_stop',input.lifecycle));
    return reply(res,200,controller.accept(input));
   }catch{reply(res,400,{error:'observation_rejected'});}
  });

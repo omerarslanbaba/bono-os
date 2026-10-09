@@ -5,8 +5,9 @@ const {reviewSources}=require('./uyap_cbs_document_evidence');
 const paths=new Set(['/list_dosya_evraklar.ajx','/listDosyaEvraklarPageTotal.ajx']);
 class ObservationController{
  constructor({db,caseReader,buildId,now=Date.now}){Object.assign(this,{db,caseReader,buildId,now});this.active=null;this.last=null;}
- stop(reason='user_stop'){
-  if(this.active){this.last={id:this.active.id,state:'stopped',reason,events:this.active.events};this.active=null;}
+ stop(reason='user_stop',input=null){
+  const lifecycle={};for(const key of ['armed','trustedClicks','actionsBound','requestsMatched','synchronousRequests','panelHandoffs','responsesReceived','responsesEmitted'])if(Number.isSafeInteger(input?.[key])&&input[key]>=0&&input[key]<=10000)lifecycle[key]=input[key];
+  if(this.active){this.last={id:this.active.id,state:'stopped',reason,events:this.active.events,lifecycle};this.active=null;}
   return this.last;
  }
  status(){if(this.active&&this.now()>this.active.expires)this.stop('expired');return {...(this.active?{id:this.active.id,state:'active',events:this.active.events,expires:this.active.expires}:this.last||{state:'idle'}),sourceReview:this.sourceReview||null};}

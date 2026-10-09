@@ -14,7 +14,7 @@ function showSources(result){
   host.append(label,document.createElement('br'));
  }
 }
-const reasons={request_identity_conflict:'İstek içindeki dosya kimlikleri çelişiyor.',dosya_id_mismatch:'Hedef dosya kimliği ile istek kimliği uyuşmuyor.',panel_request_origin_unverified:'İsteğin hedef panelden çıktığı kanıtlanamadı.',panel_context_changed:'Panel veya işlem bağlamı değişti.',incomplete_capture:'Yanıt eksik yakalandı.',authorization_or_application_error:'UYAP yetki/uygulama hatası.',expired:'Gözlem süresi doldu.'};
+const reasons={anchor_detached:'Tıklanan öğe portal tarafından DOM’dan kaldırıldı.',row_identity_mismatch:'Liste satırının birimi veya dosya numarası hedefle uyuşmadı.',row_context_changed:'Liste satırı bağlamı değişti.',unrecognized_click:'Tıklama hedef satır veya Evrak eylemi olarak tanınmadı.',keyboard_context_change:'Klavye girdisi bağlamı kapattı.',page_context_change:'Sayfa gezinmesi bağlamı kapattı.',panel_replaced:'Panel değiştirildi.',panel_context_changed:'Panel başlığı veya öğeleri değişti.',unclassified_context_stop:'Durma dalı sınıflandırılamadı.',context_click:'Eski genel durma nedeni; kesin dal kaydedilmemiş.',request_identity_conflict:'İstek içindeki dosya kimlikleri çelişiyor.',dosya_id_mismatch:'Hedef dosya kimliği ile istek kimliği uyuşmuyor.',panel_request_origin_unverified:'İsteğin hedef panelden çıktığı kanıtlanamadı.',panel_context_changed:'Panel veya işlem bağlamı değişti.',incomplete_capture:'Yanıt eksik yakalandı.',authorization_or_application_error:'UYAP yetki/uygulama hatası.',expired:'Gözlem süresi doldu.'};
 async function refreshStatus(){
  clearTimeout(statusTimer);
  try{const r=await chrome.runtime.sendMessage({type:'BONO_OBSERVATION_GET_STATUS'});

@@ -213,10 +213,10 @@ async function observationRequest(route,body){
  if(!response.ok)throw new Error('observation_core_unavailable');
  return response.json();
 }
-async function stopObservation(reason="user_stop"){
+async function stopObservation(reason="user_stop",lifecycle=null){
  const old=observationSession;observationSession=null;
  if(old)try{await chrome.tabs.sendMessage(old.tabId,{type:'BONO_OBSERVATION_DISARM'},{frameId:old.frameId});}catch{}
- try{await observationRequest('/observation/stop',{reason});}catch{}
+ try{await observationRequest('/observation/stop',{reason,lifecycle});}catch{}
 }
 async function handleObservationMessage(message,sender){
  const ownUI=sender.id===chrome.runtime.id&&sender.url===chrome.runtime.getURL('observation.html');
@@ -242,7 +242,7 @@ async function handleObservationMessage(message,sender){
  if(message.type==='BONO_CAPTURE'&&observationSession){
   const s=observationSession,d=message.payload?.data||{};
   if(sender.tab?.id!==s.tabId||Number(sender.frameId||0)!==s.frameId||d.documentId!==s.documentId||d.sessionId!==s.id)return {ok:false,ignored:true};
-  if(message.payload.kind==='observation_stopped'){await stopObservation(d.reason||'context_stop');return {ok:true};}
+  if(message.payload.kind==='observation_stopped'){await stopObservation(d.reason||'context_stop',d.lifecycle);return {ok:true};}
   if(message.payload.kind!=='network_observation')return {ok:false,ignored:true};
   const result=await observationRequest('/events',{sessionId:s.id,documentId:s.documentId,tabId:s.tabId,frameId:s.frameId,payload:message.payload});
   if(result.state==='stopped')await stopObservation();

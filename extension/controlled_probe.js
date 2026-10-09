@@ -5,6 +5,8 @@
   const catalog=root.BONO_OBSERVATION_CONTRACTS;
   let active=null,anchor=null,action=null,sequence=0,causalAction=null;
   const panels=new WeakMap();
+  let lifecycle={};
+  const tick=key=>{lifecycle[key]=(lifecycle[key]||0)+1;};
   const normalize=v=>String(v||" ").replace(/\s+/g," ").trim();
   function panelFor(element){
    const prefix=active.caseNo+" "+normalize(active.unitName)+" - ";
@@ -16,28 +18,32 @@
    return {element:panel,title,reference:panels.get(panel)};
   }
   const send=(type,data)=>root.postMessage({channel:'BONO_UYAP_PAGE',type,data},'*');
-  function stop(reason="context_click"){const old=active;active=null;action=null;anchor=null;causalAction=null;if(old)send('observation_stopped',{sessionId:old.id,documentId:config.documentId,reason});}
+  function stop(reason="unclassified_context_stop"){const old=active;active=null;action=null;anchor=null;causalAction=null;if(old)send('observation_stopped',{sessionId:old.id,documentId:config.documentId,reason,lifecycle:{...lifecycle}});}
   function snapshot(url,body,method){
    if(!active)return null;
-   if(Date.now()>active.expires){stop();return null;}
+   if(Date.now()>active.expires){stop("expired");return null;}
    let parsed;try{parsed=new URL(url,location.href);}catch{return null;}
    if(parsed.origin!==location.origin||!paths.has(parsed.pathname))return null;
+   tick("requestsMatched");
    if(!action){stop("request_without_action");return null;}
    const provenance=causalAction===action&&action.originEvent?.eventPhase!==0?"synchronous_target_panel_action":"unknown";
+   if(provenance==='synchronous_target_panel_action')tick('synchronousRequests');
    let bodyObject={};try{bodyObject=typeof body==='string'?JSON.parse(body):body instanceof URLSearchParams?Object.fromEntries(body):{};}catch{try{bodyObject=Object.fromEntries(new URLSearchParams(body));}catch{}}
    return {sessionId:active.id,documentId:config.documentId,eventId:crypto.randomUUID(),observedAt:new Date().toISOString(),url:parsed.origin+parsed.pathname,method:String(method||'GET').toUpperCase(),action:{kind:action.kind,caseNo:action.caseNo,at:action.at,id:action.id,panelReference:action.panelReference},sequence:++sequence,panelContext:{reference:action.panelReference,caseNo:active.caseNo,unitName:active.unitName},initiator:provenance,request:{body:{dosyaId:bodyObject.dosyaId,pageNumber:bodyObject.pageNumber},query:{dosyaId:parsed.searchParams.get('dosyaId')||undefined}}};
   }
   function emit(snapshot,status,data,reason){
    if(!snapshot||active?.id!==snapshot.sessionId)return;
+   tick("responsesReceived");
    if(snapshot.action.kind==='observed_target_row_open'){
     const tabs=Array.from(document.querySelectorAll('[role="tab"]')).filter(e=>e.getClientRects().length>0&&normalize(e.textContent)==='Evrak');
     const panel=tabs.length===1?panelFor(tabs[0]):null;
     if(!panel){stop("panel_unverified");return;}
-    if(action.panelElement&&action.panelElement!==panel.element){stop();return;}
+    if(action.panelElement&&action.panelElement!==panel.element){stop("panel_replaced");return;}
     action.panelElement=panel.element;action.titleElement=panel.title;
     snapshot.action.panelReference=panel.reference;snapshot.panelContext.reference=panel.reference;
    }
    const evidence=data?catalog.responseEvidence(data):{};
+   tick("responsesEmitted");
    send('network_observation',{...snapshot,status,responseEvidence:evidence,capture:{complete:!reason&&evidence.structure?.complete===true,reason:reason||null}});
   }
   async function json(response){
@@ -81,20 +87,21 @@
    if(event.data.type==='observation_arm'){
     const s=event.data.session;
     if(s.documentId!==config.documentId||s.buildId!==config.buildId)return;
-    active={...s};action=null;anchor=null;sequence=0;causalAction=null;
+    active={...s};action=null;anchor=null;sequence=0;causalAction=null;lifecycle={armed:1};
    }
   });
   root.addEventListener('click',event=>{
    if(!active||!event.isTrusted)return;
+   tick("trustedClicks");
    if(action){stop("second_action");return;}
    for(const element of event.composedPath()){
     if(typeof element?.textContent!=='string')continue;
     if(element.getAttribute?.('id')==='dosya-goruntule'){
      const row=element.closest?.('[role="row"],tr');
      const cells=row?Array.from(row.querySelectorAll('[role="gridcell"],td')).map(c=>normalize(c.textContent)):[];
-     if(cells[0]!==normalize(active.unitName)||cells[1]!==active.caseNo){stop();return;}
+     if(cells[0]!==normalize(active.unitName)||cells[1]!==active.caseNo){stop("row_identity_mismatch");return;}
      anchor=element;action={kind:'observed_target_row_open',caseNo:active.caseNo,at:Date.now(),id:crypto.randomUUID(),panelReference:crypto.randomUUID(),originEvent:event,rowElement:row};
-     causalAction=action;return;
+     tick("actionsBound");causalAction=action;return;
     }
     const label=catalog.groupLabel(element.textContent.trim());
     const documentTab=element.getAttribute?.('role')==='tab'&&normalize(element.textContent)==='Evrak';
@@ -102,22 +109,32 @@
      const panel=panelFor(element);if(!panel){stop("panel_unverified");return;}
      anchor=element;action={kind:documentTab?'observed_target_documents_tab':'observed_target_group_click',caseNo:active.caseNo,at:Date.now(),id:crypto.randomUUID(),panelReference:panel.reference};
      action.originEvent=event;action.panelElement=panel.element;action.titleElement=panel.title;
-     causalAction=action;return;
+     tick("actionsBound");causalAction=action;return;
     }
    }
-   stop();
+   stop("unrecognized_click");
   },true);
-  root.addEventListener('keydown',event=>{if(active&&event.isTrusted)stop();},true);
-  for(const type of ['pagehide','popstate','hashchange'])root.addEventListener(type,stop);
+  root.addEventListener('keydown',event=>{if(active&&event.isTrusted)stop('keyboard_context_change');},true);
+  for(const type of ['pagehide','popstate','hashchange'])root.addEventListener(type,()=>stop('page_context_change'));
   const observer=new MutationObserver(()=>{
    if(!active||!anchor)return;
-   if(!anchor.isConnected){stop();return;}
+   if(!anchor.isConnected){
+    // The portal may redraw the source grid after the trusted row action.
+    // Transfer only an already synchronous request to the unique exact target panel.
+    const tabs=action.kind==='observed_target_row_open'&&lifecycle.synchronousRequests>0?
+     Array.from(document.querySelectorAll('[role="tab"]')).filter(e=>e.getClientRects().length>0&&normalize(e.textContent)==='Evrak'):[];
+    const panel=tabs.length===1?panelFor(tabs[0]):null;
+    if(!panel){stop("anchor_detached");return;}
+    action.panelElement=panel.element;action.titleElement=panel.title;anchor=panel.element;tick('panelHandoffs');
+   }
    if(action.kind==='observed_target_row_open'){
-    const cells=Array.from(action.rowElement.querySelectorAll('[role="gridcell"],td')).map(c=>normalize(c.textContent));
-    if(!action.rowElement.isConnected||cells[0]!==normalize(active.unitName)||cells[1]!==active.caseNo){stop();return;}
+    if(!action.panelElement){
+     const cells=Array.from(action.rowElement.querySelectorAll('[role="gridcell"],td')).map(c=>normalize(c.textContent));
+     if(!action.rowElement.isConnected||cells[0]!==normalize(active.unitName)||cells[1]!==active.caseNo){stop("row_context_changed");return;}
+    }
     if(!action.panelElement)return;
    }
-   if(!action.panelElement.isConnected||!action.titleElement.isConnected||!normalize(action.titleElement.textContent).startsWith(active.caseNo+' '+normalize(active.unitName)+' - ')||(action.kind==='observed_target_group_click'?catalog.groupLabel(anchor.textContent.trim()).caseNo!==active.caseNo:action.kind==='observed_target_documents_tab'&&normalize(anchor.textContent)!=='Evrak'))stop();
+   if(!action.panelElement.isConnected||!action.titleElement.isConnected||!normalize(action.titleElement.textContent).startsWith(active.caseNo+' '+normalize(active.unitName)+' - ')||(action.kind==='observed_target_group_click'?catalog.groupLabel(anchor.textContent.trim()).caseNo!==active.caseNo:action.kind==='observed_target_documents_tab'&&normalize(anchor.textContent)!=='Evrak'))stop('panel_context_changed');
   });
   observer.observe(document.documentElement,{subtree:true,childList:true,characterData:true});
   send('probe_ready',{probeVersion:2,causalVersion:1,buildId:config.buildId,documentId:config.documentId});
