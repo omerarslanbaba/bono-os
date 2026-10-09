@@ -165,7 +165,7 @@ async function stopObservation(){
 }
 async function handleObservationMessage(message,sender){
  const ownUI=sender.id===chrome.runtime.id&&sender.url===chrome.runtime.getURL('observation.html');
- if(message.type==='BONO_OBSERVATION_GET_STATUS'&&ownUI)return {ok:true,state:observationSession?'active':'idle'};
+ if(message.type==='BONO_OBSERVATION_GET_STATUS'&&ownUI)return {ok:true,...await observationRequest('/observation/status')};
  if(message.type==='BONO_OBSERVATION_STOP'&&ownUI){await stopObservation();return {ok:true};}
  if(message.type==='BONO_OBSERVATION_START'&&ownUI){
   if(observationSession)return {ok:false,error:'session_already_active'};
@@ -174,8 +174,8 @@ async function handleObservationMessage(message,sender){
   const health=await observationRequest('/health');
   if(!health.observationOnly||health.buildId!==BONO_RUNTIME_CONFIG.buildId)return {ok:false,error:'core_build_mismatch'};
   const ready=await chrome.tabs.sendMessage(tab.id,{type:'BONO_OBSERVATION_STATUS'},{frameId:message.frameId});
-  if(!ready?.ready||ready.buildId!==BONO_RUNTIME_CONFIG.buildId||ready.probeVersion!==2)return {ok:false,error:'reload_or_probe_conflict'};
-  const session=await observationRequest('/observation/start',{...message,buildId:ready.buildId,probeVersion:ready.probeVersion,documentId:ready.documentId});
+  if(!ready?.ready||ready.buildId!==BONO_RUNTIME_CONFIG.buildId||ready.probeVersion!==2||ready.causalVersion!==1)return {ok:false,error:'reload_or_probe_conflict'};
+  const session=await observationRequest('/observation/start',{...message,buildId:ready.buildId,probeVersion:ready.probeVersion,causalVersion:ready.causalVersion,documentId:ready.documentId});
   observationSession={...session,tabId:tab.id,frameId:message.frameId};
   setTimeout(()=>{if(observationSession?.id===session.id)stopObservation();},Math.max(0,session.expires-Date.now()));
   try{

@@ -3,17 +3,29 @@
  function install(config){
   const paths=new Set(['/list_dosya_evraklar.ajx','/listDosyaEvraklarPageTotal.ajx']);
   const catalog=root.BONO_OBSERVATION_CONTRACTS;
-  let active=null,anchor=null,action=null;
+  let active=null,anchor=null,action=null,sequence=0,causalAction=null;
+  const panels=new WeakMap();
+  const normalize=v=>String(v||" ").replace(/\s+/g," ").trim();
+  function panelFor(element){
+   const prefix=active.caseNo+" "+normalize(active.unitName)+" - ";
+   const matches=Array.from(document.querySelectorAll("*")).filter(e=>e.getClientRects().length>0&&normalize(e.textContent).startsWith(prefix)&&!Array.from(e.children).some(c=>normalize(c.textContent).startsWith(prefix)));
+   if(matches.length!==1)return null;
+   const title=matches[0];let panel=element;while(panel&&!panel.contains(title))panel=panel.parentElement;
+   if(!panel||panel===document.body||panel===document.documentElement)return null;
+   if(!panels.has(panel))panels.set(panel,crypto.randomUUID());
+   return {element:panel,title,reference:panels.get(panel)};
+  }
   const send=(type,data)=>root.postMessage({channel:'BONO_UYAP_PAGE',type,data},'*');
-  function stop(){const old=active;active=null;action=null;anchor=null;if(old)send('observation_stopped',{sessionId:old.id,documentId:config.documentId});}
+  function stop(){const old=active;active=null;action=null;anchor=null;causalAction=null;if(old)send('observation_stopped',{sessionId:old.id,documentId:config.documentId});}
   function snapshot(url,body,method){
    if(!active)return null;
    if(Date.now()>active.expires){stop();return null;}
    let parsed;try{parsed=new URL(url,location.href);}catch{return null;}
    if(parsed.origin!==location.origin||!paths.has(parsed.pathname))return null;
    if(!action){stop();return null;}
+   const provenance=causalAction===action&&action.originEvent?.eventPhase!==0?"synchronous_target_panel_action":"unknown";
    let bodyObject={};try{bodyObject=typeof body==='string'?JSON.parse(body):body instanceof URLSearchParams?Object.fromEntries(body):{};}catch{try{bodyObject=Object.fromEntries(new URLSearchParams(body));}catch{}}
-   return {sessionId:active.id,documentId:config.documentId,eventId:crypto.randomUUID(),observedAt:new Date().toISOString(),url:parsed.origin+parsed.pathname,method:String(method||'GET').toUpperCase(),action:{...action},request:{body:{dosyaId:bodyObject.dosyaId,pageNumber:bodyObject.pageNumber},query:{dosyaId:parsed.searchParams.get('dosyaId')||undefined}}};
+   return {sessionId:active.id,documentId:config.documentId,eventId:crypto.randomUUID(),observedAt:new Date().toISOString(),url:parsed.origin+parsed.pathname,method:String(method||'GET').toUpperCase(),action:{kind:action.kind,caseNo:action.caseNo,at:action.at,id:action.id,panelReference:action.panelReference},sequence:++sequence,panelContext:{reference:action.panelReference,caseNo:active.caseNo,unitName:active.unitName},initiator:provenance,request:{body:{dosyaId:bodyObject.dosyaId,pageNumber:bodyObject.pageNumber},query:{dosyaId:parsed.searchParams.get('dosyaId')||undefined}}};
   }
   function emit(snapshot,status,data,reason){
    if(!snapshot||active?.id!==snapshot.sessionId)return;
@@ -61,7 +73,7 @@
    if(event.data.type==='observation_arm'){
     const s=event.data.session;
     if(s.documentId!==config.documentId||s.buildId!==config.buildId)return;
-    active={...s};action=null;anchor=null;
+    active={...s};action=null;anchor=null;sequence=0;causalAction=null;
    }
   });
   root.addEventListener('click',event=>{
@@ -70,17 +82,21 @@
    for(const element of event.composedPath()){
     if(typeof element?.textContent!=='string')continue;
     const label=catalog.groupLabel(element.textContent.trim());
-    if(label.caseNo===active.caseNo&&label.type==='cbs_investigation'){
-     anchor=element;action={kind:'observed_target_group_click',caseNo:label.caseNo,at:Date.now()};return;
+    const documentTab=element.getAttribute?.('role')==='tab'&&normalize(element.textContent)==='Evrak';
+    if(documentTab||(label.caseNo===active.caseNo&&label.type==='cbs_investigation')){
+     const panel=panelFor(element);if(!panel){stop();return;}
+     anchor=element;action={kind:documentTab?'observed_target_documents_tab':'observed_target_group_click',caseNo:active.caseNo,at:Date.now(),id:crypto.randomUUID(),panelReference:panel.reference};
+     action.originEvent=event;action.panelElement=panel.element;action.titleElement=panel.title;
+     causalAction=action;return;
     }
    }
    stop();
   },true);
   root.addEventListener('keydown',event=>{if(active&&event.isTrusted)stop();},true);
   for(const type of ['pagehide','popstate','hashchange'])root.addEventListener(type,stop);
-  const observer=new MutationObserver(()=>{if(active&&anchor&&(!anchor.isConnected||catalog.groupLabel(anchor.textContent.trim()).caseNo!==active.caseNo))stop();});
+  const observer=new MutationObserver(()=>{if(active&&anchor&&(!anchor.isConnected||!action.panelElement.isConnected||!action.titleElement.isConnected||!normalize(action.titleElement.textContent).startsWith(active.caseNo+' '+normalize(active.unitName)+' - ')||(action.kind==='observed_target_group_click'?catalog.groupLabel(anchor.textContent.trim()).caseNo!==active.caseNo:normalize(anchor.textContent)!=='Evrak')))stop();});
   observer.observe(document.documentElement,{subtree:true,childList:true,characterData:true});
-  send('probe_ready',{probeVersion:2,buildId:config.buildId,documentId:config.documentId});
+  send('probe_ready',{probeVersion:2,causalVersion:1,buildId:config.buildId,documentId:config.documentId});
  }
  root.BONO_CONTROLLED_PROBE={install};
 })(window);

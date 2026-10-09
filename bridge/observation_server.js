@@ -41,7 +41,7 @@ function start(env=process.env){
    fs.mkdirSync(path.dirname(evidencePath),{recursive:true});
    const fd=fs.openSync(evidencePath,'wx');fs.closeSync(fd);db=new DatabaseSync(evidencePath);
    db.exec('CREATE TABLE uyap_observation_events(event_id TEXT PRIMARY KEY,captured_at TEXT NOT NULL,event_json TEXT NOT NULL)');
-   controller=new ObservationController({db,buildId:env.BONO_OBSERVATION_BUILD_ID,caseReader:id=>source.prepare('SELECT court_file_no,uyap_birim_id,uyap_dosya_id FROM cases WHERE id=?').get(Number(id))});ready=true;
+   controller=new ObservationController({db,buildId:env.BONO_OBSERVATION_BUILD_ID,caseReader:id=>source.prepare('SELECT court_file_no,uyap_birim_id,uyap_dosya_id,court FROM cases WHERE id=?').get(Number(id))});ready=true;
   }catch{cleanup();shutdown();console.error('observer_initialization_failed');process.exitCode=1;}
  });
  return {server,get controller(){return controller;}};

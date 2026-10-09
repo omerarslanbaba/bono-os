@@ -110,7 +110,7 @@
     }
 
     if (msg.type === "probe_ready") {
-      probeStatus={...probeStatus,ready:msg.data?.probeVersion===2&&msg.data?.buildId===config.buildId&&msg.data?.documentId===documentId,error:null};
+      probeStatus={...probeStatus,ready:msg.data?.probeVersion===2&&msg.data?.buildId===config.buildId&&msg.data?.documentId===documentId,error:null,causalVersion:msg.data?.causalVersion||0};
       if(observationOnly)return;
       sendCapture("probe_ready", msg.data);
       return;

@@ -46,6 +46,20 @@
     visit(data,null,{field:'root'},0);
     return {nodes,complete:reasons.size===0,reasons:[...reasons],skipped,privacyOmitted,semantics:'unknown',valuesRetained:false};
   }
+  function identityCandidates(data){
+    const nodes=[];let complete=true;
+    function visit(value,parent,depth,edge){
+      if(!value||typeof value!=='object')return;
+      if(nodes.length>=800||depth>10){complete=false;return;}
+      const node={node:nodes.length,parent,kind:Array.isArray(value)?'array':'object',edge,ids:{}};nodes.push(node);
+      // Only observed identifier field names; their legal semantics remain unknown.
+      for(const key of ['dosyaId','evrakId'])if((typeof value[key]==='string'&&value[key].length<=500)||Number.isSafeInteger(value[key]))node.ids[key]=String(value[key]);
+      const children=Object.entries(value).filter(([key,v])=>! /token|cookie|auth|session|csrf|password|secret|content|text|name|aciklama/i.test(key)&&v&&typeof v==='object');
+      if(children.length>100)complete=false;
+      for(const [key,child] of children.slice(0,100)){const group=groupLabel(key);visit(child,node.node,depth+1,Array.isArray(value)?{index:Number(key)}:group.caseNo?{group}:{field:["tumEvraklar","son20Evrak"].includes(key)?key:"unknown"});}
+    }
+    visit(data,null,0,{field:"root"});return {nodes,complete,semantics:'unknown'};
+  }
   function responseEvidence(data){
     if(!data||typeof data!=='object')return null;
     const groups=data.tumEvraklar;
@@ -53,7 +67,7 @@
       recentCount:Array.isArray(data.son20Evrak)?data.son20Evrak.length:null,
       groupShape:Array.isArray(groups)?'array':groups&&typeof groups==='object'?'object':'unknown',
       groups:groups&&!Array.isArray(groups)&&typeof groups==='object'?Object.entries(groups).slice(0,100).map(([label,items])=>({...groupLabel(label),shape:Array.isArray(items)?'array':typeof items,count:Array.isArray(items)?items.length:null})):[],
-      structure:structure(data),
+      structure:structure(data),identityCandidates:identityCandidates(data),
       ownership:'unknown'};
   }
   function assertImportAllowed(caseRow){

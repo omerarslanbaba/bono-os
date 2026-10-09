@@ -1,0 +1,71 @@
+'use strict';
+const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),crypto=require('node:crypto');
+const {DatabaseSync}=require('node:sqlite');
+const catalog=require('../extension/observation_contracts');
+const {ObservationController}=require('../bridge/observation_controller');
+function harness({documentTab=false}={}){
+ const listeners={},messages=[],requests=[];
+ const header={getClientRects:()=>[{}],textContent:'2026/51832 Fixture CBS - CBS Sorusturma Dosyası',children:[],isConnected:true};
+ const panel={isConnected:true,contains:e=>e===header};
+ const group={textContent:documentTab?'Evrak':'2026/51832(CBS Sorusturma Dosyası)',getAttribute:k=>documentTab&&k==='role'?'tab':null,children:[],isConnected:true,parentElement:panel,contains:()=>false};
+ const document={body:{},documentElement:{},querySelectorAll:()=>[header]};
+ const root={BONO_OBSERVATION_CONTRACTS:catalog,addEventListener:(k,f)=>listeners[k]=f,postMessage:m=>messages.push(m),fetch:()=>new Promise(resolve=>requests.push(resolve)),XMLHttpRequest:function(){}};
+ root.XMLHttpRequest.prototype={open(){},send(){}};
+ vm.runInNewContext(fs.readFileSync('extension/controlled_probe.js','utf8'),{window:root,document,location:{origin:'https://avukat.uyap.gov.tr',href:'https://avukat.uyap.gov.tr/dosya-sorgulama'},crypto,URL,URLSearchParams,Date,MutationObserver:class{observe(){}}});
+ root.BONO_CONTROLLED_PROBE.install({documentId:'doc-one',buildId:'build-one'});
+ const session={id:'session-one-0001',documentId:'doc-one',buildId:'build-one',caseNo:'2026/51832',unitName:'Fixture CBS',expires:Date.now()+60000};
+ listeners.message({source:root,data:{channel:'BONO_UYAP_CONTENT',type:'observation_arm',session}});
+ const click={isTrusted:true,eventPhase:1,composedPath:()=>[group,panel]};listeners.click(click);
+ const response=data=>({status:200,headers:{get:k=>k==='content-type'?'application/json':null},clone:()=>({text:async()=>JSON.stringify(data)})});
+ return {root,click,messages,requests,response};
+}
+(async()=>{
+ const tabHarness=harness({documentTab:true});
+ const tabRequest=tabHarness.root.fetch('/list_dosya_evraklar.ajx',{method:'POST',body:'{"dosyaId":"file-one-0001"}'});
+ tabHarness.click.eventPhase=0;tabHarness.requests[0](tabHarness.response({tumEvraklar:[]}));await tabRequest;
+ assert.equal(tabHarness.messages.at(-1).data.action.kind,'observed_target_documents_tab');
+ const h=harness();
+ const a=h.root.fetch('/list_dosya_evraklar.ajx',{method:'POST',body:JSON.stringify({dosyaId:'file-one-0001'})});
+ const b=h.root.fetch('/list_dosya_evraklar.ajx',{method:'POST',body:JSON.stringify({dosyaId:'file-two-0002'})});
+ h.click.eventPhase=0;
+ h.requests[1](h.response({tumEvraklar:[{dosyaId:'file-two-0002',evrakId:'document-two-0002'}]}));await b;
+ h.requests[0](h.response({tumEvraklar:[{dosyaId:'file-one-0001',evrakId:'document-one-0001'}]}));await a;
+ const events=h.messages.filter(m=>m.type==='network_observation').map(m=>m.data);
+ assert.equal(events.length,2);assert.notEqual(events[0].eventId,events[1].eventId);
+ assert.equal(events[0].action.id,events[1].action.id);
+ assert.equal(events[0].sequence,2);assert.equal(events[1].sequence,1);
+ for(const e of events){assert.equal(e.initiator,'synchronous_target_panel_action');assert.equal(e.responseEvidence.identityCandidates.nodes.find(n=>n.ids.evrakId)?.ids.dosyaId,e.request.body.dosyaId);}
+ const later=h.root.fetch('/list_dosya_evraklar.ajx',{method:'POST',body:'{"dosyaId":"file-one-0001"}'});
+ h.requests[2](h.response({tumEvraklar:[]}));await later;
+ assert.equal(h.messages.at(-1).data.initiator,'unknown');
+
+ const db=new DatabaseSync(':memory:');db.exec('CREATE TABLE uyap_observation_events(event_id TEXT PRIMARY KEY,captured_at TEXT,event_json TEXT)');
+ const controller=new ObservationController({db,buildId:'build-one',caseReader:()=>({court:'Fixture CBS',court_file_no:'2026/51832',uyap_birim_id:'unit-one',uyap_dosya_id:'file-one-0001'})});
+ const start=()=>controller.start({caseId:93,tabId:1,frameId:0,documentId:'doc-one',contextConfirmed:true,buildId:'build-one',probeVersion:2,causalVersion:1});
+ let s=start();
+ const wrap=e=>({sessionId:s.id,documentId:'doc-one',tabId:1,frameId:0,payload:{data:{...e,observedAt:new Date().toISOString(),action:{...e.action,at:s.started},sessionId:s.id}}});
+ const good=wrap(events[1]);
+ assert.equal(controller.accept({...good,tabId:2}).reason,'target_or_session_mismatch');
+ assert.equal(controller.accept({...good,sessionId:'old-session'}).reason,'target_or_session_mismatch');
+ assert(controller.accept(good).accepted);
+ assert.equal(controller.accept(good).reason,'duplicate_event');
+ let saved=JSON.parse(db.prepare('SELECT event_json FROM uyap_observation_events').get().event_json);
+ assert.equal(saved.metadataImportAllowed,false);assert.equal(saved.downloadAllowed,false);
+ assert.equal(saved.identityGraph.nodes.find(n=>n.ids.dosyaId)?.ids.dosyaId,saved.requestReference);
+ assert(!JSON.stringify(saved).includes('file-one-0001'));
+ controller.stop();s=start();
+ assert.equal(controller.accept(wrap(events[0])).reason,'dosya_id_mismatch');
+ assert.equal(controller.status().state,'stopped');
+ controller.stop();s=start();assert.equal(controller.accept(wrap(h.messages.at(-1).data)).reason,'panel_request_origin_unverified');
+ controller.stop();s=start();const missing=wrap(events[1]);missing.payload.data.eventId=crypto.randomUUID();missing.payload.data.responseEvidence=catalog.responseEvidence({tumEvraklar:{'2026/51832(CBS Sorusturma Dosyası)':[{evrakId:'document-no-source',name:'PRIVATE_NAME',token:'PRIVATE_SECRET',content:'PRIVATE_CONTENT'}]}});
+ assert(controller.accept(missing).accepted);
+ saved=JSON.parse(db.prepare('SELECT event_json FROM uyap_observation_events ORDER BY rowid DESC').get().event_json);
+ assert.equal(saved.ownership,'unknown');assert.equal(saved.metadataImportAllowed,false);
+ assert(saved.identityGraph.nodes.some(n=>n.ids.evrakId&&!n.ids.dosyaId));
+ assert(!JSON.stringify(saved).includes('PRIVATE_'));
+ controller.stop();s=start();const conflicting=wrap(events[1]);conflicting.payload.data.eventId=crypto.randomUUID();conflicting.payload.data.request={body:{dosyaId:'file-one-0001'},query:{dosyaId:'file-two-0002'}};
+ assert.equal(controller.accept(conflicting).reason,'request_identity_conflict');
+ db.close();
+ console.log(JSON.stringify({ok:true,tests:['synchronous_panel_action','parallel_reverse_responses_paired','async_origin_unknown','foreign_tab_rejected','old_session_rejected','duplicate_rejected','mismatch_diagnostic_stops','hashed_identity_graph','missing_source_stays_unknown','secrets_omitted','no_import_or_download'],portalRequests:0}));
+})().catch(e=>{console.error(e);process.exitCode=1;});
+

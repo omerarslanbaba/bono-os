@@ -7,9 +7,9 @@ const build='a'.repeat(64),extensionId='a'.repeat(32),results=[];
 function pass(name){results.push({name,status:'PASS'});}
 function harness(){
  const db=new DatabaseSync(':memory:');db.exec('CREATE TABLE uyap_observation_events(event_id TEXT PRIMARY KEY,captured_at TEXT,event_json TEXT)');
- let time=Date.now();const controller=new ObservationController({db,buildId:build,now:()=>time,caseReader:()=>({court_file_no:'2020/1',uyap_birim_id:'123',uyap_dosya_id:'synthetic-reference-0001'})});
- const start=()=>controller.start({caseId:1,tabId:1,frameId:0,documentId:'doc-one',contextConfirmed:true,buildId:build,probeVersion:2});
- const event=s=>({sessionId:s.id,tabId:1,frameId:0,documentId:'doc-one',payload:{data:{eventId:crypto.randomUUID(),observedAt:new Date(time).toISOString(),url:'https://avukat.uyap.gov.tr/list_dosya_evraklar.ajx',status:200,action:{kind:'observed_target_group_click',caseNo:'2020/1',at:time},request:{body:{dosyaId:'synthetic-reference-0001'}},capture:{complete:true},responseEvidence:catalog.responseEvidence({tumEvraklar:{'2020/1(CBS Sorusturma Dosyası)':[{evrakId:'PRIVATE_EVRAK_REFERENCE',name:'PRIVATE_PERSON',content:'PRIVATE_CONTENT'}],'2020/2(Talimat Dosyası)':[]}})}}});
+ let time=Date.now();const controller=new ObservationController({db,buildId:build,now:()=>time,caseReader:()=>({court_file_no:'2020/1',court:'Fixture CBS',uyap_birim_id:'123',uyap_dosya_id:'synthetic-reference-0001'})});
+ const start=()=>controller.start({caseId:1,tabId:1,frameId:0,documentId:'doc-one',contextConfirmed:true,buildId:build,probeVersion:2,causalVersion:1});
+ const event=s=>({sessionId:s.id,tabId:1,frameId:0,documentId:'doc-one',payload:{data:{eventId:crypto.randomUUID(),observedAt:new Date(time).toISOString(),url:'https://avukat.uyap.gov.tr/list_dosya_evraklar.ajx',status:200,sequence:1,initiator:'synchronous_target_panel_action',panelContext:{reference:'panel-one-0001',caseNo:'2020/1',unitName:'Fixture CBS'},action:{kind:'observed_target_group_click',id:'action-one-0001',panelReference:'panel-one-0001',caseNo:'2020/1',at:time},request:{body:{dosyaId:'synthetic-reference-0001'}},capture:{complete:true},responseEvidence:catalog.responseEvidence({tumEvraklar:{'2020/1(CBS Sorusturma Dosyası)':[{evrakId:'PRIVATE_EVRAK_REFERENCE',name:'PRIVATE_PERSON',content:'PRIVATE_CONTENT'}],'2020/2(Talimat Dosyası)':[]}})}}});
  return {db,controller,start,event,setTime:v=>time=v};
 }
 function controllerTests(){
