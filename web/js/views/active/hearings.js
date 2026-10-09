@@ -23,7 +23,7 @@ function calendar(rows){
   const items=events.map(h=>`<a class="cal-event" href="#hearings/${encodeURIComponent(h.id)}" title="${esc((h.court||'')+' · '+(h.court_file_no||''))}"><b>${esc(String(h.starts_at||'').slice(11,16))}</b> ${esc(h.court_file_no||'')}<span>${esc(h.court||'')}</span></a>`).join('');
   return `<div class="cal-day ${outside?'muted':''} ${events.length?'has-event':''}"><div class="cal-no">${d.getDate()}</div>${items}</div>`;
  }).join('');
- return `<div class="bono-calendar-controls"><button type="button" id="prevPeriod" class="subtle-action" aria-label="Önceki dönem">← Önceki</button><strong class="bono-calendar-heading">${esc(title)}</strong><button type="button" id="nextPeriod" class="subtle-action" aria-label="Sonraki dönem">Sonraki →</button><button type="button" id="thisPeriod" class="subtle-action">Bugün</button></div><div class="bono-calendar-full month-view"><div class="cal-weekdays">${WD.map(x=>`<span>${x}</span>`).join('')}</div><div class="cal-grid">${cells}</div></div>`;
+ return `<div class="bono-calendar-controls"><button type="button" id="prevPeriod" class="subtle-action" aria-label="Önceki dönem">←</button><strong class="bono-calendar-heading">${esc(title)}</strong><button type="button" id="nextPeriod" class="subtle-action" aria-label="Sonraki dönem">→</button></div><div class="bono-calendar-full month-view"><div class="cal-weekdays">${WD.map(x=>`<span>${x}</span>`).join('')}</div><div class="cal-grid">${cells}</div></div>`;
 }
 export async function renderHearings(id){
  if(id){
@@ -37,7 +37,7 @@ export async function renderHearings(id){
  mount(pageHero('Duruşma Takvimi','UYAP duruşmaları: aylık ve haftalık görünüm.')+section('Takvim','◷',`<div id="hearingCalendarArea">${calendar(rows)}</div>`,action),'hearings');
  const draw=()=>{const el=document.querySelector('#hearingCalendarArea');if(!el)return;el.innerHTML=calendar(rows);const move=n=>{const d=state.anchor;state.anchor=new Date(d.getFullYear(),d.getMonth()+n,1);draw()};
   el.querySelector('#prevPeriod').onclick=()=>move(-1);el.querySelector('#nextPeriod').onclick=()=>move(1);
-  el.querySelector('#thisPeriod').onclick=()=>{const now=new Date();state.anchor=new Date(now.getFullYear(),now.getMonth(),now.getDate());draw()};
+
  };
  draw();
  document.querySelector('#syncCalendar')?.addEventListener('click',async e=>{

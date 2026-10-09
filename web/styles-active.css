@@ -1,3 +1,4 @@
+@import url("/case-usability.css");
 
 /* BONO OS active shell — UYAP-inspired compact theme */
 :root{--bono-cyan:#19aee6;--bono-cyan-soft:rgba(25,174,230,.12);--bono-panel:#17191d;--bono-line:#34383d}

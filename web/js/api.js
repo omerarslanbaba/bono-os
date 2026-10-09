@@ -6,6 +6,7 @@ async function request(path,options={}){
 }
 export const api={
   morningBrief:()=>request('/api/morning-brief'),
+  deadlines:(limit=200)=>request('/api/deadlines?limit='+encodeURIComponent(limit)),
   upcomingHearings:(limit=30)=>request('/api/hearings/upcoming?limit='+encodeURIComponent(limit)),
   hearingCockpit:id=>request('/api/hearings/'+encodeURIComponent(id)+'/cockpit'),
   syncHearings:(start,end)=>request('/api/uyap/hearings/sync-range',{method:'POST',body:JSON.stringify({start,end})}),
