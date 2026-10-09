@@ -38,8 +38,11 @@ must(!("dosyaNo" in first.payload.body)&&first.payload.body.birimTuru2==="OBSERV
 const rows=Array.from({length:500},(_,i)=>({birimId:"OBSERVED-UNIT",dosyaNo:"2025/"+(i+1),dosyaId:"fixture-page1-"+i,dosyaDurumKod:0}));
 let result=uyap.reportResult(first.id,{ok:true,status:200,contentType:"application/json",data:[rows,501]});
 must(result.ok===true,"first CBS page rejected");
-const second=uyap.claimNext("avukat.uyap.gov.tr","query");
-must(second&&second.endpointKey==="cbs.search"&&second.payload.body.pageNumber===2,"second scoped CBS page not queued");
+const secondQueued=db.prepare("select id from uyap_command_queue where endpoint_key='cbs.search' and status='queued' and cast(json_extract(payload_json,'$.context.pageNumber') as integer)=2 order by id desc limit 1").get();
+must(secondQueued?.id,"second scoped CBS page was not enqueued");
+db.prepare("update uyap_rate_state set next_allowed_ms=0 where id=1").run();
+const second=uyap.claimNext("avukat.uyap.gov.tr","any");
+must(second&&Number(second.id)===Number(secondQueued.id)&&second.endpointKey==="cbs.search"&&second.payload.body.pageNumber===2,"second scoped CBS page not claimable after fixture rate reset");
 const target={birimId:"OBSERVED-UNIT",dosyaNo:"2026/51832",dosyaId:"fixture-opaque-901",dosyaDurumKod:0};
 result=uyap.reportResult(second.id,{ok:true,status:200,contentType:"application/json",data:[[target],501]});
 must(result.ok===true,"second CBS page rejected");
