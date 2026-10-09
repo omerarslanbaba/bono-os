@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const {hash,key,plan,executeSimulated}=require('./bulk_download_acceptance_model');
+const {hash,key,plan,executeSimulated}=require('./bulk_download_acceptance_model.cjs');
 const record=(documentId,caseId='case-A',sourceCaseId='source-A')=>({documentId,caseId,sourceCaseId});
 test('explicit user authorization and verified identity are mandatory',()=>{
  assert.throws(()=>plan([record('a')]),/authorization/);
