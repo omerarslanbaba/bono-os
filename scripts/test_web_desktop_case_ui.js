@@ -5,6 +5,7 @@ new vm.Script(src.replace(/^import .*;\s*$/gm,'').replace(/export async function
 new vm.Script(userQueries.replace(/^import .*;\s*$/gm,'').replace(/export /g,''),{filename:'user-queries.js'});
 assert.match(src,/UYAP'ta Sorgula/);
 assert.match(src,/mountUserQueries\(id,/);
+assert.match(src,/mountGlobalQueryHistory\(\)/);
 assert.match(userQueries,/\/query-support/);
 assert.match(userQueries,/\/query'/);
 assert.match(userQueries,/X-Bono-User-Action/);
