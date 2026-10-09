@@ -2,13 +2,13 @@
 
 ## Durum
 
-İzole geliştirme tamamlandı; canlı kurulum veya DB geçişi yapılmadı. Canlı 270 komut hâlâ önceki durumundadır. Bu teslim onları çalıştırmaya izin vermez. Dağıtım adayı yalnız `USER-CONTROLLED-QUERIES-release` paketidir; v1–v4 ara adaylardır.
+İzole geliştirme tamamlandı; canlı kurulum veya DB geçişi yapılmadı. Canlı queued komut sayısı bakım anında yeniden sayılmalıdır; eski 270 değeri yalnız tarihsel snapshot'tır. Bu teslim onları çalıştırmaya izin vermez. Dağıtım adayı yalnız `USER-CONTROLLED-QUERIES-release` paketidir; v1–v4 ara adaylardır.
 
 ## Eski 270 komutun akıbeti
 
 Onaylı bakımda masaüstü/Core ve bütün executor'lar kapalıyken önce kaynak DB, mevcut WAL/SHM dosyalarıyla birlikte ayrı özel yedek dizinine kopyalanır. Kaynak hash'leri kopyalama öncesi/sonrası karşılaştırılır; doğrulama kopyasında SQLite integrity_check çalışır. Manifest kaynak yolu, dosya hash'leri, durum sayıları, yerel komut ID listesi ve bu listenin SHA-256 değerini tutar. Gerçek DB yedeği Git'e veya bu teslim paketine alınmaz.
 
-Migration tam 270 queued/fetch_json/attempts=0 kaydı, boş dispatched_at/finished_at ve yedek ID digest eşleşmesi ister. Running/dispatched veya sayı farkında durur. Her komut aynı yerel ID ile geçmişe bağlanır; kuyruk satırı silinmez, archived olur; immutable retirement kaydı oluşturulur. Görünür sonuç `archived_never_executed` / “Arşivlendi · hiç yürütülmedi” olur. Başarı sayılmaz. Eski tamamlanmış satırlar da doğrulanmış yeni başarı sayılmaz; deneme kanıtı varsa legacy_attempted_unverified, yoksa never_executed görünür. Mevcut güvenli oluşturulma/sonuç zamanları korunur; aktarım zamanı ayrıca olay kaydıdır.
+Migration yedek manifestinde taze olarak sayılmış queued/fetch_json kayıtları, boş dispatched_at/finished_at ve yedek ID digest eşleşmesi ister. Running/dispatched veya sayı farkında durur. Her komut aynı yerel ID ile geçmişe bağlanır; kuyruk satırı silinmez, archived olur; immutable retirement kaydı oluşturulur. Görünür sonuç `archived_never_executed` / “Arşivlendi · hiç yürütülmedi” olur. Başarı sayılmaz. Eski tamamlanmış satırlar da doğrulanmış yeni başarı sayılmaz; deneme kanıtı varsa legacy_attempted_unverified, yoksa never_executed görünür. Mevcut güvenli oluşturulma/sonuç zamanları korunur; aktarım zamanı ayrıca olay kaydıdır.
 
 Tek BEGIN IMMEDIATE işlemi kullanılır. Hata veya süreç çıkışında yarım migration görünmez. Tekrar çalıştırma retirement ID'lerini, sayıyı, archived durumunu ve eski manifest digest'ini yeniden mutabıklaştırır. Arşiv satırının tekrar queued yapılması ve silinmesi DB trigger'larıyla reddedilir. Yeni claim yalnız attempts=0 + geçerli kullanıcı grant'i seçer; retirement'ları dışlar. Eski/geç sonuçlar metadata yazmadan reddedilir.
 
@@ -47,7 +47,7 @@ Tercih edilen DB geri dönüşü RollbackHold'dur: policy rollback_hold olur; hi
 1. Güncel PID/port, tanımlanamayan süreç, aktif job/command, extension ID/source ve paket preimage'larını yeniden kontrol et. Fark veya running/dispatched komut varsa dur. Kullanıcının teyit ettiği extension ID/kök geçerlidir; eski PID sabit sayılmaz.
 2. Kullanıcı Chrome extension executor'larını kapatır; masaüstü tray Exit ile kontrollü kapatılır. X yalnız gizler; watchdog Core'u yeniden başlatabilir. Tray Exit çocuk süreçleri öldürebileceği için çalışan işi varken bu adım uygulanmaz. Desktop/Core/worker'ın gerçekten kapandığı doğrulanır; Chrome/UYAP sorgusu yapılmaz.
 3. Özel tutarlı yedek+manifest için BackupOnly adımına izin ver; sonra paket Apply ile yeni kodu kur, installed hash doğrula. Yeni Core henüz başlamaz. Önceden observer/hold overlay uygulanmışsa aday preimage uyuşmaz; otomatik üzerine yazma yapılmaz, bilinen overlay geri dönüşü ayrıca doğrulanır.
-4. query_transition.ps1 BackupMigrate ile exact270 geçişini yap; 270 archived/retirement/history eşleştirmesini, sıfır eski queued seçilebilirliğini ve manual pause korunmasını doğrula. Başarısızlıkta devam etme.
+4. query_transition.ps1 BackupMigrate ile exact270 geçişini yap; backup manifestindeki taze queued ID listesi kadar archived/retirement/history eşleştirmesini, sıfır eski queued seçilebilirliğini ve manual pause korunmasını doğrula. Başarısızlıkta devam etme.
 5. Doğrulanmış kökten normal Core'u kontrollü başlat; health user_controlled ve hold false olsun. Desktop başlatılmadan pending_restore.json olmadığı kontrol edilir; varsa dur. Normal başlangıç local jobs/recovery/scan/backup ve DB/arşiv yazıları yapabilir: bunlar bakım onayının açık kapsamı olmalıdır. Policy otomatik UYAP komutu üretimini engeller.
 6. Yeni extension'ı açık onayla reload/enable et, ID/source + manifest/hash + probe handshake doğrula. Eski guard varsa sayfayı otomatik yenileme; panel/oturum kaybı riskini kullanıcıya bildir. İlk açılışta yeni UYAP sorgusu veya auth probe başlamamalı; yeni sorgu için ayrıca dosya içindeki açık kullanıcı işlemi gerekir.
 7. Yerel geçmiş/queue mutabakatı tamamlanınca LOCAL-RETURN-HOLD'a ihtiyaç kalmaz. Gerçek portal sorgusu, dosya bağı sertifikası yazımı, case93 gözlemi, metadata aktarımı, fiziksel indirme ve pause kaldırma bu bakım izninden ayrıdır. Bunlar ayrıca açık onay gerektirir.
@@ -59,3 +59,16 @@ Kısa kullanıcı talimatı: “Chrome ve doğru UYAP panelini açık bırak. Ba
 Ayrı JSON test çıktıları teslimdedir. Sentetik DB ve yerel loopback HTTP kullanıldı; gerçek UYAP executor'u yoktu. 270 ID mutabakatı, transaction exception ve row100 sırasında abrupt process exit, idempotency, immutable arşiv, geç sonuç, stale worker, değişen dosya/payload/endpoint, kullanıcı dedupe/cache, ayrı download onayı/pause, 200 sınırı, HTTP200 yetki hatası ve gizlilik test edildi. Gerçek canlı-source overlay sentetik kurulumda normal worker açıkken yeniden başlatıldı; eski270 çalışmadı, yeni açık tek-dosya sorgusu ve cache çalıştı. Paket kesintisi/port çakışması, PowerShell wrapper'ları sentetik inventory ile, exact kod rollback ve DB hold rollback test edildi.
 
 Eski broad-search HTTP E2E'nin beklenen davranışı artık 409/no queue'dur; parser birim regresyonları korunmuştur. Güvenlik allowlist'i gevşetilmedi. test:uyap mevcut izinli endpoint fixture'ı ve negatif yasak-endpoint kontrolüyle geçmektedir. Canlı Chrome/UYAP davranışı, gerçek mahkeme şeması varyantları ve CBS aidiyeti izole testlerle kanıtlanmış sayılmaz.
+
+
+## Gün sonu entegrasyon notu — taze canlı queue şekli
+
+2026-10-09 salt-okunur ön kontrolde canlı DB'de 1.873 queued komut görüldü; eski 270 sayısı güncel değildir.
+1.872 satır hiç dispatch edilmemiş fetch_json kaydıdır. Bir cbs.units satırı attempts=1 + dispatched_at dolu + HTTP 401 hata kaydıyla yeniden queued durumundadır.
+Güncellenen migration:
+- beklenen sayıyı doğrulanmış backup-manifest.json içindeki taze queueCommandIds listesinden alır;
+- queued satırların fetch_json ve unfinished olmasını zorunlu tutar;
+- daha önce dispatch/attempt görmüş queued satırı yeniden çalıştırmaz;
+- onu legacy_attempted_unverified / archived_attempted_unverified olarak retirement'a alır;
+- never-executed satırları ayrı etiketlemeye devam eder.
+Bu not canlı migration izni değildir; bakım anında süreçler kapalıyken queue yeniden sayılır ve backup digest ile birebir mutabakat zorunludur.
