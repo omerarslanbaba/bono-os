@@ -65,7 +65,12 @@
         "sourceManifestVersion": "0.3.7",
         "releaseBundleVersion": "0.4.0",
         "sourceRuntimeMode": "normal-development",
-        "liveInstalledVerified": false
+        "liveInstalledVerified": false,
+        "liveReadOnlyPreflight": {
+          "manifestVersion": "0.3.6",
+          "sourceRoot": "AppData/Local/BONO OS/extension",
+          "compatibleWithReleaseBundle": false
+        }
       },
       "cbs": {
         "adapter": "cbs_unit_status_exact_v1",
@@ -107,8 +112,8 @@
     },
     {
       "path": "bridge/uyap_user_queries.js",
-      "blobSha": "75612d061e0d57179d4803d01f683bd36f0b0a8b",
-      "owner": "PR13 + scoped CBS integration"
+      "blobSha": "55575d4dfea0529001d09c9c2bd7c8a202cf2093",
+      "owner": "PR13 + scoped CBS integration + live-queue reconciliation"
     },
     {
       "path": "bridge/uyap_user_query_http.js",
@@ -210,10 +215,31 @@
     "historicalSnapshotIsCurrentInvariant": false,
     "requiresVerifiedDbWalShmBackup": true,
     "requiresNoRunningOrDispatchedCommands": true,
-    "rollbackMode": "rollback_hold_preserves_history_and_retirements"
+    "rollbackMode": "rollback_hold_preserves_history_and_retirements",
+    "expectedCountSource": "verified_backup_manifest_queueCommandIds",
+    "acceptsLegacyAttemptedQueuedAsRetiredUnverified": true,
+    "readOnlyPreflight": {
+      "observedAt": "2026-10-09",
+      "queuedCount": 1873,
+      "queuedIdDigest": "1db21224b42b8d2cfc54b3e0e45149aea0c00f0cb38e087735bd4cec31614db2",
+      "activeRunningOrDispatched": 0,
+      "neverDispatchedQueued": 1872,
+      "attemptedUnverifiedQueued": 1,
+      "attemptedRow": {
+        "id": 15508,
+        "endpointKey": "cbs.units",
+        "attempts": 1,
+        "lastError": "HTTP 401"
+      },
+      "manualDownloadPaused": true,
+      "sessionState": "login_required",
+      "policyTablesPresent": false,
+      "note": "Read-only snapshot only; maintenance must recount after executors stop and before backup/migration."
+    }
   },
   "liveBlockers": [
-    "fresh live queue count and ID digest have not yet been collected",
+    "live maintenance must recount the queue after stopping executors and require exact backup-manifest ID digest reconciliation",
+    "one legacy cbs.units row was previously dispatched/HTTP 401 and must be retired as attempted_unverified, never replayed",
     "PR13 migration has not been applied to the live DB",
     "compatible 0.4.0 Bridge release bundle has not yet been installed/reloaded in Chrome",
     "live Core source/preimage and running process state have not yet been verified for update",
@@ -221,10 +247,20 @@
     "no real UYAP query has been executed by this integration task"
   ],
   "releaseCandidate": {
-    "label": "end-of-day-live-maintenance-candidate",
-    "parentHead": "81c15a688769c26c2151e20774bd9718f737f119",
-    "requiresFinalWindowsCi": true,
+    "label": "end-of-day-unified-live-maintenance-candidate",
     "liveInstalled": false,
-    "liveUyapAccepted": false
+    "liveUyapAccepted": false,
+    "finalWindowsCiRequiredAfterFreshQueueMigrationFix": true
+  },
+  "liveInstallationPreflight": {
+    "sourceGitHead": "fbad17a69610c7db5cbfaa0be7c51a2303abf019",
+    "sourceGitBranch": "main",
+    "sourceDirty": true,
+    "desktopKind": "legacy BonoDesktop",
+    "corePort": 47831,
+    "dbWalShmPresent": true,
+    "case93Present": true,
+    "case93FileNo": "2026/51832",
+    "case93RemoteDocumentCount": 0
   }
 }
