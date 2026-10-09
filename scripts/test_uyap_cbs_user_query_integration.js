@@ -60,6 +60,29 @@ const cached=service.begin(901,{requestKey:crypto.randomUUID(),refresh:false});
 must(cached.state==="cache_hit","CBS cache-first behavior missing");
 const unrelated=db.prepare("select count(*) n from cases where id<>901").get().n;
 must(unrelated===0,"CBS query bulk-upserted unrelated files");
-console.log(JSON.stringify({ok:true,pages:2,exactLocalMatch:true,history:true,cacheFirst:true,noBulkUpsert:true,noDocumentImport:true,manualPausePreserved:true}));
+// Expired queued grants must not trap a fresh explicit action or mutate the audit on GET.
+const stale=service.begin(901,{requestKey:crypto.randomUUID(),refresh:true});
+const oldNow=Date.now;
+const expiry=db.prepare('select expires_ms from uyap_command_grants where command_id=?').get(stale.commandId).expires_ms;
+Date.now=()=>expiry+1;
+try{
+ const before=db.prepare('select * from uyap_command_queue where id=?').get(stale.commandId);
+ const auditCount=db.prepare('select count(*) n from uyap_query_events').get().n;
+ const state=service.history(901).find(x=>x.command_id===stale.commandId);
+ must(state.state==='user_action_expired'&&state.audit_state==='queued'&&!state.executionEligible,'expired grant not diagnosed');
+ must(JSON.stringify(before)===JSON.stringify(db.prepare('select * from uyap_command_queue where id=?').get(stale.commandId)),'history GET changed old queue');
+ must(db.prepare('select count(*) n from uyap_query_events').get().n===auditCount,'history GET changed audit');
+ const fresh=service.begin(901,{requestKey:crypto.randomUUID(),refresh:true});
+ must(fresh.commandId!==stale.commandId&&fresh.state==='queued','fresh action reused expired command');
+ must(service.begin(901,{requestKey:crypto.randomUUID(),refresh:true}).commandId===fresh.commandId,'fresh concurrent action duplicated');
+ db.prepare('update uyap_rate_state set next_allowed_ms=0 where id=1').run();
+ const claimed=uyap.claimNext('avukat.uyap.gov.tr','query');
+ must(claimed.id===fresh.commandId,'expired command was claimed');
+ must(db.prepare('select attempts from uyap_command_queue where id=?').get(stale.commandId).attempts===0,'expired command executed');
+ must(service.history(901).find(x=>x.command_id===stale.commandId).error_code==='user_action_expired','expiry mislabeled binding change');
+ must(uyap.reportResult(stale.commandId,{ok:true,status:200,data:[[],0]}).reason==='inactive_user_command','late expired result accepted');
+ must(uyap.sessionState().manualDownloadPaused===true,'renewal changed pause');
+}finally{Date.now=oldNow;}
+console.log(JSON.stringify({ok:true,pages:2,exactLocalMatch:true,history:true,cacheFirst:true,noBulkUpsert:true,noDocumentImport:true,manualPausePreserved:true,expiredGrantReadOnlyDiagnosis:true,freshActionDoesNotReuseExpired:true,lateExpiredResultRejected:true}));
 try{db.close()}catch{}
 fs.rmSync(root,{recursive:true,force:true});

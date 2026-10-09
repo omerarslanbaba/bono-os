@@ -126,7 +126,8 @@ async function main(){
   must(st.body.state==="failed"&&String(st.body.error||"").includes("fixture"),"failed lifecycle missing: "+JSON.stringify(st.body));
 
   const view=fs.readFileSync(path.join(__dirname,"..","web","js","views","active","uyap.js"),"utf8");
-  must(view.includes("r.party_names"),"list party rendering was lost");
+  const {partyText}=await import("../web/js/case-query-state.mjs");
+  must(view.includes("partyText(r)")&&partyText({party_names:"Fixture Taraf",representative_names:"Fixture Vekil"}).includes("Fixture Taraf")&&partyText({representative_names:"Fixture Vekil"}).includes("Fixture Vekil"),"list party rendering was lost");
   must(view.includes("file.party_names"),"detail party rendering was lost");
   must(view.includes("UYAP'ta Sorgula")&&view.includes("mountUserQueries"),"controlled single-case query CTA missing");
   must(view.includes("mountUserQueries"),"user-query UI binding missing");

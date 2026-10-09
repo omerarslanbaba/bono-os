@@ -136,6 +136,7 @@ function install(db,uyap){
    return db.prepare(sql).all(requestKey).map(r=>{const p=JSON.parse(r.payload_json||"{}");return {context:{birimId:String(p.context?.birimId||""),status:Number(p.context?.dosyaDurumKod),page:Number(p.context?.pageNumber),pageSize:500},data:JSON.parse(r.result_json),reference:"command:"+r.id};});
  }
  const guard={
+  reusableCommand(id){const r=grant(id);try{return !!r&&["queued","running"].includes(r.status)&&validGrant(r);}catch{return false;}},
   beforeEnqueue(input){
    if(!ready(db))throw Error("migration_required");
    const kind=consent?.kind||"query",ctx=input.payload?.context||{};
@@ -153,7 +154,8 @@ function install(db,uyap){
    if(!ready(db))return {wait:true,reason:"migration_required"};
    for(const r of db.prepare("SELECT q.id,q.status,q.dispatched_at,q.attempts,q.payload_json,g.* FROM uyap_command_queue q JOIN uyap_command_grants g ON g.command_id=q.id WHERE q.status IN ('queued','running')").all()){
      let valid=true;try{valid=validGrant(r)}catch{valid=false}
-     if(!valid)fail(r.id,"case_binding_changed");
+     if(r.expires_ms<Date.now())fail(r.id,r.status==="running"?"execution_unknown":"user_action_expired");
+     else if(!valid)fail(r.id,"case_binding_changed");
      else if(r.status==="running"&&(r.expires_ms<Date.now()||Date.parse((r.dispatched_at||"").replace(" ","T")+"Z")<Date.now()-180000))fail(r.id,"execution_unknown");
      else if(r.status==="queued"&&(r.expires_ms<Date.now()||r.attempts>0))fail(r.id,"user_action_expired");
    }
@@ -210,8 +212,8 @@ function install(db,uyap){
    const e=cbsEvidence(db,c),hash=cbsScopeHash(c,e);db.exec("BEGIN IMMEDIATE");
    try{
      const old=db.prepare("SELECT * FROM uyap_user_actions WHERE request_key=?").get(requestKey);if(old){if(old.case_id!==c.id||old.refresh!==Number(refresh)||old.state==="download_approved")throw Error("idempotency_conflict");db.exec("COMMIT");return {commandId:old.command_id,state:old.state,reused:true,adapter:"cbs_unit_status_exact_v1"};}
-     const active=db.prepare("SELECT a.command_id FROM uyap_user_actions a WHERE a.case_id=? AND EXISTS(SELECT 1 FROM uyap_command_grants g JOIN uyap_command_queue q ON q.id=g.command_id WHERE g.request_key=a.request_key AND g.kind='cbs_case_list' AND g.binding_hash=? AND q.status IN ('queued','running')) ORDER BY a.rowid DESC LIMIT 1").get(c.id,hash);
-     const cached=!refresh?db.prepare("SELECT h.command_id FROM uyap_query_history h JOIN uyap_command_grants g ON g.command_id=h.command_id JOIN uyap_query_events e2 ON e2.command_id=h.command_id AND e2.state='completed' JOIN uyap_case_query_bindings b ON b.case_id=h.case_id AND b.adapter='cbs_unit_status_exact_v1' WHERE h.case_id=? AND g.kind='cbs_case_list' AND g.binding_hash=? AND b.binding_hash=? AND h.created_at>datetime('now','-15 minutes') ORDER BY h.command_id DESC LIMIT 1").get(c.id,hash,identity(c)):null;
+     const active=db.prepare("SELECT a.command_id FROM uyap_user_actions a WHERE a.case_id=? AND EXISTS(SELECT 1 FROM uyap_command_grants g JOIN uyap_command_queue q ON q.id=g.command_id WHERE g.request_key=a.request_key AND g.kind='cbs_case_list' AND g.binding_hash=? AND q.status IN ('queued','running') AND g.expires_ms>?) ORDER BY a.rowid DESC LIMIT 1").get(c.id,hash,Date.now());
+     const cached=!refresh?db.prepare("SELECT h.command_id FROM uyap_query_history h JOIN uyap_command_grants g ON g.command_id=h.command_id JOIN uyap_query_events e2 ON e2.command_id=h.command_id AND e2.state='completed' JOIN uyap_case_query_bindings b ON b.case_id=h.case_id AND b.adapter='cbs_unit_status_exact_v1' WHERE h.case_id=? AND g.kind='cbs_case_list' AND g.binding_hash=? AND b.binding_hash=? AND julianday(h.created_at)>julianday('now','-15 minutes') ORDER BY h.command_id DESC LIMIT 1").get(c.id,hash,identity(c)):null;
      if(active||cached){const id=Number((active||cached).command_id),state=active?"existing_pending":"cache_hit";db.prepare("INSERT INTO uyap_user_actions(request_key,case_id,refresh,command_id,state) VALUES(?,?,?,?,?)").run(requestKey,c.id,Number(refresh),id,state);db.exec("COMMIT");return {commandId:id,state,reused:true,adapter:"cbs_unit_status_exact_v1"};}
      db.prepare("INSERT INTO uyap_user_actions(request_key,case_id,refresh,state,scope_hash) VALUES(?,?,?,'queued',?)").run(requestKey,c.id,Number(refresh),hash);
      const id=enqueueCbsPage(c,e,requestKey,hash,1,null);db.prepare("UPDATE uyap_user_actions SET command_id=? WHERE request_key=?").run(id,requestKey);db.exec("COMMIT");
@@ -224,7 +226,7 @@ function install(db,uyap){
   const {b}=bound(caseId);db.exec("BEGIN IMMEDIATE");
   try{
    const old=db.prepare("SELECT * FROM uyap_user_actions WHERE request_key=?").get(requestKey);if(old){if(old.case_id!==c.id||old.refresh!==Number(refresh)||old.state==="download_approved")throw Error("idempotency_conflict");db.exec("COMMIT");return {commandId:old.command_id,state:old.state,reused:true};}
-   const active=db.prepare("SELECT q.id FROM uyap_command_queue q JOIN uyap_command_grants g ON g.command_id=q.id WHERE g.case_id=? AND g.binding_hash=? AND g.kind='query' AND q.status IN ('queued','running')").get(c.id,b.binding_hash);
+   const active=db.prepare("SELECT q.id FROM uyap_command_queue q JOIN uyap_command_grants g ON g.command_id=q.id WHERE g.case_id=? AND g.binding_hash=? AND g.kind='query' AND q.status IN ('queued','running') AND g.expires_ms>?").get(c.id,b.binding_hash,Date.now());
    const cached=!refresh?db.prepare("SELECT q.id FROM uyap_command_queue q JOIN uyap_command_grants g ON g.command_id=q.id JOIN uyap_query_events e ON e.command_id=q.id AND e.state='completed' WHERE g.case_id=? AND g.binding_hash=? AND g.kind='query' AND q.status='completed' AND q.finished_at>datetime('now','-15 minutes') ORDER BY q.id DESC LIMIT 1").get(c.id,b.binding_hash):null;
    if(active||cached){const id=(active||cached).id,state=active?"existing_pending":"cache_hit";db.prepare("INSERT INTO uyap_user_actions(request_key,case_id,refresh,command_id,state) VALUES(?,?,?,?,?)").run(requestKey,c.id,Number(refresh),id,state);db.exec("COMMIT");return {commandId:id,state,reused:true};}
    db.prepare("INSERT INTO uyap_user_actions(request_key,case_id,refresh,state) VALUES(?,?,?,'queued')").run(requestKey,c.id,Number(refresh));consent={key:requestKey,caseId:c.id,hash:b.binding_hash};
@@ -241,7 +243,11 @@ function install(db,uyap){
   }catch(e){db.exec("ROLLBACK");throw e;}finally{consent=null;}
  }
  function downloadOptions(caseId){if(!ready(db))return [];if(isCbsCase(caseRow(caseId)))return [];bound(caseId);return db.prepare("SELECT d.id FROM uyap_remote_documents d JOIN uyap_document_query_proofs p ON p.remote_id=d.id WHERE d.case_id=? AND d.status='discovered' AND d.local_asset_id IS NULL LIMIT 200").all(Number(caseId)).filter(d=>{try{downloadProof(caseId,d.id);return true;}catch{return false;}});}
- function history(caseId,options={}){if(!ready(db)&&!db.prepare("SELECT 1 FROM sqlite_master WHERE name='uyap_query_history'").get())return [];return db.prepare("SELECT h.command_id,h.operation,h.case_id,h.created_at,h.legacy,e.state,e.occurred_at,e.error_code,e.result_ref FROM uyap_query_history h JOIN uyap_query_events e ON e.id=(SELECT max(x.id) FROM uyap_query_events x WHERE x.command_id=h.command_id) WHERE (? IS NULL OR h.case_id=?) AND h.command_id<? ORDER BY h.command_id DESC LIMIT ?").all(caseId==null?null:Number(caseId),caseId==null?null:Number(caseId),Number(options.beforeId)||Number.MAX_SAFE_INTEGER,Math.max(1,Math.min(200,Number(options.limit)||100)));}
+ function history(caseId,options={}){if(!ready(db)&&!db.prepare("SELECT 1 FROM sqlite_master WHERE name='uyap_query_history'").get())return [];return db.prepare("SELECT h.command_id,h.operation,h.case_id,h.created_at,h.legacy,e.state,e.occurred_at,g.expires_ms,q.status queue_status,q.attempts,e.error_code,e.result_ref FROM uyap_query_history h JOIN uyap_command_queue q ON q.id=h.command_id LEFT JOIN uyap_command_grants g ON g.command_id=h.command_id JOIN uyap_query_events e ON e.id=(SELECT max(x.id) FROM uyap_query_events x WHERE x.command_id=h.command_id) WHERE (? IS NULL OR h.case_id=?) AND h.command_id<? ORDER BY h.command_id DESC LIMIT ?").all(caseId==null?null:Number(caseId),caseId==null?null:Number(caseId),Number(options.beforeId)||Number.MAX_SAFE_INTEGER,Math.max(1,Math.min(200,Number(options.limit)||100))).map(r=>{
+   // Read-only effective status: preserve audit events and never renew an expired grant.
+   if(!r.legacy&&['queued','running'].includes(r.state)&&r.expires_ms<Date.now())return {...r,audit_state:r.state,state:r.queue_status==='running'?'execution_unknown':'user_action_expired',error_code:r.queue_status==='running'?'execution_unknown':'user_action_expired',executionEligible:false};
+   return {...r,executionEligible:!r.legacy&&r.state==='queued'&&r.queue_status==='queued'&&r.attempts===0&&r.expires_ms>Date.now()};
+  });}
  function status(caseId){
   if(!ready(db))return {supported:false,reason:"migration_required",contractVersion:"uyap.query-support.integration.v1",capabilityContractVersion:capabilityContract.CONTRACT_VERSION};
   const c=caseRow(caseId),caseKind=capabilityContract.classifyCaseKind(c);

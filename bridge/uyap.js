@@ -1438,8 +1438,10 @@ function enqueueCaseDocumentSync(caseId,{priority=10,purpose="",source=""}={}){
   const active=db.prepare(`SELECT id,priority,payload_json FROM uyap_command_queue
     WHERE endpoint_key='document.list' AND status IN ('queued','running')
       AND ${documentListCommandMatchesCaseSql()}
-    ORDER BY id LIMIT 1`).get(Number(c.id));
+    ORDER BY id`).all(Number(c.id)).find(row=>!runtimePolicy||runtimePolicy.reusableCommand?.(row.id)===true);
   if(active?.id){
+    // Managed payloads are grant-hashed: reuse cannot rewrite an existing action.
+    if(runtimePolicy)return Number(active.id);
     if(purpose||Number(priority)<Number(active.priority||999)){
       let p={};try{p=JSON.parse(active.payload_json||"{}")}catch{}
       p.context={...(p.context||{}),caseId:Number(c.id)};

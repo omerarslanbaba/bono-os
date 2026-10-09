@@ -31,6 +31,17 @@ const remote=service.downloadOptions(1)[0].id;
 assert.throws(()=>service.beginDownloads(1,{requestKey:crypto.randomUUID(),documentIds:[remote]}),/explicit/);
 const downloadKey=crypto.randomUUID(),download=service.beginDownloads(1,{requestKey:downloadKey,documentIds:[remote],confirmed:true});assert.equal(download.commandIds.length,1);assert.equal(service.beginDownloads(1,{requestKey:downloadKey,documentIds:[remote],confirmed:true}).commandIds[0],download.commandIds[0]);
 assert.equal(uyap.claimNext('vatandas.uyap.gov.tr','download'),null);assert.equal(uyap.sessionState().manualDownloadPaused,true);
+// Court queries use the same expiry semantics without renewing old grants.
+const expiredCourt=service.begin(1,{requestKey:crypto.randomUUID(),refresh:true});
+const realNow=Date.now;Date.now=()=>realNow()+11*60*1000;
+try{
+ assert.equal(service.history(1).find(x=>x.command_id===expiredCourt.commandId).state,'user_action_expired');
+ const renewed=service.begin(1,{requestKey:crypto.randomUUID(),refresh:true});
+ assert.notEqual(renewed.commandId,expiredCourt.commandId);
+ assert.equal(db.prepare('select attempts from uyap_command_queue where id=?').get(expiredCourt.commandId).attempts,0);
+ // Isolated cleanup only; production history reads never write.
+ db.prepare("update uyap_command_queue set status='failed' where id in (?,?)").run(expiredCourt.commandId,renewed.commandId);
+}finally{Date.now=realNow;}
 const fill=db.prepare("INSERT INTO uyap_command_queue(command_type,endpoint_key,payload_json) VALUES('fetch_json','case.search','{}')");const fills=[];for(let i=0;i<199;i++)fills.push(Number(fill.run().lastInsertRowid));
 assert.throws(()=>service.begin(1,{requestKey:crypto.randomUUID(),refresh:true}),/active_command_limit/);for(const id of fills)db.prepare('DELETE FROM uyap_command_queue WHERE id=?').run(id);
 const fresh=service.begin(1,{requestKey:crypto.randomUUID(),refresh:true});assert.notEqual(fresh.commandId,one.commandId);
@@ -46,5 +57,5 @@ const tamper=service.begin(1,{requestKey:crypto.randomUUID(),refresh:true});db.p
 db.prepare("UPDATE uyap_endpoints SET path='/avukat_mahkemeleri_sorgula.ajx' WHERE endpoint_key='document.list'").run();assert.throws(()=>service.begin(1,{requestKey:crypto.randomUUID(),refresh:true}),/explicit_supported/);db.prepare("UPDATE uyap_endpoints SET path='/list_dosya_evraklar.ajx' WHERE endpoint_key='document.list'").run();
 assert.throws(()=>policy.migrate(db,{expectedQueued:270,backupManifest:{...manifest,queueIdDigest:'wrong'}}),/reconciliation/);
 policy.rollbackHold(db);assert.equal(uyap.claimNext('avukat.uyap.gov.tr').reason,'migration_required');assert.equal(db.prepare("SELECT count(*) n FROM uyap_command_queue WHERE status='archived'").get().n,270);
-db.close();console.log(JSON.stringify({ok:true,tests:['270_retired_and_mapped','legacy_attempted_unverified_retired','transaction_interruption_atomic','idempotent_migration','immutable_history_and_tombstones','late_legacy_result_rejected','automatic_producers_blocked','CBS_unverified','binding_required','user_key_dedup','same_case_active_dedup','explicit_download_selection_and_dedup','active_200_limit','query_while_download_paused','valid_cache_no_enqueue','explicit_refresh','HTTP200_denial_not_success','history_privacy','stale_execution_not_retried','changed_binding_blocks_claim','payload_mutation_blocks_claim','endpoint_alias_cannot_expand_scope','idempotency_reconciles_original_ids','rollback_retains_archive_and_holds'],networkRequests:0}));
+db.close();console.log(JSON.stringify({ok:true,tests:['270_retired_and_mapped','legacy_attempted_unverified_retired','transaction_interruption_atomic','idempotent_migration','immutable_history_and_tombstones','late_legacy_result_rejected','automatic_producers_blocked','CBS_unverified','binding_required','user_key_dedup','same_case_active_dedup','expired_court_grant_not_reused','explicit_download_selection_and_dedup','active_200_limit','query_while_download_paused','valid_cache_no_enqueue','explicit_refresh','HTTP200_denial_not_success','history_privacy','stale_execution_not_retried','changed_binding_blocks_claim','payload_mutation_blocks_claim','endpoint_alias_cannot_expand_scope','idempotency_reconciles_original_ids','rollback_retains_archive_and_holds'],networkRequests:0}));
 
