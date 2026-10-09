@@ -1,5 +1,12 @@
 'use strict';
 module.exports=async function handle(req,res,{path,origin,service,json,readBody}){
+ if(req.method==='POST'&&path.startsWith('/api/uyap/session-check/')){
+  const action=path.slice('/api/uyap/session-check/'.length);
+  if(!['start','claim','result'].includes(action)){json(res,404,{error:'unknown_session_check_action'});return true;}
+  if(action==='start'&&(req.headers['x-bono-user-action']!=='1'||(req.headers.origin&&req.headers.origin!==origin)||req.headers['sec-fetch-site']==='cross-site')){json(res,403,{error:'explicit_same_origin_user_action_required'});return true;}
+  if(action!=='start'&&(req.headers['x-bono-bridge']!=='1'||(req.headers.origin&&!/^chrome-extension:\/\/[a-p]{32}$/.test(req.headers.origin)))){json(res,403,{error:'extension_bridge_required'});return true;}
+  try{const b=await readBody(req);json(res,200,action==='start'?service.sessionCheck.begin(b.requestKey):service.sessionCheck[action](b));}catch{json(res,409,{error:'session_check_rejected'});}return true;
+ }
  const m=path.match(/^\/api\/uyap\/cases\/(\d+)\/(query|query-history|query-support|sync-documents|download-options|approved-downloads)$/);
  if(req.method==='GET'&&path==='/api/uyap/query-history'){const u=new URL(req.url,origin);json(res,200,service.history(null,{beforeId:u.searchParams.get('before'),limit:u.searchParams.get('limit')}));return true;}
  if(req.method==='GET'&&path==='/api/uyap/user-query-state'){json(res,200,service.pending());return true;}

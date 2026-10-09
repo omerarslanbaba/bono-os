@@ -55,6 +55,10 @@ const probedActions=new Set();
 const claimedCommands=new Map();
 const waitReasons=new Set(['uyap_login_required','local_return_hold','observe_only','rate_limit','lane_rate_limit','lane_busy','error_backoff','permission_denied']);
 const claimKey=id=>'bonoClaim:'+id;
+async function sessionCheckRequest(action,body){
+ const r=await fetch(LOCAL+'/api/uyap/session-check/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-Bono-Bridge':'1'},body:JSON.stringify(body)});
+ if(!r.ok)throw Error('session_check_rejected');return r.json();
+}
 async function rememberClaim(id,claim){
  claimedCommands.set(id,claim);
  // Session storage survives MV3 worker suspension, but not a browser restart.
@@ -73,16 +77,21 @@ async function reportBridgeStatus(sender,message){
 async function senderCanExecute(sender) {
   if (!sender?.tab?.id || Number(sender.frameId||0)!==0) return false;
   const tabId = Number(sender.tab.id);
-  if (await isTabAuth(tabId)) {
-    await setExecutor(tabId);
-    return true;
-  }
   try {
     const r=await fetch(LOCAL+"/api/uyap/user-query-state",{cache:"no-store"});
     if(!r.ok)throw Error('core_unavailable');
     const action=await r.json();
     const tab=await chrome.tabs.get(tabId);
     if(new URL(tab.url).origin!=='https://avukat.uyap.gov.tr')return false;
+    if(action.sessionCheck?.state==='pending'){
+      // Core atomically claims this separate, explicit check; it never claims query work.
+      const check=await sessionCheckRequest('claim',{id:action.sessionCheck.id,tabId,frameId:0,documentId:sender.bonoDocumentId,buildId:BONO_RUNTIME_CONFIG.buildId});
+      if(!chrome.storage.session)throw Error('probe_unavailable');
+      await chrome.storage.session.set({bonoSessionCheck:check});
+      await chrome.tabs.sendMessage(tabId,{type:'BONO_SESSION_CHECK',check},{frameId:0});return false;
+    }
+    if(['pending','claimed'].includes(action.sessionCheck?.state))return false;
+    if (await isTabAuth(tabId)) {await setExecutor(tabId);return true;}
     if(action.pending&&action.actionId&&!probedActions.has(action.actionId)){
       probedActions.add(action.actionId);
       const key='bonoAuthProbe:'+action.actionId;
@@ -122,6 +131,14 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   if(!message)return;
   if(OBSERVATION_ONLY){handleObservationMessage(message,sender).then(sendResponse).catch(()=>sendResponse({ok:false,error:"observation_unavailable"}));return true;}
   if(message.type==='BONO_BRIDGE_STATUS'){reportBridgeStatus(sender,message).then(()=>sendResponse({ok:true})).catch(()=>sendResponse({ok:false}));return true;}
+  if(message.type==='BONO_SESSION_CHECK_RESULT'){
+    (async()=>{
+      const check=chrome.storage.session?(await chrome.storage.session.get('bonoSessionCheck')).bonoSessionCheck:null,data=message.data||{};
+      if(!check||check.id!==data.id||check.tabId!==sender.tab?.id||sender.frameId!==0||new URL(sender.tab.url).origin!=='https://avukat.uyap.gov.tr'||check.documentId!==data.documentId||check.buildId!==BONO_RUNTIME_CONFIG.buildId)throw Error('session_check_context_mismatch');
+      const out=await sessionCheckRequest('result',{...check,status:Number(data.status),validJson:data.validJson===true,applicationError:data.applicationError===true});
+      await setTabAuth(check.tabId,out.state==='ready');sendResponse({ok:true,state:out.state});
+    })().catch(()=>sendResponse({ok:false,reason:'session_check_rejected'}));return true;
+  }
   if(message.type==="BONO_CAPTURE"){
     (async()=>{
       const p=message.payload||{},data=p.data||{},tabId=sender.tab?.id,frameId=Number(sender.frameId||0);
@@ -152,7 +169,7 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
     (async()=>{
       const senderUrl=new URL(sender.tab?.url||'');
       if(!sender.tab?.id||Number(sender.frameId||0)!==0||senderUrl.protocol!=='https:'||!senderUrl.hostname.endsWith('.uyap.gov.tr')||message.host!==senderUrl.hostname){sendResponse({ok:false,reason:'wrong_executor_context'});return;}
-      if(!(await senderCanExecute(sender))){sendResponse({ok:true,command:null,reason:"tab_not_authenticated"});return;}
+      if(!(await senderCanExecute({...sender,bonoDocumentId:message.documentId}))){sendResponse({ok:true,command:null,reason:"tab_not_authenticated"});return;}
       if(typeof message.documentId!=='string'||!message.documentId||message.documentId.length>80){sendResponse({ok:false,reason:'wrong_executor_context'});return;}
       const command=await nextCommand(String(message.host||""),String(message.lane||"any"));
       if(command?.id){

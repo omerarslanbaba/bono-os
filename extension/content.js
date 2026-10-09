@@ -109,6 +109,7 @@
       if(observationOnly)return;
       if (message?.type === "BONO_EXECUTE") dispatchCommand(message.command);
       if (message?.type === "BONO_AUTH_PROBE" && probeStatus.ready) window.postMessage({channel:"BONO_UYAP_CONTENT",type:"auth_probe"},"*");
+      if(message?.type==='BONO_SESSION_CHECK'&&probeStatus.ready&&message.check?.documentId===documentId&&message.check?.buildId===config.buildId)window.postMessage({channel:'BONO_UYAP_CONTENT',type:'session_check',check:message.check},'*');
     });
   } catch {}
 
@@ -116,6 +117,7 @@
     if (event.source !== window) return;
     const msg = event.data;
     if (!msg || msg.channel !== "BONO_UYAP_PAGE") return;
+    if(msg.type==='session_check_result'&&msg.data?.documentId===documentId){chrome.runtime.sendMessage({type:'BONO_SESSION_CHECK_RESULT',data:msg.data}).catch(()=>{});return;}
 
     if (msg.type === "network_observation") {
       sendCapture("network_observation", msg.data);

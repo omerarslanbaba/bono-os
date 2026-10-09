@@ -351,6 +351,23 @@
     }
   }
 
+  const checkedSessions=new Set();
+  async function sessionCheck(check){
+    if(!check?.id||check.documentId!==controlledConfig.documentId||check.buildId!==controlledConfig.buildId||checkedSessions.has(check.id))return;
+    checkedSessions.add(check.id);
+    const result={id:check.id,documentId:controlledConfig.documentId,status:0,validJson:false,applicationError:false};
+    try{
+      const response=await originalFetch(new URL('/get_avukat_id.ajx',location.origin).href,{method:'POST',credentials:'include',headers:{'Accept':'application/json, text/plain, */*','Content-Type':'application/json'}});
+      result.status=response.status;
+      if(/json/i.test(response.headers.get('content-type')||'')&&window.BONO_OBSERVATION_CONTRACTS){
+        const data=await response.clone().json();
+        result.validJson=typeof data==='number'?Number.isFinite(data)&&data>0:!!data&&typeof data==='object'&&Object.keys(data).length>0;
+        result.applicationError=!!window.BONO_OBSERVATION_CONTRACTS.applicationError(data);
+      }
+    }catch{}
+    // No identity value, response body, credential or document content leaves the page.
+    post('session_check_result',result);
+  }
   async function authProbe() {
     try {
       const url = new URL("/get_avukat_id.ajx", location.origin);
@@ -370,6 +387,7 @@
     if (!msg || msg.channel !== "BONO_UYAP_CONTENT") return;
     if(msg.type === "execute_command") executeCommand(msg.command);
     if(msg.type === "auth_probe") authProbe();
+    if(msg.type === 'session_check') sessionCheck(msg.check);
   });
 
   post("probe_ready", { host: location.hostname, path: location.pathname,probeVersion:2,buildId:controlledConfig.buildId,documentId:controlledConfig.documentId });

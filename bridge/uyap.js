@@ -210,6 +210,14 @@ function setSessionLoginRequired(reason="uyap_session_expired"){
   db.prepare("UPDATE uyap_rate_state SET state='uyap_login_required',updated_at=datetime('now') WHERE id=1").run();
   return sessionState();
 }
+function acceptExplicitSessionCheck(){
+  if(executionHeld())throw Error('execution_held');
+  // Explicit correlated authentication proof only. No queue, recovery job or pause changes.
+  setSetting('uyap_session_state','ready');setSetting('uyap_session_reason','');
+  setSetting('uyap_session_recovered_at',new Date().toISOString());
+  db.prepare("UPDATE uyap_rate_state SET state=CASE WHEN state='uyap_login_required' THEN 'ready' ELSE state END WHERE id=1").run();
+  return sessionState();
+}
 function recoverSession(source="network_observation"){
   if(runtimePolicy?.automaticRecoveryAllowed===false){if(runtimePolicy.allowSessionRecovery?.(source)){setSetting("uyap_session_state","ready");setSetting("uyap_session_reason","");}return sessionState();}
   const current=sessionState();
@@ -1712,4 +1720,4 @@ function discoveryStatus(){
   const withDocs=db.prepare("SELECT count(DISTINCT case_id) n FROM uyap_remote_documents").get().n;
   return {...counts,totalCases:Number(totalCases||0),casesWithDocuments:Number(withDocs||0),rate:rateState()};
 }
-module.exports={setRuntimePolicy,executionHeld,GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,setManualDownloadPause,recoverSession,queue,cases,remoteDocuments,caseDocumentSyncStatus,caseSearchSchemaStatus,caseSearchOptions,enqueueTargetedCaseSearch,targetedCaseSearchStatus,documentDownloadPolicy,caseDownloadSummary,activeCaseDownloadCount,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,cbsPartySearchSchemaStatus,cbsUnitOptions,enqueueTargetedCbsPartySearch,targetedCbsPartySearchStatus,discoveryStatus};
+module.exports={acceptExplicitSessionCheck,setRuntimePolicy,executionHeld,GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,setManualDownloadPause,recoverSession,queue,cases,remoteDocuments,caseDocumentSyncStatus,caseSearchSchemaStatus,caseSearchOptions,enqueueTargetedCaseSearch,targetedCaseSearchStatus,documentDownloadPolicy,caseDownloadSummary,activeCaseDownloadCount,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,cbsPartySearchSchemaStatus,cbsUnitOptions,enqueueTargetedCbsPartySearch,targetedCbsPartySearchStatus,discoveryStatus};

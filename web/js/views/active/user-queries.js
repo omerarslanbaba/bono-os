@@ -18,10 +18,28 @@ export async function mountUserQueries(caseId,onComplete,{documentCount=0}={}){
  const dn=document.getElementById('caseDownloadStatus');if(dn)dn.textContent='Doğrulanmış indirilebilir belge kontrol ediliyor.';
  const base='/api/uyap/cases/'+caseId;
  const refresh=document.createElement('button');refresh.type='button';refresh.className='subtle-action';refresh.textContent='UYAP’tan yeniden sorgula';refresh.disabled=true;button.after(refresh);
+ const checkConnection=document.createElement('button');checkConnection.type='button';checkConnection.className='subtle-action';checkConnection.textContent='Bağlantı ve oturumu doğrula';refresh.after(checkConnection);
+ let checkTimer=null,checkKey=null;
+ checkConnection.onclick=async()=>{
+  checkConnection.disabled=true;notice.textContent='Tek oturum kontrolü isteniyor; dosya sorgusu veya indirme yapılmayacak.';
+  checkKey ||= crypto.randomUUID();
+  try{
+   await read('/api/uyap/session-check/start',{method:'POST',headers:{'Content-Type':'application/json','X-Bono-User-Action':'1'},body:JSON.stringify({requestKey:checkKey})});
+   async function watch(){
+    if(!alive())return;
+    try{const out=await read('/api/uyap/user-query-state'),s=out.sessionCheck;
+     if(s?.state==='ready'){notice.textContent='Bridge bağlantısı ve UYAP oturumu doğrulandı. Dosya sorgusu başlatılmadı.';checkKey=null;checkConnection.disabled=false;return;}
+     if(['blocked','expired','not_started'].includes(s?.state)){notice.textContent=s.reason==='login_required'?'UYAP oturum kontrolü reddedildi; kullanıcı girişi gerekli.':'Bağlantı/oturum doğrulanamadı; otomatik tekrar veya dosya sorgusu yapılmadı.';checkKey=null;checkConnection.disabled=false;return;}
+     notice.textContent=s?.state==='claimed'?'Bridge oturum kontrolünü aldı; yanıt bekleniyor.':'Hazır Chrome Bridge bekleniyor; dosya sorgusu oluşturulmadı.';checkTimer=setTimeout(watch,1500);
+    }catch(e){notice.textContent='Kontrol durumu alınamadı: '+e.message;checkConnection.disabled=false;}
+   }
+   await watch();
+  }catch(e){notice.textContent='Oturum kontrolü başlatılamadı: '+e.message;checkConnection.disabled=false;}
+ };
  const history=document.getElementById('caseQueryHistory'),technical=document.getElementById('queryTechnicalDetails');
  let busy=false,pending=null,disposed=false,timer=null,supported=false,monitoredId=null;
  const alive=()=>!disposed&&notice.isConnected;
- const stop=()=>{disposed=true;clearTimeout(timer);window.removeEventListener('hashchange',stop)};
+ const stop=()=>{disposed=true;clearTimeout(timer);clearTimeout(checkTimer);window.removeEventListener('hashchange',stop)};
  activeQueryMonitor=stop;window.addEventListener('hashchange',stop,{once:true});
  const enable=()=>{button.disabled=refresh.disabled=!supported||busy||monitoredId!==null};
  async function snapshot(){

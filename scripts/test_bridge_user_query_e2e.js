@@ -127,6 +127,19 @@ async function main(){
  const portalBefore=cbsRuntime.portalRequests.length;cbsRuntime.tick();await settle();
  const blocked=await req('/api/uyap/session');must(blocked.body.bridge.waitReason==='uyap_login_required','Core wait reason lost in real background/content pipeline: '+JSON.stringify(blocked.body));
  must(cbsRuntime.portalRequests.length===portalBefore,'session diagnosis sent a portal request');
- console.log(JSON.stringify({ok:true,realCoreHttp:true,realExtensionSources:true,syntheticChromeAndUyap:true,inactiveTab:true,mv3RestartDeliveryRecovered:true,sameTabDifferentPageAndExecutionRejected:true,coreSessionWaitPreserved:true,diagnosisWithoutPortalRequest:true,cbsIdentityReturned:true,cbsMetadataStillBlocked:true,http200DenialDistinguished:true,metadataReturned:1,portalQueryCount:1,localDeliveryRetryOnly:true,foreignAndLateResultRejected:true,noAutomaticDownload:true,manualPausePreserved:true}));
+ const frozen=new DatabaseSync(dbPath,{readOnly:true});
+ const protectedState=()=>JSON.stringify(['uyap_command_queue','uyap_query_history','uyap_query_events','uyap_command_grants'].map(t=>frozen.prepare('select * from '+t+' order by rowid').all()));
+ const frozenBefore=protectedState(),authBefore=cbsRuntime.portalRequests.length;
+ const noConsent=await fetch(base+'/api/uyap/session-check/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requestKey:crypto.randomUUID()})});must(noConsent.status===403,'session check without explicit consent accepted');
+ const checkKey=crypto.randomUUID();
+ const checkStart=await req('/api/uyap/session-check/start',{method:'POST',body:JSON.stringify({requestKey:checkKey})});must(checkStart.body.state==='pending','explicit session check not started');
+ const checkDuplicate=await req('/api/uyap/session-check/start',{method:'POST',body:JSON.stringify({requestKey:checkKey})});must(checkDuplicate.body.id===checkStart.body.id,'session check start duplicated');
+ const hostileClaim=await req('/api/uyap/session-check/claim',{method:'POST',body:JSON.stringify({id:checkStart.body.id,tabId:7,frameId:0,documentId:crypto.randomUUID(),buildId:'fixture-build'})});must(hostileClaim.status===403,'non-extension check claim accepted');
+ for(let i=0;i<10;i++){cbsRuntime.tick();await settle();if((await req('/api/uyap/user-query-state')).body.sessionCheck?.state==='ready')break;}
+ const checked=await req('/api/uyap/session');must(checked.body.session.state==='ready','queue-free check failed to recover Core session');
+ must(checked.body.session.manualDownloadPaused===true,'queue-free session check cleared pause');
+ must(cbsRuntime.portalRequests.length===authBefore+1&&cbsRuntime.portalRequests.at(-1).path==='/get_avukat_id.ajx','session check sent file query or repeated auth');
+ must(protectedState()===frozenBefore,'session check modified queue/history/grants');frozen.close();
+ console.log(JSON.stringify({ok:true,realCoreHttp:true,realExtensionSources:true,syntheticChromeAndUyap:true,inactiveTab:true,queueFreeExplicitSessionCheck:true,sessionCheckAuthRequests:1,sessionCheckQueueHistoryGrantsUnchanged:true,mv3RestartDeliveryRecovered:true,sameTabDifferentPageAndExecutionRejected:true,coreSessionWaitPreserved:true,diagnosisWithoutPortalRequest:true,cbsIdentityReturned:true,cbsMetadataStillBlocked:true,http200DenialDistinguished:true,metadataReturned:1,portalQueryCount:1,localDeliveryRetryOnly:true,foreignAndLateResultRejected:true,noAutomaticDownload:true,manualPausePreserved:true}));
 }
 main().catch(e=>{console.error(e);console.error(childErr);process.exitCode=1}).finally(()=>{try{cp.kill()}catch{}setTimeout(()=>{try{fs.rmSync(root,{recursive:true,force:true})}catch{}},100)});
