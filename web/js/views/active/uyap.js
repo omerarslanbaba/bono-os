@@ -1,7 +1,7 @@
 import {mountUserQueries} from './user-queries.js';
 import {queryOverview,partyText,openingDate,queryTime} from '../../case-query-state.mjs';
 import {api} from '../../api.js';
-import {inventoryState,inventoryTotals} from '../../inventory-state.mjs';
+import {inventoryState} from '../../inventory-state.mjs';
 import {mount,pageHero,section,empty,esc,badge} from '../../ui.js';
 
 function discoveryBar(s,a){
@@ -171,13 +171,13 @@ function bindTargetedCaseSearch(){
 function queryForm(rows){
   const years=rows.map(r=>String(r.court_file_no||'').match(/(20\d{2})\//)?.[1]);
   return `<div class="case-query"><div class="case-query-grid">
-  <label>Yargı Türü<select id="filterType"><option value="">Tümü</option>${JUDGMENT_TYPES.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('')}</select></label>
+  <label class="filter-type">Yargı Türü<select id="filterType"><option value="">Tümü</option>${JUDGMENT_TYPES.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('')}</select></label>
   <label>Dosya Durumu<div class="case-state-toggle" role="group" aria-label="Dosya Durumu"><button type="button" class="state-option active" data-state="Açık">Açık</button><button type="button" class="state-option" data-state="Kapalı">Kapalı</button></div></label>
-  <label>İl<select id="filterProvince"><option value="">Tümü</option>${options(rows.map(caseProvince))}</select></label>\n  <label>Yargı Birimi<select id="filterUnit"><option value="">Tümü</option></select></label>
+  <label>İl<select id="filterProvince"><option value="">Tümü</option>${options(rows.map(caseProvince))}</select></label>\n  <label class="filter-unit">Yargı Birimi<select id="filterUnit"><option value="">Tümü</option></select></label>
   <label>Dosya Yıl / No<div class="case-year-row"><select id="filterYear"><option value="">Tümü</option>${options(years)}</select><input id="filterNo" placeholder="Dosya No"></div></label>
   <label>Mahkeme<select id="filterCourt"><option value="">Tümü</option></select></label>
   <label>Dosyada Ara<input id="filterQuery" placeholder="Föy no, mahkeme, esas no, müvekkil veya taraf"></label>
-  </div><p class="case-query-local-note">Bu filtreler yalnızca BONO'da kayıtlı dosyaları gösterir. Gerçek UYAP sorgusu yalnız dosya detayındaki ayrı işlemle başlatılır.</p><div class="case-query-actions"><span id="filterCount"></span><button id="resetFilters" type="button" class="subtle-action">Temizle</button><button id="applyFilters" type="button" class="primary-action">Filtreleri uygula</button></div></div>`;
+  </div><p class="case-query-local-note">Kayıtlı dosyalarda filtrele</p><div class="case-query-actions"><span id="filterCount"></span><button id="resetFilters" type="button" class="subtle-action">Temizle</button><button id="applyFilters" type="button" class="primary-action">Filtreleri uygula</button></div></div>`;
 }
 function bindQuery(rows){
  const by=id=>document.getElementById(id),t=by('filterType'),u=by('filterUnit'),c=by('filterCourt'),province=by('filterProvince');
@@ -200,6 +200,13 @@ function bindQuery(rows){
  by('resetFilters').onclick=()=>{document.querySelectorAll('.case-query input,.case-query select,[data-column-filter]').forEach(e=>e.value='');selectedState='Açık';document.querySelectorAll('.state-option').forEach(x=>x.classList.toggle('active',x.dataset.state==='Açık'));units()};
  by('filterQuery').oninput=apply;by('filterNo').oninput=apply;
  document.querySelectorAll('[data-column-filter]').forEach(input=>input.oninput=apply);
+ document.querySelectorAll('[data-filter-toggle]').forEach(button=>button.onclick=()=>{
+  const panel=by('column-filter-'+button.dataset.filterToggle),opening=panel.hidden;
+  document.querySelectorAll('.case-column-filter').forEach(x=>x.hidden=true);
+  document.querySelectorAll('[data-filter-toggle]').forEach(x=>x.setAttribute('aria-expanded','false'));
+  panel.hidden=!opening;button.setAttribute('aria-expanded',String(opening));if(opening)panel.querySelector('input').focus();
+ });
+
  document.querySelectorAll('[data-case-sort]').forEach(button=>button.onclick=()=>{const key=Number(button.dataset.caseSort);ascending=sortKey===key?!ascending:true;sortKey=key;document.querySelectorAll('[data-case-sort]').forEach(x=>x.closest('th').setAttribute('aria-sort',x===button?(ascending?'ascending':'descending'):'none'));apply()});
  document.querySelectorAll('.case-list-row').forEach(row=>{row.onclick=e=>{if(!e.target.closest('a,button,input'))location.hash='#uyap/'+row.dataset.caseId};row.onkeydown=e=>{if(e.key==='Enter'&&e.target===row)location.hash='#uyap/'+row.dataset.caseId}});
  units();
@@ -208,12 +215,10 @@ function bindQuery(rows){
 export async function renderUyap(id){
   if(id)return renderCase(id);
   const rows=await api.uyapCases();
-  const inv=inventoryTotals(rows);
   const columns=['Birim','Dosya No','Dosya Türü','Dosya Durumu','Dosya Açılış Tarihi','Taraf Bilgileri'];
-  const body=`<div class="case-list-scroll case-table-scroll"><table class="case-results-table"><thead><tr>${columns.map((name,i)=>`<th scope="col" aria-sort="none"><button type="button" data-case-sort="${i}">${name} ↕</button></th>`).join('')}<th scope="col">Dosyayı Görüntüle</th></tr><tr>${columns.map((name,i)=>`<th><input data-column-filter="${i}" aria-label="${name} sütununda filtrele" placeholder="Filtrele"></th>`).join('')}<th></th></tr></thead><tbody id="caseTableBody">${rows.map(r=>`<tr id="case-row-${Number(r.id)}" class="case-list-row" data-case-id="${Number(r.id)}" tabindex="0" aria-label="${esc(r.court||'Dosya')} ${esc(r.court_file_no||'')}"><td>${esc(r.court||'—')}</td><td>${esc(r.court_file_no||'—')}</td><td>${esc(r.case_type||'—')}</td><td>${esc(statusText(r))}</td><td>${esc(openingDate(r)||'—')}</td><td>${esc(partyText(r))}</td><td><a href="#uyap/${Number(r.id)}">Görüntüle →</a></td></tr>`).join('')}</tbody></table></div><p id="noCaseMatches" hidden>Bu filtrelerle eşleşen kayıt yok.</p>`;
-  const inventorySummary=`<p class="inventory-totals">${inv.known} kayıtlı dosya · ${inv.never} hiç sorgulanmadı · ${inv.partial} kısmi liste · ${inv.unknown} kapsamı bilinmiyor</p>`;
+  const body=`<div class="case-list-scroll case-table-scroll"><table class="case-results-table"><thead><tr>${columns.map((name,i)=>`<th scope="col" aria-sort="none"><div class="case-column-heading"><button type="button" data-case-sort="${i}" aria-label="${name} sırala">${name} ↕</button><button type="button" data-filter-toggle="${i}" aria-label="${name} filtresini aç" aria-expanded="false" aria-controls="column-filter-${i}">⌕</button></div><div id="column-filter-${i}" class="case-column-filter" hidden><input data-column-filter="${i}" aria-label="${name} sütununda filtrele" placeholder="Filtrele"></div></th>`).join('')}<th scope="col">Dosyayı Görüntüle</th></tr></thead><tbody id="caseTableBody">${rows.map(r=>`<tr id="case-row-${Number(r.id)}" class="case-list-row" data-case-id="${Number(r.id)}" tabindex="0" aria-label="${esc(r.court||'Dosya')} ${esc(r.court_file_no||'')}"><td>${esc(r.court||'—')}</td><td>${esc(r.court_file_no||'—')}</td><td>${esc(r.case_type||'—')}</td><td>${esc(statusText(r))}</td><td>${esc(openingDate(r)||'—')}</td><td>${esc(partyText(r))}</td><td><a href="#uyap/${Number(r.id)}">Görüntüle →</a></td></tr>`).join('')}</tbody></table></div><p id="noCaseMatches" hidden>Bu filtrelerle eşleşen kayıt yok.</p>`;
   mount(pageHero('Dosyalarım','Kayıtlı dosyalarını bul ve görüntüle.')+
-    inventorySummary+queryForm(rows)+'<p>Yeni UYAP sorguları yalnız doğrulanmış dosya içindeki Sorgula/Yenile işlemiyle başlatılır. Geniş discovery kapalıdır.</p>'+section('Dosya Sorgulama Sonuçları','⚖',body),'uyap');
+    queryForm(rows)+section('Dosya Sorgulama Sonuçları','⚖',body),'uyap');
   bindQuery(rows);
   bindTargetedCaseSearch();
   // Sorgulama filtreleri bindQuery tarafından yönetilir.
@@ -257,7 +262,7 @@ async function renderCase(id,feedback=''){
   const file=cases.find(x=>String(x.id)===String(id))||{};
   const inventory=inventoryState(file,docs);
   const overview=queryOverview(queryRead.rows,docs.length);
-  const status=v=>({discovered:'İndirilecek',download_queued:'İndirme kuyruğunda',downloaded:'İndirildi',indexed:'İndekslendi',filed:'Arşivlendi',summarized:'Nota dönüştürüldü',duplicate:'Mükerrer',skipped:'Arşiv dışı',review:'İnceleme gerekli'}[String(v||'').toLowerCase()]||v||'Keşfedildi');
+  const status=v=>({discovered:'İndirilecek',download_queued:'İndirme kuyruğunda',downloaded:'İndirildi',indexed:'İndekslendi',filed:'Arşivlendi',summarized:'Nota dönüştürüldü',duplicate:'Mükerrer',skipped:'Arşiv dışı',review:'İnceleme gerekli',failed:'Önceki indirme başarısız'}[String(v||'').toLowerCase()]||v||'Keşfedildi');
 
   const counts={};for(const d of docs){const c=docCategory(d);counts[c]=(counts[c]||0)+1}
   const cats=['Tümü',...Object.keys(counts).sort((a,b)=>a.localeCompare(b,'tr'))];
@@ -269,17 +274,17 @@ async function renderCase(id,feedback=''){
   const financeBody=(converted||pending)?`<div class="case-finance-grid"><div>${section('Otomatik Notlar','₺',converted||empty('Bu dosyada otomatik mali not yok.'))}</div><div>${section('İnceleme Bekleyenler','!',pending||empty('Bu dosyada inceleme bekleyen mali evrak yok.'))}</div></div>`:empty('Bu dosyada tahsilat/reddiyat kaydı yok.');
 
   const downloadControls=`<div class="case-download-controls">
-    <div><strong>Evrak indirme</strong><p>Liste sorgusu evrak indirmez. Eksik evrak indirme işlemleri yalnız ayrıca onay verilerek ve UYAP motorunun güvenlik kontrollerinden geçerek başlayabilir.</p></div>
-    <div class="case-download-actions"><small id="caseDownloadStatus" role="status" aria-live="polite">İndirme durumu kontrol ediliyor…</small><button id="queueCaseDownloads" type="button" class="subtle-action" disabled>Eksik Evrakları Kuyruğa Ekle</button></div>
+    <div><strong>Evrak indirme</strong></div>
+    <div class="case-download-actions"><small id="caseDownloadStatus" role="status" aria-live="polite">İndirme durumu kontrol ediliyor…</small><button id="queueCaseDownloads" type="button" class="subtle-action" disabled>Evrakları İndir</button></div>
   </div>`;
 
   const tabs=`<div class="case-tabs"><button class="case-tab active" data-file-tab="documents">Evraklar <span>${docs.length}</span></button><button class="case-tab" data-file-tab="finance">Tahsilat / Reddiyat <span>${(finance.counts?.converted||0)+(finance.counts?.pending||0)}</span></button></div>`;
-  const related=(file.related_cases||[]).map(x=>`<a class="notice-row clickable" href="#uyap/${x.caseId}"><div><div class="doc-title">Bağlantılı Arabuluculuk Dosyası · ${esc(x.courtFileNo||'')}</div><div class="doc-meta">${esc(x.court||'')} · ${esc(x.caseType||'')} · ${esc(x.status||'')}</div></div><span>→</span></a>`).join('');
+  const related=(file.related_cases||[]).map(x=>`<a class="notice-row clickable" href="#uyap/${x.caseId}"><div><div class="doc-title">Bağlantılı Dosya · ${esc(x.courtFileNo||'')}</div><div class="doc-meta">${esc(x.court||'')} · ${esc(x.caseType||'')} · ${esc(x.status||'')}</div></div><span>→</span></a>`).join('');
 
-  const inventoryPanel=`<details class="case-technical"><summary>Teknik Ayrıntılar</summary><p>UYAP kimliği: ${esc(inventory.identity)}. Kimliğin kayıtlı olması canlı doğrulama değildir.</p><p>İndirme: ${esc(inventory.download)} · Bütünlük: ${esc(inventory.integrity)}</p><p>Evrak aidiyeti ve hash kontrolleri korunur. Bir CBS liste sorgusu evrak aidiyetini doğrulamaz.</p><div id="queryTechnicalDetails"></div><details><summary>Sorgu geçmişi</summary><div id="caseQueryHistory"></div></details></details>`;
+  const inventoryPanel=`<details class="case-technical"><summary>Teknik Ayrıntılar</summary><p>UYAP kimliği: ${esc(inventory.identity)}. Kimliğin kayıtlı olması canlı doğrulama değildir.</p><p>İndirme: ${esc(inventory.download)} · Bütünlük: ${esc(inventory.integrity)}</p><p>Evrak aidiyeti ve hash kontrolleri korunur. Fiziksel evrak indirme ayrı onaydır. Bir CBS liste sorgusu evrak aidiyetini doğrulamaz.</p><div id="queryTechnicalDetails"></div><details><summary>Sorgu geçmişi</summary><div id="caseQueryHistory"></div></details></details>`;
   mount(`<div class="case-header"><a class="back-link" href="#uyap">← Dosyalarıma dön</a><h1><span class="foy-badge ${file.office_file_no?'':'pending'}">${esc(file.office_file_no||'Föy Bekliyor')}</span>${esc(file.court||'Dosya')} ${file.court_file_no?'· '+esc(file.court_file_no):''}</h1><p class="detail-subtitle">${esc(file.case_type||'Dosya içeriği')}</p><div class="case-parties"><strong>Taraf Bilgileri</strong><div>${file.client_name?`<span><b>Müvekkil:</b> ${esc(file.client_name)}</span>`:''}${file.party_names?`<span><b>Kayıtlı taraflar:</b> ${esc(file.party_names)}</span>`:'<span>UYAP taraf bilgisi henüz kaydedilmemiş.</span>'}</div></div>${related?`<div class="related-case-list">${related}</div>`:''}</div>
     <div class="case-query-overview"><p id="lastQuerySummary">Son UYAP sorgusu: ${esc(queryRead.error?'Durum okunamadı: '+queryRead.error:overview.label)}${overview.success?' · Son başarılı: '+esc(queryTime(overview.success.occurred_at||overview.success.created_at)):''}</p><p id="documentListSummary">${esc(overview.documents)}</p>${feedback?`<p class="query-feedback" role="status">${esc(feedback)}</p>`:''}</div>
-    <div class="case-sync-panel ${docs.length?'has-documents':'is-empty'}"><div class="case-sync-copy"><strong>UYAP'ta Sorgula</strong><p>Yalnız bu dosya için kullanıcı kontrollü, salt-okunur sorgu. Fiziksel evrak indirme ayrı onaydır.</p><small id="syncUyapStatus" role="status" aria-live="polite">${file.uyap_dosya_id?'Sorgu desteği kontrol ediliyor.':'Bu kayıt için doğrulanmış UYAP dosya bağlantısı bulunamadı.'}</small></div><button id="syncUyapDocs" type="button" class="primary-action" disabled>UYAP'ta Sorgula</button></div>
+    <div class="case-sync-panel ${docs.length?'has-documents':'is-empty'}"><div class="case-sync-copy"><strong>UYAP'ta Sorgula</strong><small id="syncUyapStatus" role="status" aria-live="polite">${file.uyap_dosya_id?'Sorgu desteği kontrol ediliyor.':'Bu kayıt için doğrulanmış UYAP dosya bağlantısı bulunamadı.'}</small></div><button id="syncUyapDocs" type="button" class="primary-action" disabled>UYAP'ta Sorgula</button></div>
     <div id="case-documents"></div>${tabs}
     <div class="file-tab-panel" data-file-panel="documents">${docs.length?section('Evraklar','▤',renderDocumentTree(docs,status)):''}<div id="caseDocumentViewer" class="case-document-viewer" hidden aria-live="polite"></div>${downloadControls}</div>${inventoryPanel}
     <div class="file-tab-panel" data-file-panel="finance" hidden>${financeBody}</div>`,'uyap');

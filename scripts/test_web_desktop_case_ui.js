@@ -16,7 +16,7 @@ assert.match(src,/partyText\(r\)/);
 assert.match(src,/file\.party_names/);
 assert.match(src,/file\.client_name/);
 assert.match(src,/inventoryState\(file,docs\)/);
-assert.match(src,/inventoryTotals\(rows\)/);
+assert.match(src,/class="case-list-row"/);
 assert.match(src,/Teknik Ayrıntılar/);
 assert.match(src,/filterProvince/);
 assert.doesNotMatch(src,/filterDistrict/);
@@ -29,7 +29,7 @@ assert.match(userQueries,/approved-downloads/);
 assert.doesNotMatch(userQueries,/read\('\/api\/uyap\/download-pause'/);
 const css=fs.readFileSync('web/styles-active.css','utf8')+fs.readFileSync('web/case-usability.css','utf8');
 for(const x of [/\.case-sync-panel/,/\.case-parties/,/\.case-document-summary/,/\.case-download-controls/,/\.case-document-viewer/,/\.case-document-pdf/,/\.case-targeted-search/])assert.match(css,x);
-assert.match(src,/Geniş discovery kapalıdır/);
+assert.doesNotMatch(src,/inventorySummary\+queryForm\(rows\)/);
 assert.doesNotMatch(src,/targetedSearchForm\(searchOptions\)\+/);
 console.log('PASS case UI: controlled single-case query, inventory evidence, parties, explicit downloads, secure viewer, broad discovery closed');
 

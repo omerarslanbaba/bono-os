@@ -11,7 +11,7 @@
 .case-query .case-query-grid input,.case-query .case-query-grid select{padding:7px 9px}
 .case-query .case-query-local-note{font-size:11px;margin:9px 0}
 .case-query .case-query-actions{padding-top:8px}
-.case-results-table{width:100%;border-collapse:collapse;font-size:12px;min-width:960px}
+.case-results-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;min-width:0}
 .case-results-table th,.case-results-table td{padding:9px 10px;border-bottom:1px solid #303338;text-align:left;vertical-align:top}
 .case-results-table thead{position:sticky;top:0;background:#192126;z-index:1}
 .case-results-table th button{background:transparent;border:0;color:inherit;font:inherit;font-weight:650;cursor:pointer;padding:0}
@@ -28,3 +28,26 @@
 .query-feedback{color:#88d1b0}
 @media(max-width:1100px){.case-query .case-query-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.case-query .case-query-grid{grid-template-columns:1fr}}
+
+.case-query .filter-type{grid-column:1;grid-row:1}
+.case-query .filter-unit{grid-column:1;grid-row:2}
+.case-query .case-query-grid{gap:7px 12px}
+.case-results-table th,.case-results-table td{overflow-wrap:anywhere;padding:7px 6px}
+.case-results-table th:first-child{width:22%}
+.case-results-table th:nth-child(2){width:12%}
+.case-results-table th:nth-child(3){width:14%}
+.case-results-table th:nth-child(4){width:10%}
+.case-results-table th:nth-child(5){width:12%}
+.case-results-table th:nth-child(6){width:18%}
+.case-results-table th:last-child{width:12%}
+.case-column-heading{display:flex;gap:4px;align-items:flex-start;justify-content:space-between}
+.case-column-heading [data-filter-toggle]{flex-shrink:0;padding:2px 4px;border:1px solid #3a3b3e;border-radius:3px}
+.case-column-filter{margin-top:6px}
+.case-column-filter[hidden]{display:none}
+.case-results-table a{white-space:normal}
+.bono-calendar-full.month-view .cal-day{min-height:0;height:clamp(65px,calc((100vh - 330px)/6),110px);padding:5px;overflow:auto}
+.bono-calendar-full.month-view .cal-no{margin-bottom:3px}
+.bono-calendar-full.month-view .cal-event{padding:3px 4px;font-size:10px;line-height:1.2}
+.bono-calendar-full.month-view .cal-weekdays span{padding:6px 2px}
+#hearingCalendarArea .bono-calendar-controls{padding:7px 2px;gap:6px}
+@media(max-width:650px){.case-query .filter-type,.case-query .filter-unit{grid-column:auto;grid-row:auto}}

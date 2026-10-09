@@ -17,7 +17,17 @@ const {JSDOM}=require(process.env.BONO_UI_TEST_MODULES||'../dist/ui-test-env/nod
  const rows=[{id:1,court:'Eskişehir Cumhuriyet Başsavcılığı',court_file_no:'2030/123',case_type:'CBS',status:'open',party_names:'Sentetik Taraf'}, {id:2,court:'Kocaeli 1. İş Mahkemesi',court_file_no:'2030/9',case_type:'Hukuk',status:'open',client_name:'Sentetik Müvekkil'}, {id:3,court:'Kocaeli 1. İş Mahkemesi',court_file_no:'2029/88',case_type:'Hukuk',status:'closed'}];
  const ctx=vm.createContext({document,window:dom.window,location:dom.window.location,esc,...state,inventoryTotals:()=>({known:3,never:0,partial:0,unknown:3}),api:{uyapCases:async()=>rows},mount:html=>document.getElementById('app').innerHTML=html,pageHero:(a,b)=>`<h1>${a}</h1><p>${b}</p>`,section:(a,b,c)=>`<section><h2>${a}</h2>${c}</section>`,empty:()=>'',badge:()=>''});
  vm.runInContext(fs.readFileSync('web/js/views/active/uyap.js','utf8').replace(/^import .*;\s*$/gm,'').replace(/export /g,''),ctx);await ctx.renderUyap();
- check('district and global history removed; seven table columns',()=>{assert(!document.getElementById('filterDistrict'));assert(!document.body.textContent.includes('Kalıcı sorgu geçmişi'));assert.equal(document.querySelectorAll('.case-results-table thead tr:first-child th').length,7)});
+ check('district and global history removed; seven table columns',()=>{assert(!document.getElementById('filterDistrict'));assert(!document.getElementById('syncAllUyap'));assert(!document.body.textContent.includes('Kalıcı sorgu geçmişi'));assert.equal(document.querySelectorAll('.case-results-table thead tr:first-child th').length,7)});
+ check('column filters initially closed and independent of sorting',()=>{
+  assert([...document.querySelectorAll('.case-column-filter')].every(x=>x.hidden));
+  document.querySelector('[data-filter-toggle="1"]').onclick();
+  assert.equal(document.getElementById('column-filter-1').hidden,false);
+  document.querySelector('[data-case-sort="1"]').onclick();
+  assert.equal(document.getElementById('column-filter-1').hidden,false);
+  document.querySelector('[data-filter-toggle="5"]').onclick();
+  assert.equal(document.getElementById('column-filter-1').hidden,true);
+  assert.equal(document.getElementById('column-filter-5').hidden,false);
+ });
  check('column filter selects correct case and recorded party',()=>{const e=document.querySelector('[data-column-filter="5"]');e.value='Sentetik Taraf';e.oninput();assert.equal([...document.querySelectorAll('.case-list-row')].filter(x=>!x.hidden)[0].dataset.caseId,'1');assert.equal(document.getElementById('case-row-1').querySelector('a').getAttribute('href'),'#uyap/1');e.value='';e.oninput()});
  check('type switches units using local records',()=>{const e=document.getElementById('filterType');e.value='CBS';e.onchange();assert.equal([...document.querySelectorAll('.case-list-row')].filter(x=>!x.hidden).length,1);assert.match(document.getElementById('filterUnit').textContent,/BAŞSAVCILIĞI/);e.value='';e.onchange()});
  check('sort and row click preserve exact BONO ID',()=>{document.querySelector('[data-case-sort="1"]').onclick();const row=document.getElementById('case-row-2');row.onclick({target:row});assert.equal(dom.window.location.hash,'#uyap/2')});
@@ -26,9 +36,9 @@ const {JSDOM}=require(process.env.BONO_UI_TEST_MODULES||'../dist/ui-test-env/nod
  await ctx.renderCase(1);
  check('detail starts with identity header; technical/history collapsed; no duplicate empty list',()=>{assert(document.querySelector('.case-header'));assert.equal(document.querySelector('.case-technical').open,false);assert.match(document.getElementById('documentListSummary').textContent,/sorgulandı fakat/);assert.equal(document.querySelectorAll('.case-document-guidance').length,0);assert.equal(document.getElementById('queueCaseDownloads').disabled,true)});
  const querySource=fs.readFileSync('web/js/views/active/user-queries.js','utf8').replace(/^import .*;\s*$/gm,'').replace(/export /g,'');
- async function harness({history=[],reply={state:'cache_hit',commandId:10},error=null}={}){
+ async function harness({history=[],reply={state:'cache_hit',commandId:10},error=null,options=[]}={}){
   const dom=new JSDOM('<div class="case-sync-panel"><button id="syncUyapDocs"></button><small id="syncUyapStatus"></small></div><p id="lastQuerySummary"></p><p id="documentListSummary"></p><div id="queryTechnicalDetails"></div><div id="caseQueryHistory"></div><div class="case-download-controls"><button id="queueCaseDownloads" disabled></button><small id="caseDownloadStatus"></small></div>',{url:'http://localhost/#uyap/1'});
-  const calls=[],timers=[],completed=[];const ctx=vm.createContext({document:dom.window.document,window:dom.window,esc,...state,crypto:require('node:crypto').webcrypto,confirm:()=>false,setTimeout:fn=>{timers.push(fn);return timers.length},clearTimeout:()=>{},fetch:async(url,options)=>{calls.push({url,options});if(options?.method==='POST'&&error)throw Error(error);const data=options?.method==='POST'?reply:url.endsWith('query-support')?{supported:true,operation:'cbs.search'}:url.endsWith('query-history')?history:url.endsWith('/session')?{session:{state:'ready',manualDownloadPaused:true},rate:{state:'ready'}}:[];return {ok:true,json:async()=>data}}});
+  const calls=[],timers=[],completed=[];const downloadOptions=options;const ctx=vm.createContext({document:dom.window.document,window:dom.window,esc,...state,crypto:require('node:crypto').webcrypto,confirm:()=>false,setTimeout:fn=>{timers.push(fn);return timers.length},clearTimeout:()=>{},fetch:async(url,options)=>{calls.push({url,options});if(options?.method==='POST'&&error)throw Error(error);const data=options?.method==='POST'?reply:url.endsWith('query-support')?{supported:true,operation:'cbs.search'}:url.endsWith('query-history')?history:url.endsWith('/session')?{session:{state:'ready',manualDownloadPaused:true},rate:{state:'ready'}}:url.endsWith('/download-options')?downloadOptions:[];return {ok:true,json:async()=>data}}});
   vm.runInContext(querySource,ctx);await ctx.mountUserQueries(1,async m=>completed.push(m));return {dom,calls,timers,completed};
  }
  let h=await harness();await h.dom.window.document.getElementById('syncUyapDocs').onclick();check('cache hit visibly refreshes detail without claiming UYAP query',()=>{assert.equal(h.completed.length,1);assert.match(h.completed[0],/yeni UYAP sorgusu yapılmadı/);assert.equal(h.calls.filter(x=>x.options?.method==='POST').length,1)});
@@ -36,5 +46,11 @@ const {JSDOM}=require(process.env.BONO_UI_TEST_MODULES||'../dist/ui-test-env/nod
  h=await harness({error:'bağlantı kesildi'});await h.dom.window.document.getElementById('syncUyapDocs').onclick();await h.dom.window.document.getElementById('syncUyapDocs').onclick();check('error visible; request key retained; no silent retry',()=>{assert.match(h.dom.window.document.getElementById('syncUyapStatus').textContent,/bağlantı kesildi/);const posts=h.calls.filter(x=>x.options?.method==='POST');assert.equal(JSON.parse(posts[0].options.body).requestKey,JSON.parse(posts[1].options.body).requestKey)});
  h=await harness({reply:{state:'cache_miss'}});await h.dom.window.document.getElementById('syncUyapDocs').onclick();check('cache miss explicit and no fabricated completion',()=>{assert.match(h.dom.window.document.getElementById('syncUyapStatus').textContent,/önbellek bulunamadı/);assert.equal(h.completed.length,0)});
  check('no unpause requests or default download writes',()=>{assert(!querySource.includes("read('/api/uyap/download-pause'"));assert(h.dom.window.document.getElementById('queueCaseDownloads').disabled);assert(!h.calls.some(x=>/approved-downloads/.test(x.url)))});
+ h=await harness({options:[{id:8},{id:9}]});await h.dom.window.document.getElementById('queueCaseDownloads').onclick();
+ check('verified download options selected by default; declined confirmation performs zero writes',()=>{
+  assert.equal(h.dom.window.document.querySelectorAll('input:checked').length,2);
+  assert.equal(h.calls.filter(x=>x.options?.method==='POST').length,0);
+  assert.match(h.dom.window.document.getElementById('queueCaseDownloads').textContent,/Evrakları İndir/);
+ });
  console.log(count+' usability tests PASS; synthetic API only');
 })().catch(e=>{console.error(e);process.exitCode=1});

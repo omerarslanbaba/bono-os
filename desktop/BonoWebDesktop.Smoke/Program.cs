@@ -75,12 +75,13 @@ if (!index.Contains("/styles-active.css", StringComparison.Ordinal) ||
     throw new InvalidOperationException("Bundled index.html was not served from preview origin.");
 
 var hearings = await client.GetStringAsync(new Uri(preview.Origin, "js/views/active/hearings.js"));
-foreach (var marker in new[] { "prevPeriod", "nextPeriod", "thisPeriod", "month-view" })
+foreach (var marker in new[] { "prevPeriod", "nextPeriod", "month-view" })
 {
     if (!hearings.Contains(marker, StringComparison.Ordinal))
         throw new InvalidOperationException("Month-only calendar marker missing: " + marker);
 }
-if (hearings.Contains("weekMode", StringComparison.Ordinal) ||
+if (hearings.Contains("thisPeriod", StringComparison.Ordinal) ||
+    hearings.Contains("weekMode", StringComparison.Ordinal) ||
     hearings.Contains("three-month-calendar", StringComparison.Ordinal))
     throw new InvalidOperationException("Legacy week/three-month calendar code is still present.");
 
