@@ -3,7 +3,13 @@ const fs=require('fs'),os=require('os'),path=require('path'),assert=require('ass
 const {operate,inspect}=require('./package_operations'),{transition}=require('./query_transition');
 (async()=>{const bundle=path.resolve(process.argv[2]),tmp=fs.mkdtempSync(path.join(os.tmpdir(),'bono-query-package-')),root=path.join(tmp,'app'),source=path.join(root,'data','source.db'),back=path.join(tmp,'backup');fs.mkdirSync(path.dirname(source),{recursive:true});
 for(const dir of ['bridge','web','extension'])fs.cpSync(path.join(__dirname,'..',dir),path.join(root,dir),{recursive:true});
-const m=JSON.parse(fs.readFileSync(path.join(bundle,'version-manifest.json')));for(const f of m.files){const dest=path.join(root,f.path);if(f.beforeSha256){fs.mkdirSync(path.dirname(dest),{recursive:true});fs.copyFileSync(path.join(bundle,'rollback',f.path),dest);}else if(fs.existsSync(dest))fs.unlinkSync(dest);}
+const m=JSON.parse(fs.readFileSync(path.join(bundle,'version-manifest.json')));
+for(const required of [
+ 'bridge/uyap_user_queries.js','bridge/uyap_user_query_http.js',
+ 'bridge/uyap_cbs_list_adapter.js','bridge/uyap_case_document_contract.js','bridge/uyap_query_capability_contract.js',
+ 'bridge/document_view_http.js','bridge/document_view_service.js','bridge/document_stream_guard.js','bridge/case_document_review.js','bridge/archive_safety.js',
+ 'bridge/desktop_archive_paths.js','scripts/extract_review_text.py'
+])assert(m.files.some(f=>f.path===required),'unified runtime payload missing '+required);for(const f of m.files){const dest=path.join(root,f.path);if(f.beforeSha256){fs.mkdirSync(path.dirname(dest),{recursive:true});fs.copyFileSync(path.join(bundle,'rollback',f.path),dest);}else if(fs.existsSync(dest))fs.unlinkSync(dest);}
 process.env.BONO_DB_PATH=source;process.env.USERPROFILE=tmp;const db=require('../bridge/db');db.prepare("INSERT OR REPLACE INTO app_settings(key,value) VALUES('uyap_manual_download_pause','1')").run();db.prepare("INSERT INTO uyap_endpoints(endpoint_key,method,host,path) VALUES('case.search','POST','avukat.uyap.gov.tr','/avukat_mahkemeleri_sorgula.ajx')").run();for(let i=0;i<270;i++)db.prepare("INSERT INTO uyap_command_queue(command_type,endpoint_key,payload_json) VALUES('fetch_json','case.search','{}')").run();db.close();
 const port=await new Promise(r=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>r(p));});});
 assert.equal(inspect(bundle,root).state,'original');
