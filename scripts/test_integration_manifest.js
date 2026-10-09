@@ -19,6 +19,8 @@ for(const n of [13,19,17,18,15,16,14])must(manifest.deliveries?.["pr"+n]?.codeIn
 must(manifest.deliveries.pr14.mergedToMain===false,"PR #14 must not be claimed merged to main");
 must(manifest.migration?.implementationIntegrated===true&&manifest.migration.liveApplied===false,"query migration implementation/live distinction lost");
 must(manifest.migration.requiresFreshQueueInventory===true&&manifest.migration.historicalSnapshotIsCurrentInvariant===false,"old 270 snapshot must not be a current invariant");
+must(manifest.migration.expectedCountSource==="verified_backup_manifest_queueCommandIds","migration count must come from fresh verified backup inventory");
+must(manifest.migration.acceptsLegacyAttemptedQueuedAsRetiredUnverified===true,"stale attempted queued commands must be retired without replay");
 for(const item of manifest.sourceProof||[]){
   const full=path.join(root,item.path);must(fs.existsSync(full),"manifest source missing: "+item.path);
   const actual=gitBlobSha(full);must(actual===item.blobSha,"source drift for "+item.path+": expected "+item.blobSha+" got "+actual);
@@ -38,7 +40,7 @@ const userPolicy=fs.readFileSync(path.join(root,"bridge","uyap_user_queries.js")
 const uyap=fs.readFileSync(path.join(root,"bridge","uyap.js"),"utf8");
 const mainWindow=fs.readFileSync(path.join(root,"desktop","BonoWebDesktop","MainWindow.xaml.cs"),"utf8");
 for(const needle of ["uyap_user_query_http","handleDocumentViewRequest(req,res,db)"])must(server.includes(needle),"Core route integration missing: "+needle);
-for(const needle of ["cbs_case_list","cbs_unit_status_exact_v1","fresh_queue_count_required","unit_status_list_local_exact_match"])must(userPolicy.includes(needle),"user query integration missing: "+needle);
+for(const needle of ["cbs_case_list","cbs_unit_status_exact_v1","fresh_queue_count_required","unit_status_list_local_exact_match","archived_attempted_unverified","legacy_attempted_unverified"])must(userPolicy.includes(needle),"user query integration missing: "+needle);
 must(uyap.includes("explicitCbsCaseLookup"),"scoped CBS side-effect guard missing");
 must(fs.existsSync(path.join(root,"bridge","observation_controller.js")),"PR13 observation controller missing");
 must(fs.existsSync(path.join(root,"VISION.md"))&&fs.existsSync(path.join(root,"AGENTS.md")),"vision/agent guidance missing");
