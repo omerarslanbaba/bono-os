@@ -34,16 +34,16 @@ function migrate(db,{expectedQueued,backupManifest,migrationId='legacy-discovery
  db.exec('BEGIN IMMEDIATE');try{
   if(db.prepare("SELECT count(*) n FROM uyap_command_queue WHERE status IN ('running','dispatched')").get().n)throw Error('active_commands');
   const queued=db.prepare("SELECT * FROM uyap_command_queue WHERE status='queued' ORDER BY id").all();
-  if(queued.length!==expectedQueued||queued.some(r=>r.command_type!=='fetch_json'||r.attempts!==0||r.dispatched_at||r.finished_at))throw Error('legacy_queue_reconciliation_failed');
+  if(queued.length!==expectedQueued||queued.some(r=>r.command_type!=='fetch_json'||r.finished_at))throw Error('legacy_queue_reconciliation_failed');
   const ids=queued.map(r=>r.id);if(backupManifest.queueIdDigest!==digest(ids))throw Error('backup_queue_mismatch');
   db.exec(schema);immutable(db);
   const add=db.prepare('INSERT OR IGNORE INTO uyap_query_history(command_id,operation,case_id,created_at,legacy) VALUES(?,?,?,?,1)');
   for(const r of db.prepare('SELECT * FROM uyap_command_queue ORDER BY id').all()){
    let p={};try{p=JSON.parse(r.payload_json||'{}')}catch{}
    add.run(r.id,TYPES.has(r.endpoint_key)?r.endpoint_key:'unknown',target(db,p),/^\d{4}-\d{2}-\d{2}[ T][\d:.Z+-]+$/.test(r.created_at||'')?r.created_at:null);
-   event(db,r.id,r.attempts>0&&r.dispatched_at?'legacy_attempted_unverified':'never_executed',r.error?'legacy_error_present':null,null,/^\d{4}-\d{2}-\d{2}[ T][\d:.Z+-]+$/.test(r.finished_at||'')?r.finished_at:null);
+   event(db,r.id,(r.attempts>0||r.dispatched_at)?'legacy_attempted_unverified':'never_executed',r.error?'legacy_error_present':null,null,/^\d{4}-\d{2}-\d{2}[ T][\d:.Z+-]+$/.test(r.finished_at||'')?r.finished_at:null);
   }
-  for(let i=0;i<queued.length;i++){const r=queued[i];db.prepare('INSERT INTO uyap_command_retirements VALUES(?,?,?)').run(r.id,migrationId,'legacy_never_executed');db.prepare("UPDATE uyap_command_queue SET status='archived' WHERE id=?").run(r.id);event(db,r.id,'archived_never_executed');afterRow?.(i+1);}
+  for(let i=0;i<queued.length;i++){const r=queued[i],attempted=Number(r.attempts||0)>0||!!r.dispatched_at,reason=attempted?'legacy_attempted_unverified':'legacy_never_executed';db.prepare('INSERT INTO uyap_command_retirements VALUES(?,?,?)').run(r.id,migrationId,reason);db.prepare("UPDATE uyap_command_queue SET status='archived' WHERE id=?").run(r.id);event(db,r.id,attempted?'archived_attempted_unverified':'archived_never_executed',attempted&&r.error?'legacy_error_present':null);afterRow?.(i+1);}
   db.prepare("INSERT OR REPLACE INTO uyap_query_policy VALUES(1,'user_controlled',?)").run(migrationId);
   const retired=db.prepare('SELECT count(*) n FROM uyap_command_retirements WHERE migration_id=?').get(migrationId).n;
   if(retired!==expectedQueued||db.prepare("SELECT count(*) n FROM uyap_command_queue WHERE status='queued'").get().n)throw Error('post_migration_reconciliation_failed');
