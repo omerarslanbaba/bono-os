@@ -722,7 +722,7 @@ async function processJob(job){
         const loc=db.prepare("SELECT asset_id FROM asset_locations WHERE local_path=?").get(x.stagingPath);
         if(loc)db.prepare("UPDATE uyap_remote_documents SET local_asset_id=?,status='indexed',last_seen_at=datetime('now'),metadata_json=? WHERE id=?")
           .run(loc.asset_id,JSON.stringify({container:true,pendingArchive:true,members:packed.archived.length,duplicates:packed.duplicates,unresolved:packed.unresolved||0,errors:packed.errors}),x.remoteDocumentId);
-        uyap.enqueuePendingDownloads(x.caseId);
+
         return {...x,...scan,container:true,preserved:true,archivedMembers:packed.archived.length,duplicates:packed.duplicates,unresolved:packed.unresolved||0,errors:packed.errors};
       }
       try{if(fs.existsSync(x.stagingPath))fs.unlinkSync(x.stagingPath)}catch{}
@@ -746,7 +746,7 @@ async function processJob(job){
       if(packed.archived.some(a=>path.extname(a.path||"").toLowerCase()===".udf"))jobs.enqueue("analyze_udf_library",{},"uyap-pack-udf:"+job.payload.commandId,25);
       if(packed.archived.some(a=>path.extname(a.path||"").toLowerCase()===".pdf"))jobs.enqueue("analyze_pdf_library",{},"uyap-pack-pdf:"+job.payload.commandId,25);
       jobs.enqueue("rebuild_search",{},"uyap-pack-search:"+job.payload.commandId,30);
-      uyap.enqueuePendingDownloads(x.caseId);
+
       return {...x,container:true,archivedMembers:packed.archived.length,duplicates:packed.duplicates,skipped:packed.skipped.length,errors:[]};
     }
 
@@ -776,7 +776,7 @@ async function processJob(job){
       if(x.sourcePath&&/^BONO_UYAP_/i.test(path.basename(x.sourcePath))){
         try{if(fs.existsSync(x.sourcePath))fs.unlinkSync(x.sourcePath)}catch{}
       }
-      uyap.enqueuePendingDownloads(x.caseId);
+
     }
     return {...x,...scan,localAssetId:loc?.asset_id||null,archived:!!archived?.archived,dedup:!!archived?.dedup,archivePath:archived?.path||null};
   }
@@ -810,8 +810,7 @@ function maintenance(){
   jobs.enqueue("scan_notification_documents",{},"daily-notice-scan:"+now.slice(0,10),83);
   jobs.enqueue("scan_correspondence_matches",{},"daily-corr-match:"+now.slice(0,10),84);
   jobs.enqueue("process_uyap_accounting_documents",{},"accounting-scan:"+now.slice(0,13),77);
-  const uyapCases=db.prepare("SELECT DISTINCT case_id FROM uyap_remote_documents WHERE local_asset_id IS NULL AND status='discovered' LIMIT 100").all();
-  for(const r of uyapCases){try{uyap.enqueuePendingDownloads(r.case_id)}catch{}}
+  // Preserve installed per-file policy: no automatic download enqueue.
   workflow.dueSchedules(new Date());
   jobs.enqueue("uyap_delta_watch",{},"uyap-delta-watch:"+now.slice(0,16),30);
 }

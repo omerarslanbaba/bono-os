@@ -63,7 +63,7 @@ const server=http.createServer(async(req,res)=>{
     if(await require("./uyap_user_query_http")(req,res,{path:p,origin:"http://127.0.0.1:"+PORT,service:userQueries,json,readBody}))return;
     if(documentViewHttp.handleDocumentViewRequest(req,res,db)) return;
     if(req.method==="GET"&&p==="/favicon.ico"){res.writeHead(204);return res.end()}
-    if(req.method==="GET"&&p==="/health") return json(res,200,{ok:true,service:"BONO OS",port:PORT,ui:true,schema:9,uyapExecutionHeld:uyap.executionHeld()});
+    if(req.method==="GET"&&p==="/health") return json(res,200,{ok:true,service:"BONO OS",port:PORT,ui:true,schema:9,uyapExecutionHeld:uyap.executionHeld(),userQueryPolicy:require("./uyap_user_queries").ready(db)?"user_controlled":"held"});
     if(req.method==="GET"&&p==="/api/summary") return json(res,200,repo.summary());
     if(req.method==="GET"&&p==="/api/brief") return json(res,200,repo.brief());
     if(req.method==="GET"&&p==="/api/search") return json(res,200,{query:u.searchParams.get("q")||"",results:repo.search(u.searchParams.get("q")||"",Number(u.searchParams.get("limit")||25))});
