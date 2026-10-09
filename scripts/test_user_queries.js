@@ -42,3 +42,21 @@ db.prepare("UPDATE uyap_endpoints SET path='/avukat_mahkemeleri_sorgula.ajx' WHE
 assert.throws(()=>policy.migrate(db,{expectedQueued:270,backupManifest:{...manifest,queueIdDigest:'wrong'}}),/reconciliation/);
 policy.rollbackHold(db);assert.equal(uyap.claimNext('avukat.uyap.gov.tr').reason,'migration_required');assert.equal(db.prepare("SELECT count(*) n FROM uyap_command_queue WHERE status='archived'").get().n,270);
 db.close();console.log(JSON.stringify({ok:true,tests:['270_retired_and_mapped','transaction_interruption_atomic','idempotent_migration','immutable_history_and_tombstones','late_legacy_result_rejected','automatic_producers_blocked','CBS_unverified','binding_required','user_key_dedup','same_case_active_dedup','explicit_download_selection_and_dedup','active_200_limit','query_while_download_paused','valid_cache_no_enqueue','explicit_refresh','HTTP200_denial_not_success','history_privacy','stale_execution_not_retried','changed_binding_blocks_claim','payload_mutation_blocks_claim','endpoint_alias_cannot_expand_scope','idempotency_reconciles_original_ids','rollback_retains_archive_and_holds'],networkRequests:0}));
+
+
+(function legacy_attempted_unverified_live_shape(){
+  const db=fixture();
+  const ids=db.prepare("SELECT id FROM uyap_command_queue WHERE status='queued' ORDER BY id").all().map(r=>r.id);
+  const stale=ids[0];
+  db.prepare("UPDATE uyap_command_queue SET attempts=1,dispatched_at=datetime('now'),error='HTTP 401' WHERE id=?").run(stale);
+  const manifest={schema:1,verified:true,queueIdDigest:policy.digest(ids),queueCommandIds:ids};
+  const out=policy.migrate(db,{expectedQueued:ids.length,backupManifest:manifest,migrationId:'fresh-live-shape'});
+  must(out.retired===ids.length,'fresh live queue count should retire all queued rows');
+  const r=db.prepare("SELECT reason FROM uyap_command_retirements WHERE command_id=?").get(stale);
+  must(r.reason==='legacy_attempted_unverified','previously dispatched stale row must not be labeled never executed');
+  const ev=db.prepare("SELECT state FROM uyap_query_events WHERE command_id=? ORDER BY id").all(stale).map(x=>x.state);
+  must(ev.includes('legacy_attempted_unverified')&&ev.includes('archived_attempted_unverified'),'attempted stale history missing');
+  must(db.prepare("SELECT count(*) n FROM uyap_command_queue WHERE status='queued'").get().n===0,'legacy queue remained selectable');
+  db.close();
+  console.log(JSON.stringify({ok:true,test:'legacy_attempted_unverified_live_shape',queued:ids.length}));
+})();
