@@ -1,0 +1,501 @@
+{
+  "fixtureMetadata": {
+    "synthetic": true,
+    "liveUyapEvidence": false,
+    "containsRealUyapIdentifiers": false,
+    "sourceContract": "bono.cbs-document-list.v1",
+    "purpose": "PR22 parser-output to PR24 linked-case ownership acceptance."
+  },
+  "linkedCaseGraph": {
+    "processId": "synthetic-acceptance-process",
+    "cases": [
+      {
+        "nodeId": "display-cbs",
+        "bonoCaseId": "synthetic-display",
+        "caseKind": "cbs",
+        "stage": "investigation",
+        "identity": {
+          "state": "verified",
+          "uyapDosyaId": "DISPLAY-A",
+          "unitName": "Synthetic Display Unit",
+          "unitId": "UNIT-DISPLAY",
+          "fileNo": "SYNTH-FILE-DISPLAY"
+        }
+      },
+      {
+        "nodeId": "old-cbs",
+        "bonoCaseId": "synthetic-old",
+        "caseKind": "cbs",
+        "stage": "investigation",
+        "identity": {
+          "state": "verified",
+          "uyapDosyaId": "OLD-A",
+          "unitName": "Synthetic Old Unit",
+          "unitId": "UNIT-OLD",
+          "fileNo": "SYNTH-FILE-OLD"
+        }
+      },
+      {
+        "nodeId": "other-cbs",
+        "bonoCaseId": "synthetic-other",
+        "caseKind": "cbs",
+        "stage": "investigation",
+        "identity": {
+          "state": "verified",
+          "uyapDosyaId": "OTHER-A",
+          "unitName": "Synthetic Other Unit",
+          "unitId": "UNIT-OTHER",
+          "fileNo": "SYNTH-FILE-OTHER"
+        }
+      },
+      {
+        "nodeId": "instruction-a",
+        "bonoCaseId": "synthetic-instruction",
+        "caseKind": "instruction",
+        "stage": "instruction",
+        "identity": {
+          "state": "verified",
+          "uyapDosyaId": "INSTRUCTION-A",
+          "unitName": "Synthetic Instruction Unit",
+          "unitId": "UNIT-INSTRUCTION",
+          "fileNo": "SYNTH-FILE-INSTRUCTION"
+        }
+      },
+      {
+        "nodeId": "candidate-a",
+        "bonoCaseId": "synthetic-candidate",
+        "caseKind": "cbs",
+        "stage": "investigation",
+        "identity": {
+          "state": "verified",
+          "uyapDosyaId": "CANDIDATE-A",
+          "unitName": "Synthetic Candidate Unit",
+          "unitId": "UNIT-CANDIDATE",
+          "fileNo": "SYNTH-FILE-CANDIDATE"
+        }
+      }
+    ],
+    "links": [
+      {
+        "linkId": "old-to-display",
+        "fromCaseNodeId": "old-cbs",
+        "toCaseNodeId": "display-cbs",
+        "relationType": "cbs_successor",
+        "state": "verified",
+        "evidence": {
+          "kind": "synthetic_explicit_reference",
+          "verified": true,
+          "userSelected": false,
+          "source": "synthetic-acceptance"
+        }
+      },
+      {
+        "linkId": "other-to-display",
+        "fromCaseNodeId": "other-cbs",
+        "toCaseNodeId": "display-cbs",
+        "relationType": "related_other",
+        "state": "verified",
+        "evidence": {
+          "kind": "synthetic_explicit_reference",
+          "verified": true,
+          "userSelected": false,
+          "source": "synthetic-acceptance"
+        }
+      },
+      {
+        "linkId": "display-to-instruction",
+        "fromCaseNodeId": "display-cbs",
+        "toCaseNodeId": "instruction-a",
+        "relationType": "instruction_child",
+        "state": "user_selected_unverified",
+        "evidence": {
+          "kind": "user_selection",
+          "verified": false,
+          "userSelected": true,
+          "source": "synthetic-user-choice"
+        }
+      },
+      {
+        "linkId": "display-to-candidate",
+        "fromCaseNodeId": "display-cbs",
+        "toCaseNodeId": "candidate-a",
+        "relationType": "related_other",
+        "state": "unknown",
+        "evidence": {
+          "kind": "unknown",
+          "verified": false,
+          "userSelected": false,
+          "source": "synthetic-unknown"
+        }
+      }
+    ],
+    "documents": []
+  },
+  "displayCaseNodeId": "display-cbs",
+  "viewPathsBySourceCaseNodeId": {
+    "old-cbs": ["old-to-display"],
+    "other-cbs": ["other-to-display"],
+    "instruction-a": ["display-to-instruction"],
+    "candidate-a": ["display-to-candidate"]
+  },
+  "parsed": {
+    "contractVersion": "bono.cbs-document-list.v1",
+    "linkedCaseContract": "bono.linked-legal-cases.v1",
+    "state": "parsed",
+    "fileQueryState": "unknown",
+    "requestState": "succeeded",
+    "parseState": "parsed",
+    "binding": {
+      "verified": true,
+      "reason": null
+    },
+    "groups": [
+      {
+        "reference": "group:0",
+        "view": "tumEvraklar",
+        "display": {
+          "fileNo": null,
+          "type": "unknown"
+        },
+        "relationshipState": "unknown",
+        "sourceIds": ["DISPLAY-A", "OLD-A", "OTHER-A"]
+      },
+      {
+        "reference": "group:1",
+        "view": "tumEvraklar",
+        "display": {
+          "fileNo": null,
+          "type": "instruction"
+        },
+        "relationshipState": "user_selected_unverified",
+        "sourceIds": ["INSTRUCTION-A"]
+      },
+      {
+        "reference": "group:2",
+        "view": "tumEvraklar",
+        "display": {
+          "fileNo": null,
+          "type": "unknown"
+        },
+        "relationshipState": "unknown",
+        "sourceIds": ["CANDIDATE-A"]
+      }
+    ],
+    "occurrences": [
+      {
+        "reference": "occurrence:0",
+        "view": "tumEvraklar",
+        "groupReference": "group:0",
+        "kind": "main",
+        "parentReference": null,
+        "metadata": {
+          "dosyaId": "DISPLAY-A",
+          "evrakId": "SAME-EVRAK",
+          "ggEvrakId": "GG-DISPLAY"
+        },
+        "source": {
+          "uyapDosyaId": "DISPLAY-A",
+          "evrakId": "SAME-EVRAK",
+          "ownershipState": "verified"
+        },
+        "visibleFromUyapDosyaId": "DISPLAY-A",
+        "sourceMatchesTarget": true,
+        "relationshipState": "verified",
+        "logicalKey": "[\"DISPLAY-A\",\"SAME-EVRAK\"]",
+        "permission": "unknown",
+        "reportedParentId": null,
+        "parentIdentityEquality": "unknown",
+        "downloadReference": "unknown",
+        "metadataImportAllowed": false
+      },
+      {
+        "reference": "occurrence:1",
+        "view": "tumEvraklar",
+        "groupReference": "group:0",
+        "kind": "main",
+        "parentReference": null,
+        "metadata": {
+          "dosyaId": "OLD-A",
+          "evrakId": "SAME-EVRAK",
+          "ggEvrakId": "GG-OLD-SAME"
+        },
+        "source": {
+          "uyapDosyaId": "OLD-A",
+          "evrakId": "SAME-EVRAK",
+          "ownershipState": "unknown"
+        },
+        "visibleFromUyapDosyaId": "DISPLAY-A",
+        "sourceMatchesTarget": false,
+        "relationshipState": "unknown",
+        "logicalKey": "[\"OLD-A\",\"SAME-EVRAK\"]",
+        "permission": "unknown",
+        "reportedParentId": null,
+        "parentIdentityEquality": "unknown",
+        "downloadReference": "unknown",
+        "metadataImportAllowed": false
+      },
+      {
+        "reference": "occurrence:2",
+        "view": "tumEvraklar",
+        "groupReference": "group:0",
+        "kind": "main",
+        "parentReference": null,
+        "metadata": {
+          "dosyaId": "OLD-A",
+          "evrakId": "REPEAT-EVRAK",
+          "ggEvrakId": "GG-REPEAT-FULL"
+        },
+        "source": {
+          "uyapDosyaId": "OLD-A",
+          "evrakId": "REPEAT-EVRAK",
+          "ownershipState": "unknown"
+        },
+        "visibleFromUyapDosyaId": "DISPLAY-A",
+        "sourceMatchesTarget": false,
+        "relationshipState": "unknown",
+        "logicalKey": "[\"OLD-A\",\"REPEAT-EVRAK\"]",
+        "permission": "unknown",
+        "reportedParentId": null,
+        "parentIdentityEquality": "unknown",
+        "downloadReference": "unknown",
+        "metadataImportAllowed": false
+      },
+      {
+        "reference": "occurrence:3",
+        "view": "son20Evrak",
+        "groupReference": null,
+        "kind": "main",
+        "parentReference": null,
+        "metadata": {
+          "dosyaId": "OLD-A",
+          "evrakId": "REPEAT-EVRAK",
+          "ggEvrakId": "GG-REPEAT-RECENT"
+        },
+        "source": {
+          "uyapDosyaId": "OLD-A",
+          "evrakId": "REPEAT-EVRAK",
+          "ownershipState": "unknown"
+        },
+        "visibleFromUyapDosyaId": "DISPLAY-A",
+        "sourceMatchesTarget": false,
+        "relationshipState": "unknown",
+        "logicalKey": "[\"OLD-A\",\"REPEAT-EVRAK\"]",
+        "permission": "unknown",
+        "reportedParentId": null,
+        "parentIdentityEquality": "unknown",
+        "downloadReference": "unknown",
+        "metadataImportAllowed": false
+      },
+      {
+        "reference": "occurrence:4",
+        "view": "tumEvraklar",
+        "groupReference": "group:0",
+        "kind": "attachment",
+        "parentReference": "occurrence:2",
+        "metadata": {
+          "anaEvrakId": 17,
+          "evrakId": "ATTACH-1",
+          "sira": 3,
+          "ekTuru": "SYNTH-EK",
+          "dosyaId": "OLD-A"
+        },
+        "source": {
+          "uyapDosyaId": "OLD-A",
+          "evrakId": "ATTACH-1",
+          "ownershipState": "unknown"
+        },
+        "visibleFromUyapDosyaId": "DISPLAY-A",
+        "sourceMatchesTarget": false,
+        "relationshipState": "unknown",
+        "logicalKey": "[\"OLD-A\",\"ATTACH-1\"]",
+        "permission": "unknown",
+        "reportedParentId": 17,
+        "parentIdentityEquality": "unknown",
+        "downloadReference": "unknown",
+        "metadataImportAllowed": false
+      },
+      {
+        "reference": "occurrence:5",
+        "view": "tumEvraklar",
+        "groupReference": "group:0",
+        "kind": "attachment",
+        "parentReference": "occurrence:2",
+        "metadata": {
+          "anaEvrakId": "PARENT-UNKNOWN",
+          "evrakId": "ATTACH-NO-SOURCE",
+          "sira": "04",
+          "ekTuru": "SYNTH-EK-NO-SOURCE"
+        },
+        "source": {
+          "uyapDosyaId": null,
+          "evrakId": "ATTACH-NO-SOURCE",
+          "ownershipState": "unknown"
+        },
+        "visibleFromUyapDosyaId": "DISPLAY-A",
+        "sourceMatchesTarget": null,
+        "relationshipState": "unknown",
+        "logicalKey": null,
+        "permission": "unknown",
+        "reportedParentId": "PARENT-UNKNOWN",
+        "parentIdentityEquality": "unknown",
+        "downloadReference": "unknown",
+        "metadataImportAllowed": false
+      },
+      {
+        "reference": "occurrence:6",
+        "view": "tumEvraklar",
+        "groupReference": "group:1",
+        "kind": "main",
+        "parentReference": null,
+        "metadata": {
+          "dosyaId": "INSTRUCTION-A",
+          "evrakId": "INSTRUCTION-EVRAK",
+          "ggEvrakId": "GG-INSTRUCTION"
+        },
+        "source": {
+          "uyapDosyaId": "INSTRUCTION-A",
+          "evrakId": "INSTRUCTION-EVRAK",
+          "ownershipState": "unknown"
+        },
+        "visibleFromUyapDosyaId": "DISPLAY-A",
+        "sourceMatchesTarget": false,
+        "relationshipState": "unknown",
+        "logicalKey": "[\"INSTRUCTION-A\",\"INSTRUCTION-EVRAK\"]",
+        "permission": "unknown",
+        "reportedParentId": null,
+        "parentIdentityEquality": "unknown",
+        "downloadReference": "unknown",
+        "metadataImportAllowed": false
+      },
+      {
+        "reference": "occurrence:7",
+        "view": "tumEvraklar",
+        "groupReference": "group:2",
+        "kind": "main",
+        "parentReference": null,
+        "metadata": {
+          "dosyaId": "CANDIDATE-A",
+          "evrakId": "CANDIDATE-EVRAK",
+          "ggEvrakId": "GG-CANDIDATE"
+        },
+        "source": {
+          "uyapDosyaId": "CANDIDATE-A",
+          "evrakId": "CANDIDATE-EVRAK",
+          "ownershipState": "unknown"
+        },
+        "visibleFromUyapDosyaId": "DISPLAY-A",
+        "sourceMatchesTarget": false,
+        "relationshipState": "unknown",
+        "logicalKey": "[\"CANDIDATE-A\",\"CANDIDATE-EVRAK\"]",
+        "permission": "unknown",
+        "reportedParentId": null,
+        "parentIdentityEquality": "unknown",
+        "downloadReference": "unknown",
+        "metadataImportAllowed": false
+      }
+    ],
+    "logicalDocuments": [
+      {
+        "key": "[\"DISPLAY-A\",\"SAME-EVRAK\"]",
+        "source": {
+          "uyapDosyaId": "DISPLAY-A",
+          "evrakId": "SAME-EVRAK"
+        },
+        "occurrenceReferences": ["occurrence:0"],
+        "physicalContent": {
+          "sha256": null,
+          "integrityVerified": false
+        }
+      },
+      {
+        "key": "[\"OLD-A\",\"SAME-EVRAK\"]",
+        "source": {
+          "uyapDosyaId": "OLD-A",
+          "evrakId": "SAME-EVRAK"
+        },
+        "occurrenceReferences": ["occurrence:1"],
+        "physicalContent": {
+          "sha256": null,
+          "integrityVerified": false
+        }
+      },
+      {
+        "key": "[\"OLD-A\",\"REPEAT-EVRAK\"]",
+        "source": {
+          "uyapDosyaId": "OLD-A",
+          "evrakId": "REPEAT-EVRAK"
+        },
+        "occurrenceReferences": ["occurrence:2", "occurrence:3"],
+        "physicalContent": {
+          "sha256": null,
+          "integrityVerified": false
+        }
+      },
+      {
+        "key": "[\"OLD-A\",\"ATTACH-1\"]",
+        "source": {
+          "uyapDosyaId": "OLD-A",
+          "evrakId": "ATTACH-1"
+        },
+        "occurrenceReferences": ["occurrence:4"],
+        "physicalContent": {
+          "sha256": null,
+          "integrityVerified": false
+        }
+      },
+      {
+        "key": "[\"INSTRUCTION-A\",\"INSTRUCTION-EVRAK\"]",
+        "source": {
+          "uyapDosyaId": "INSTRUCTION-A",
+          "evrakId": "INSTRUCTION-EVRAK"
+        },
+        "occurrenceReferences": ["occurrence:6"],
+        "physicalContent": {
+          "sha256": null,
+          "integrityVerified": false
+        }
+      },
+      {
+        "key": "[\"CANDIDATE-A\",\"CANDIDATE-EVRAK\"]",
+        "source": {
+          "uyapDosyaId": "CANDIDATE-A",
+          "evrakId": "CANDIDATE-EVRAK"
+        },
+        "occurrenceReferences": ["occurrence:7"],
+        "physicalContent": {
+          "sha256": null,
+          "integrityVerified": false
+        }
+      }
+    ],
+    "issues": [
+      {
+        "code": "source_id_missing_or_invalid",
+        "reference": "occurrence:5"
+      }
+    ],
+    "counts": {
+      "mainOccurrences": 5,
+      "attachmentOccurrences": 2,
+      "recentMainOccurrences": 1,
+      "recentAttachmentOccurrences": 0,
+      "logicalIdentities": 6,
+      "physicalFiles": null
+    },
+    "completeness": {
+      "capture": true,
+      "structure": true,
+      "list": "unknown",
+      "pageTotal": 1,
+      "pageTotalMeaning": "unknown"
+    },
+    "metadataImportAllowed": false,
+    "importBlockers": [
+      "production_cbs_import_gate_closed",
+      "source_relationship_unverified",
+      "pagination_semantics_unverified"
+    ],
+    "downloadAllowed": false,
+    "physicalIntegrity": "not_checked"
+  }
+}

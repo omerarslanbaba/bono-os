@@ -1,0 +1,228 @@
+{
+  "fixtureMetadata": {
+    "synthetic": true,
+    "liveUyapEvidence": false,
+    "purpose": "Structural tests for linked legal case lifecycle. No identifier is real UYAP evidence."
+  },
+  "processId": "fixture-process-001",
+  "cases": [
+    {
+      "nodeId": "cbs-old",
+      "bonoCaseId": "fixture-101",
+      "caseKind": "cbs",
+      "stage": "investigation",
+      "identity": {
+        "state": "verified",
+        "uyapDosyaId": "FIXTURE-CBS-OLD-DOSYA",
+        "unitName": "Fixture Cumhuriyet Başsavcılığı",
+        "unitId": "FIXTURE-UNIT-CBS",
+        "fileNo": "2025/100"
+      }
+    },
+    {
+      "nodeId": "cbs-new",
+      "bonoCaseId": "fixture-102",
+      "caseKind": "cbs",
+      "stage": "investigation",
+      "identity": {
+        "state": "verified",
+        "uyapDosyaId": "FIXTURE-CBS-NEW-DOSYA",
+        "unitName": "Fixture Cumhuriyet Başsavcılığı",
+        "unitId": "FIXTURE-UNIT-CBS",
+        "fileNo": "2026/200"
+      }
+    },
+    {
+      "nodeId": "instruction-a",
+      "bonoCaseId": "fixture-103",
+      "caseKind": "instruction",
+      "stage": "instruction",
+      "identity": {
+        "state": "verified",
+        "uyapDosyaId": "FIXTURE-TALIMAT-A-DOSYA",
+        "unitName": "Fixture Talimat Bürosu",
+        "unitId": "FIXTURE-UNIT-TALIMAT",
+        "fileNo": "2026/45"
+      }
+    },
+    {
+      "nodeId": "criminal-first",
+      "bonoCaseId": "fixture-104",
+      "caseKind": "court",
+      "stage": "first_instance",
+      "identity": {
+        "state": "verified",
+        "uyapDosyaId": "FIXTURE-CEZA-FIRST-DOSYA",
+        "unitName": "Fixture 1. Ağır Ceza Mahkemesi",
+        "unitId": "FIXTURE-UNIT-CEZA",
+        "fileNo": "2026/75"
+      }
+    },
+    {
+      "nodeId": "regional-appeal",
+      "bonoCaseId": "fixture-105",
+      "caseKind": "court",
+      "stage": "regional_appeal",
+      "identity": {
+        "state": "verified",
+        "uyapDosyaId": "FIXTURE-ISTINAF-DOSYA",
+        "unitName": "Fixture Bölge Adliye Mahkemesi Ceza Dairesi",
+        "unitId": "FIXTURE-UNIT-BAM",
+        "fileNo": "2027/10"
+      }
+    },
+    {
+      "nodeId": "cassation",
+      "bonoCaseId": "fixture-106",
+      "caseKind": "court",
+      "stage": "cassation",
+      "identity": {
+        "state": "verified",
+        "uyapDosyaId": "FIXTURE-TEMYIZ-DOSYA",
+        "unitName": "Fixture Yargıtay Ceza Dairesi",
+        "unitId": "FIXTURE-UNIT-YARGITAY",
+        "fileNo": "2028/20"
+      }
+    },
+    {
+      "nodeId": "instruction-candidate",
+      "bonoCaseId": "fixture-107",
+      "caseKind": "instruction",
+      "stage": "instruction",
+      "identity": {
+        "state": "unverified",
+        "uyapDosyaId": null,
+        "unitName": "Fixture Talimat Bürosu",
+        "unitId": null,
+        "fileNo": "2026/99"
+      }
+    }
+  ],
+  "links": [
+    {
+      "linkId": "link-old-new",
+      "fromCaseNodeId": "cbs-old",
+      "toCaseNodeId": "cbs-new",
+      "relationType": "cbs_successor",
+      "state": "verified",
+      "evidence": {
+        "kind": "fixture_explicit_reference",
+        "verified": true,
+        "userSelected": false,
+        "source": "synthetic-contract-test"
+      }
+    },
+    {
+      "linkId": "link-new-court",
+      "fromCaseNodeId": "cbs-new",
+      "toCaseNodeId": "criminal-first",
+      "relationType": "prosecution_to_court",
+      "state": "verified",
+      "evidence": {
+        "kind": "fixture_explicit_reference",
+        "verified": true,
+        "userSelected": false,
+        "source": "synthetic-contract-test"
+      }
+    },
+    {
+      "linkId": "link-new-instruction",
+      "fromCaseNodeId": "cbs-new",
+      "toCaseNodeId": "instruction-a",
+      "relationType": "instruction_child",
+      "state": "user_selected_unverified",
+      "evidence": {
+        "kind": "user_selection",
+        "verified": false,
+        "userSelected": true,
+        "source": "synthetic-user-choice"
+      }
+    },
+    {
+      "linkId": "link-court-appeal",
+      "fromCaseNodeId": "criminal-first",
+      "toCaseNodeId": "regional-appeal",
+      "relationType": "appeal_to",
+      "state": "verified",
+      "evidence": {
+        "kind": "fixture_explicit_reference",
+        "verified": true,
+        "userSelected": false,
+        "source": "synthetic-contract-test"
+      }
+    },
+    {
+      "linkId": "link-appeal-cassation",
+      "fromCaseNodeId": "regional-appeal",
+      "toCaseNodeId": "cassation",
+      "relationType": "appeal_to",
+      "state": "verified",
+      "evidence": {
+        "kind": "fixture_explicit_reference",
+        "verified": true,
+        "userSelected": false,
+        "source": "synthetic-contract-test"
+      }
+    },
+    {
+      "linkId": "link-new-instruction-unknown",
+      "fromCaseNodeId": "cbs-new",
+      "toCaseNodeId": "instruction-candidate",
+      "relationType": "instruction_child",
+      "state": "unknown",
+      "evidence": {
+        "kind": "unknown",
+        "verified": false,
+        "userSelected": false,
+        "source": "synthetic-candidate"
+      }
+    }
+  ],
+  "documents": [
+    {
+      "documentKey": "FIXTURE-CBS-OLD-DOSYA::EVRAK-OLD-1",
+      "source": {
+        "caseNodeId": "cbs-old",
+        "uyapDosyaId": "FIXTURE-CBS-OLD-DOSYA",
+        "unitName": "Fixture Cumhuriyet Başsavcılığı",
+        "fileNo": "2025/100",
+        "evrakId": "EVRAK-OLD-1",
+        "ownershipState": "verified"
+      },
+      "physicalContent": {
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "integrityVerified": true
+      }
+    },
+    {
+      "documentKey": "FIXTURE-CEZA-FIRST-DOSYA::EVRAK-COURT-9",
+      "source": {
+        "caseNodeId": "criminal-first",
+        "uyapDosyaId": "FIXTURE-CEZA-FIRST-DOSYA",
+        "unitName": "Fixture 1. Ağır Ceza Mahkemesi",
+        "fileNo": "2026/75",
+        "evrakId": "EVRAK-COURT-9",
+        "ownershipState": "verified"
+      },
+      "physicalContent": {
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "integrityVerified": true
+      }
+    },
+    {
+      "documentKey": "FIXTURE-TALIMAT-A-DOSYA::EVRAK-TALIMAT-1",
+      "source": {
+        "caseNodeId": "instruction-a",
+        "uyapDosyaId": "FIXTURE-TALIMAT-A-DOSYA",
+        "unitName": "Fixture Talimat Bürosu",
+        "fileNo": "2026/45",
+        "evrakId": "EVRAK-TALIMAT-1",
+        "ownershipState": "verified"
+      },
+      "physicalContent": {
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "integrityVerified": true
+      }
+    }
+  ]
+}

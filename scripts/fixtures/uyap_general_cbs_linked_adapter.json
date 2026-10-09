@@ -1,0 +1,81 @@
+{
+  "fixtureMetadata": {
+    "synthetic": true,
+    "liveUyapEvidence": false,
+    "containsRealUyapIdentifiers": false,
+    "purpose": "Synthetic general CBS parser output compatibility with linked-case contract."
+  },
+  "parserOutput": {
+    "tumEvraklar": {
+      "ANA DOSYA EVRAKLARI": [
+        {
+          "dosyaId": "FIXTURE-CBS-NEW-DOSYA",
+          "evrakId": "EVRAK-SHARED-ID",
+          "ggEvrakId": "GG-MAIN-1",
+          "ekEvrakListesi": [
+            {
+              "anaEvrakId": "PARENT-OPAQUE-1",
+              "evrakId": "EK-1",
+              "sira": 1,
+              "ekTuru": "fixture_attachment"
+            }
+          ]
+        },
+        {
+          "dosyaId": "FIXTURE-CBS-OLD-DOSYA",
+          "evrakId": "EVRAK-OLD-2",
+          "ggEvrakId": "GG-MAIN-2"
+        }
+      ],
+      "KARISIK GORUNUM": [
+        {
+          "dosyaId": "FIXTURE-CBS-OLD-DOSYA",
+          "evrakId": "EVRAK-SHARED-ID",
+          "ggEvrakId": "GG-MIX-1"
+        },
+        {
+          "dosyaId": "FIXTURE-CBS-OLD-DOSYA",
+          "evrakId": "EVRAK-OLD-2",
+          "ggEvrakId": "GG-MIX-REPEAT"
+        },
+        {
+          "dosyaId": "FIXTURE-CBS-NEW-DOSYA",
+          "evrakId": "EVRAK-NEW-ONLY",
+          "ggEvrakId": "GG-MIX-2"
+        },
+        {
+          "evrakId": "EVRAK-UNKNOWN-SOURCE",
+          "ggEvrakId": "GG-MIX-3"
+        }
+      ],
+      "KULLANICI SECIMLI BAGLANTI GORUNUMU": [
+        {
+          "dosyaId": "FIXTURE-TALIMAT-A-DOSYA",
+          "evrakId": "EVRAK-TALIMAT-VIEW",
+          "ggEvrakId": "GG-TAL-1"
+        }
+      ]
+    },
+    "son20Evrak": [
+      {
+        "dosyaId": "FIXTURE-CBS-OLD-DOSYA",
+        "evrakId": "EVRAK-OLD-2",
+        "ggEvrakId": "GG-RECENT-1"
+      },
+      {
+        "dosyaId": "FIXTURE-CBS-NEW-DOSYA",
+        "evrakId": "EVRAK-SHARED-ID",
+        "ggEvrakId": "GG-RECENT-2"
+      }
+    ]
+  },
+  "displayCaseNodeId": "cbs-new",
+  "viewPathsBySourceCaseNodeId": {
+    "cbs-old": [
+      "link-old-new"
+    ],
+    "instruction-a": [
+      "link-new-instruction"
+    ]
+  }
+}
