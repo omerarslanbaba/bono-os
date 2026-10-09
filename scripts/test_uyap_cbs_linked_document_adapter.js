@@ -47,7 +47,8 @@ const attachment=adapted.occurrences.find(o=>o.occurrenceId==="tumEvraklar:g0:m0
 must(main.documentRole==="main"&&attachment.documentRole==="attachment","main/attachment roles collapsed");
 must(attachment.attachment.parentMainEvrakId===main.source.evrakId,"attachment parent main evrak id lost");
 must(attachment.attachment.anaEvrakId==="PARENT-OPAQUE-1","anaEvrakId not preserved");
-must(attachment.source.uyapDosyaId===main.source.uyapDosyaId,"nested attachment did not inherit explicit parent source");
+must(attachment.source.uyapDosyaId===null&&attachment.source.state==="unknown","missing attachment source was inherited from parent");
+must(attachment.attachment.missingSourceNotInherited===true,"missing attachment source inheritance flag wrong");
 must(attachment.attachment.anaEvrakIdSemantics==="preserved_not_inferred","anaEvrakId semantics were guessed");
 pass("main_attachment_source_and_parent_concepts_remain_separate");
 
@@ -62,7 +63,7 @@ must(new Set(sharedRecords.map(d=>d.source.uyapDosyaId)).size===2,"shared evrakI
 must(adapted.identityDiagnostics.evrakIdCollisions.some(x=>x.evrakId==="EVRAK-SHARED-ID"&&x.distinctSourceCount===2),"cross-source evrakId collision not diagnosed");
 pass("same_evrak_id_across_sources_stays_distinct");
 
-const old2=adapted.legalDocuments.find(d=>d.legalDocumentKey==="FIXTURE-CBS-OLD-DOSYA::EVRAK-OLD-2");
+const old2=adapted.legalDocuments.find(d=>d.legalDocumentKey===JSON.stringify(["FIXTURE-CBS-OLD-DOSYA","EVRAK-OLD-2"]));
 must(old2&&old2.occurrenceIds.length===3,"same source document repeated across groups/son20 should preserve occurrences");
 must(old2.occurrenceIds.filter(x=>x.startsWith("tumEvraklar:")).length===2,"same source document across two dynamic groups lost an occurrence");
 must(old2.occurrenceIds.some(x=>x.startsWith("son20Evrak:")),"son20 alternative view occurrence provenance lost");
@@ -93,7 +94,7 @@ const scope=adapter.buildAutomaticDownloadScope(adapted);
 must(scope.userSelectedUnverifiedIncluded===false&&scope.unknownSourceIncluded===false,"automatic scope safety flags wrong");
 must(!scope.documentKeys.includes(userSelected.legalDocumentKey),"user-selected unverified document entered automatic scope");
 must(!scope.documentKeys.includes(unknown.legalDocumentKey),"unknown source entered automatic scope");
-must(scope.documentKeys.includes("FIXTURE-CBS-OLD-DOSYA::EVRAK-OLD-2"),"verified related source missing from automatic scope");
+must(scope.documentKeys.includes(JSON.stringify(["FIXTURE-CBS-OLD-DOSYA","EVRAK-OLD-2"])),"verified related source missing from automatic scope");
 pass("automatic_download_scope_contains_only_verified_source_and_verified_path");
 
 const groupNameTrap=JSON.parse(JSON.stringify(fixture));
@@ -144,9 +145,10 @@ const attachmentConflict=adapter.adaptGeneralCbsParserOutput({
   displayCaseNodeId:"cbs-new"
 });
 const conflict=attachmentConflict.occurrences.find(o=>o.documentRole==="attachment");
-must(conflict.source.state==="unknown"&&conflict.source.reason==="attachment_source_conflicts_with_parent_source","attachment source conflict was guessed");
-must(conflict.autoDownloadEligible===false,"conflicting attachment source entered auto scope");
-pass("attachment_source_conflict_fails_closed");
+must(conflict.source.state==="verified"&&conflict.source.uyapDosyaId==="FIXTURE-CBS-OLD-DOSYA","explicit attachment source was discarded");
+must(conflict.attachment.parentSourceMatches===false,"parent/source mismatch diagnostic missing");
+must(conflict.autoDownloadEligible===false,"attachment without explicit linked path entered auto scope");
+pass("attachment_explicit_source_preserved_without_parent_inheritance");
 
 console.log(JSON.stringify({
   ok:true,

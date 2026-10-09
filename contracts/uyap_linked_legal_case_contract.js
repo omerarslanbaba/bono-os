@@ -17,15 +17,19 @@ function text(value){
   return s||null;
 }
 
+function opaque(value){
+  return typeof value==="string"&&value.length>0?value:null;
+}
+
 function caseIdentityKey(identity={}){
-  const dosyaId=text(identity.uyapDosyaId);
-  return dosyaId?`uyap:${dosyaId}`:null;
+  const dosyaId=opaque(identity.uyapDosyaId);
+  return dosyaId?JSON.stringify(["uyap",dosyaId]):null;
 }
 
 function documentSourceKey(source={}){
-  const dosyaId=text(source.uyapDosyaId);
-  const evrakId=text(source.evrakId);
-  return dosyaId&&evrakId?`${dosyaId}::${evrakId}`:null;
+  const dosyaId=opaque(source.uyapDosyaId);
+  const evrakId=opaque(source.evrakId);
+  return dosyaId&&evrakId?JSON.stringify([dosyaId,evrakId]):null;
 }
 
 function validSha256(value){
@@ -41,7 +45,7 @@ function normalizeCaseNode(input={}){
     stage:text(input.stage),
     identity:{
       state:text(identity.state)||"unknown",
-      uyapDosyaId:text(identity.uyapDosyaId),
+      uyapDosyaId:opaque(identity.uyapDosyaId),
       unitName:text(identity.unitName),
       unitId:text(identity.unitId),
       fileNo:text(identity.fileNo)
@@ -101,10 +105,10 @@ function normalizeDocument(input={}){
     documentKey:text(input.documentKey)||documentSourceKey(source),
     source:{
       caseNodeId:text(source.caseNodeId),
-      uyapDosyaId:text(source.uyapDosyaId),
+      uyapDosyaId:opaque(source.uyapDosyaId),
       unitName:text(source.unitName),
       fileNo:text(source.fileNo),
-      evrakId:text(source.evrakId),
+      evrakId:opaque(source.evrakId),
       ownershipState:text(source.ownershipState)||"unknown"
     },
     physicalContent:{

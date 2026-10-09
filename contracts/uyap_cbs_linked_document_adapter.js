@@ -9,9 +9,18 @@ function text(value){
   return s||null;
 }
 
+function opaque(value){
+  return typeof value==="string"&&value.length>0?value:null;
+}
+
+function scalarOrNull(value){
+  return value===null||["string","boolean"].includes(typeof value)||
+    (typeof value==="number"&&Number.isFinite(value))?value:null;
+}
+
 function sourceDocumentKey(dosyaId,evrakId){
-  const d=text(dosyaId),e=text(evrakId);
-  return d&&e?`${d}::${e}`:null;
+  const d=opaque(dosyaId),e=opaque(evrakId);
+  return d&&e?JSON.stringify([d,e]):null;
 }
 
 function makeOccurrenceId(surface,groupIndex,mainIndex,attachmentIndex=null){
@@ -34,13 +43,13 @@ function validateGraph(graphInput){
 }
 
 function caseForDosyaId(graph,dosyaId){
-  const id=text(dosyaId);
+  const id=opaque(dosyaId);
   if(!id)return null;
   return (graph.cases||[]).find(c=>c?.identity?.uyapDosyaId===id)||null;
 }
 
 function sourceIdentity(graph,dosyaId,evrakId){
-  const id=text(dosyaId),docId=text(evrakId);
+  const id=opaque(dosyaId),docId=opaque(evrakId);
   if(!id||!docId){
     return {
       state:"unknown",
@@ -140,8 +149,8 @@ function normalizeMainOccurrence({
     legalDocumentKey:legalKey,
     source:{
       ...source,
-      ggEvrakId:text(item?.ggEvrakId),
-      basis:text(item?.dosyaId)?"main_item_explicit_dosya_id":"unknown"
+      ggEvrakId:Object.hasOwn(item||{},"ggEvrakId")?scalarOrNull(item.ggEvrakId):null,
+      basis:opaque(item?.dosyaId)?"main_item_explicit_dosya_id":"unknown"
     },
     attachment:null,
     ...views,
@@ -154,16 +163,10 @@ function normalizeAttachmentOccurrence({
   displayCaseNodeId,viewPathsBySourceCaseNodeId
 }){
   const occurrenceId=makeOccurrenceId(surface,groupIndex,mainIndex,attachmentIndex);
-  const ownDosyaId=text(item?.dosyaId);
-  const parentDosyaId=text(parentItem?.dosyaId);
-  const sourceConflict=!!(ownDosyaId&&parentDosyaId&&ownDosyaId!==parentDosyaId);
-  const effectiveDosyaId=sourceConflict?null:(ownDosyaId||parentDosyaId);
-  const source=sourceIdentity(graph,effectiveDosyaId,item?.evrakId);
-  if(sourceConflict){
-    source.state="unknown";
-    source.caseNodeId=null;
-    source.reason="attachment_source_conflicts_with_parent_source";
-  }
+  const ownDosyaId=opaque(item?.dosyaId);
+  const parentDosyaId=opaque(parentItem?.dosyaId);
+  const source=sourceIdentity(graph,ownDosyaId,item?.evrakId);
+  const parentSourceMatches=ownDosyaId&&parentDosyaId?ownDosyaId===parentDosyaId:null;
   const views=projectionForOccurrence(graph,source,displayCaseNodeId,viewPathsBySourceCaseNodeId);
   const legalKey=sourceDocumentKey(source.uyapDosyaId,source.evrakId)||`unknown-source::${occurrenceId}`;
   return {
@@ -181,21 +184,17 @@ function normalizeAttachmentOccurrence({
     legalDocumentKey:legalKey,
     source:{
       ...source,
-      basis:sourceConflict
-        ?"conflict"
-        :ownDosyaId
-          ?"attachment_item_explicit_dosya_id"
-          :parentDosyaId
-            ?"parent_main_explicit_dosya_id"
-            :"unknown"
+      basis:ownDosyaId?"attachment_item_explicit_dosya_id":"unknown"
     },
     attachment:{
-      anaEvrakId:text(item?.anaEvrakId),
-      parentMainEvrakId:text(parentItem?.evrakId),
-      parentMainGgEvrakId:text(parentItem?.ggEvrakId),
-      sira:item?.sira??null,
-      ekTuru:text(item?.ekTuru),
+      anaEvrakId:Object.hasOwn(item||{},"anaEvrakId")?scalarOrNull(item.anaEvrakId):null,
+      parentMainEvrakId:opaque(parentItem?.evrakId),
+      parentMainGgEvrakId:Object.hasOwn(parentItem||{},"ggEvrakId")?scalarOrNull(parentItem.ggEvrakId):null,
+      sira:Object.hasOwn(item||{},"sira")?scalarOrNull(item.sira):null,
+      ekTuru:Object.hasOwn(item||{},"ekTuru")?scalarOrNull(item.ekTuru):null,
       parentBasis:"nested_under_main",
+      parentSourceMatches,
+      missingSourceNotInherited:!ownDosyaId,
       anaEvrakIdSemantics:"preserved_not_inferred"
     },
     ...views,

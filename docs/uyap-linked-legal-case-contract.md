@@ -138,7 +138,7 @@ Belge kaydı kaynak kimliğini taşır:
 
 ```json
 {
-  "documentKey": "<dosyaId>::<evrakId>",
+  "documentKey": "[\"<dosyaId>\",\"<evrakId>\"]",
   "source": {
     "caseNodeId": "cbs-old",
     "uyapDosyaId": "<source dosyaId>",
@@ -348,7 +348,7 @@ alanlarını ayrı saklar.
 
 Mükerrerlik anahtarı:
 
-`<source dosyaId>::<evrakId>`
+`JSON.stringify([source dosyaId, evrakId])`
 
 `evrakId` tek başına unique kabul edilmez.
 
@@ -408,3 +408,115 @@ Adapter tarafına ayrıca runtime entegrasyonu şu üç şeyi verir:
 Parser'ın grup başlığından case/link/verified üretmesi gerekmez ve istenmez.
 
 Bu arayüz Core, Bridge, DB, migration veya download motoru davranışı tanımlamaz.
+
+
+## 13. PR #22 `bono.cbs-document-list.v1` → PR #24 aidiyet kabulü
+
+Kabul referansı: PR #22 head `4965f588a79950376fe144f53c4f3c94fdcd1771`.
+
+PR #22'nin yayınlanmış parser çıktısı ham `tumEvraklar/son20Evrak` ağacı değildir. Parser şu normalize edilmiş yapıyı yayınlar:
+
+- `groups[]`
+- `occurrences[]`
+- `logicalDocuments[]`
+- `binding`
+- `completeness`
+- parse/request durumları ve güvenlik bayrakları.
+
+Bu nedenle PR #24'ün önceki ham-response adaptörü parser implementasyonuna bağlanmaz. Yayınlanmış parser çıktısı için en küçük uyumluluk sınırı:
+
+`contracts/uyap_cbs_document_list_compat.js`
+
+Contract:
+
+`bono.cbs-document-list-linked-compat.v1`
+
+Kaynak contract yalnız:
+
+`bono.cbs-document-list.v1`
+
+olarak kabul edilir.
+
+### Alan eşleştirme tablosu
+
+| PR #22 alanı | Yayınlanmış tip | PR #24 karşılığı | Aidiyet kuralı |
+| --- | --- | --- | --- |
+| `occurrence.source.uyapDosyaId` | non-empty string veya `null` | `occurrence.source.uyapDosyaId` | Karakterleri aynen korunur; trim/decode/alias yoktur. |
+| `occurrence.metadata.dosyaId` | scalar, varsa string | source ile çapraz doğrulama | Varsa `source.uyapDosyaId` ile exact aynı olmalıdır; farklıysa kabul reddedilir. |
+| `occurrence.source.evrakId` | non-empty string veya `null` | `occurrence.source.evrakId` | Exact korunur; tek başına global unique sayılmaz. |
+| `occurrence.metadata.evrakId` | scalar, varsa string | source ile çapraz doğrulama | Varsa source `evrakId` ile exact aynı olmalıdır. |
+| `occurrence.metadata.ggEvrakId` | optional scalar | `occurrence.metadata.ggEvrakId` | Tip ve değer kayıpsız korunur; source-case kimliği değildir. |
+| `occurrence.reportedParentId` / `metadata.anaEvrakId` | optional scalar | `metadata.anaEvrakId`, `attachment.anaEvrakId` | Tip korunur. İkisi birlikte varsa `Object.is` eşitliği gerekir. Parent `evrakId` eşitliği varsayılmaz. |
+| `occurrence.metadata.sira` | optional scalar | `metadata.sira`, `attachment.sira` | Number/string ayrımı dahil tip korunur; coercion yoktur. |
+| `occurrence.metadata.ekTuru` | optional scalar | `metadata.ekTuru`, `attachment.ekTuru` | Kayıpsız korunur; ilişki türüne çevrilmez. |
+| `occurrence.kind` | `main\|attachment` | `documentRole` | Ana evrak ve ek evrak ayrı kalır. |
+| `occurrence.parentReference` | string veya `null` | `attachment.parentReference` | Yalnız parser occurrence bağıdır; eksik `dosyaId` üretmek için kullanılmaz. |
+| `occurrence.visibleFromUyapDosyaId` | string veya `null` | `observedView.visibleFromUyapDosyaId` | Kaynak `dosyaId`'den ayrıdır. Verified projection için seçilen display case kimliğiyle exact eşleşmelidir. |
+| `occurrence.relationshipState` | `verified\|unknown` | `source.parserRelationshipState` | Yalnız parser'ın hedef-panel kaynak eşleşme kanıtı olarak korunur; yabancı dosya ilişkisi üretmez. |
+| `group.relationshipState` | `unknown\|user_selected_unverified` | `parserGroup.relationshipState` | Review/display durumudur; occurrence ownership veya graph link verification üretmez. |
+| `group.sourceIds[]` | exact string listesi | `parserGroup.sourceIds[]` | Görünür kaynak çeşitliliği korunur; grup için tek source case oluşturulmaz. |
+| `occurrence.logicalKey` | JSON-stringified `[dosyaId, evrakId]` veya `null` | `legalDocumentKey` | Exact source tuple ile yeniden hesaplanıp karşılaştırılır. Delimiter concatenation kullanılmaz. |
+| `logicalDocuments[].key/source` | exact tuple kimliği | computed legal-document index ile çapraz doğrulama | Parser logical identity ile adapter identity uyuşmazsa fail-closed. |
+
+### Opaque kimlik düzeltmesi
+
+PR #22 sözleşmesi opaque UYAP kimliklerinde whitespace, quote ve diğer karakterlerin anlamlı olabileceğini açıkça korur.
+
+Bu kabul ile PR #24 de aynı kurala geçirilmiştir:
+
+- `uyapDosyaId` trim edilmez;
+- `evrakId` trim edilmez;
+- legal document key artık delimiter birleştirmesi değildir;
+- key `JSON.stringify([dosyaId, evrakId])` ile collision-safe üretilir.
+
+Dolayısıyla:
+
+`["a::b", "c"] != ["a", "b::c"]`
+
+ve iki kayıt yanlış mükerrer sayılamaz.
+
+### Ek evrak source kuralı
+
+PR #22 parser'ı ek evrakta eksik `dosyaId` değerini enclosing ana evraktan onarmaz.
+
+PR #24 de aynı fail-closed kurala geçirilmiştir:
+
+- ek evrak kendi `dosyaId` değerini taşıyorsa exact source olarak korunur;
+- taşımıyorsa source `unknown` kalır;
+- `parentReference`, `anaEvrakId` veya nesting source `dosyaId` üretmez;
+- explicit attachment source ana evrak source'undan farklıysa explicit değer kaybolmaz; yalnız parent/source farkı ayrı diagnostic bağlamıdır.
+
+### Üç ilişki durumu
+
+PR #22 parser sonucu ile PR #24 linked graph farklı kanıt katmanlarıdır.
+
+- **`verified`**: source case identity bağımsız olarak verified ve display case'e verilen graph yolu tamamen verified olmalıdır. Hedef dosyanın kendi occurrence'ında ayrıca PR #22 target ownership/binding kanıtı verified olmalıdır.
+- **`user_selected_unverified`**: yalnız linked graph'taki kullanıcı seçimi edge'inden gelir; görünüm mümkün olsa bile automatic related scope'a girmez.
+- **`unknown`**: source kimliği eksik, display kimliği uyuşmuyor, parser evidence eksik veya ilişki yolu unknown ise korunur; otomatik olarak yükseltilmez.
+
+Parser group selection hiçbir occurrence'ı `verified` yapmaz.
+
+### Kabul sonucu ve runtime sınırı
+
+Compat adapter yalnız metadata aidiyeti için saf bir sözleşme katmanıdır.
+
+Her occurrence için:
+
+- `runtimeMetadataImportAllowed = false`
+- `runtimeDownloadAllowed = false`
+
+olarak kalır.
+
+Bu kabul Core import, DB write, download queue veya canlı UYAP işlem yetkisi vermez.
+
+### Kalan gerçek kanıtlar
+
+Sentetik kabul testleri alan/shape ve fail-closed aidiyet kurallarını doğrular; aşağıdaki gerçek kanıtların yerine geçmez:
+
+1. Gerçek response'un aynı verified CBS paneli, request ve response context'iyle causal binding'i PR #22 tarafından doğrulanmalıdır.
+2. Display dosyası dışındaki CBS/talimat `dosyaId` değerleri için bağımsız gerçek case identity kanıtı gerekir; yalnız parser'da görünmek source case node'u yaratmaz.
+3. Eski CBS → yeni CBS, CBS → talimat veya diğer hukuki ilişki için ayrı ilişki kanıtı gerekir. Grup `display.fileNo/type`, grup başlığı, aynı panelde görünme veya kullanıcı seçimi `verified` link kanıtı değildir.
+4. Kendi `dosyaId` değeri bulunmayan ek evrak source'u gerçek kanıt gelene kadar `unknown` kalır.
+5. `pageTotal` anlamı ve liste/pagination completeness hâlen ayrı kanıttır.
+6. Viewer/download reference, fiziksel indirme ve SHA-256 bütünlük doğrulaması bu metadata kabulünden ayrıdır.
+7. Opaque `dosyaId` değerlerinin zaman içindeki alias/eşdeğerliği gözlem olmadan varsayılmaz.
