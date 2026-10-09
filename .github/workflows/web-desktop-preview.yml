@@ -2,13 +2,48 @@ name: BONO OS WebView2 Desktop Preview
 
 on:
   push:
-    branches: [feature/desktop-webview2]
+    branches: [feature/desktop-webview2, integration/webview2-uyap-single-case]
     paths:
       - 'desktop/BonoWebDesktop/**'
       - 'desktop/BonoWebDesktop.Smoke/**'
       - 'web/**'
       - 'scripts/test_web_desktop_case_ui.js'
       - 'scripts/test_web_desktop_hearings.js'
+      - 'scripts/test_webview2_uyap_single_case_e2e.js'
+      - 'scripts/test_uyap_single_case_sync.js'
+      - 'scripts/test_uyap_targeted_case_search.js'
+      - 'scripts/test_uyap_cbs_list_adapter.js'
+      - 'scripts/test_uyap_cbs_user_query_integration.js'
+      - 'scripts/test_uyap_query_capability_contract.js'
+      - 'scripts/desktop_archive_paths_selftest.js'
+      - 'scripts/test_ui_inventory.mjs'
+      - 'bridge/uyap_cbs_list_adapter.js'
+      - 'bridge/uyap_query_capability_contract.js'
+      - 'bridge/desktop_archive_paths.js'
+      - 'bridge/uyap_user_queries.js'
+      - 'web/js/inventory-state.mjs'
+      - 'web/js/views/active/user-queries.js'
+      - 'scripts/test_uyap_case_document_contract.js'
+      - 'bridge/uyap_case_document_contract.js'
+      - 'scripts/test_uyap_targeted_cbs_party_search.js'
+      - 'scripts/test_uyap_batch_safety.js'
+      - 'scripts/test_webview2_uyap_targeted_search_e2e.js'
+      - 'scripts/document_view_service_selftest.js'
+      - 'scripts/document_view_http_selftest.js'
+      - 'scripts/test_document_view_http_stable.js'
+      - 'scripts/test_webview2_archive_route_e2e.js'
+      - 'bridge/document_view_service.js'
+      - 'bridge/document_view_http.js'
+      - 'bridge/document_stream_guard.js'
+      - 'bridge/case_document_review.js'
+      - 'bridge/archive_safety.js'
+      - 'package.json'
+      - 'scripts/test_single_file_windows_pipeline.js'
+      - 'scripts/test_integration_manifest.js'
+      - 'integration/manifest.json'
+      - 'bridge/server.js'
+      - 'bridge/uyap.js'
+      - 'bridge/db.js'
       - 'scripts/web_desktop_updater.ps1'
       - 'scripts/test_web_desktop_updater.ps1'
       - 'docs/web-desktop-update.md'
@@ -50,6 +85,60 @@ jobs:
 
       - name: Verify case document inquiry UI
         run: node scripts/test_web_desktop_case_ui.js
+
+      - name: Verify unified integration manifest and contracts
+        run: npm run test:integration-manifest
+
+      - name: Single-file UYAP metadata to isolated Windows archive pipeline
+        run: npm run test:single-file-windows-pipeline
+
+      - name: Isolated SQLite document.list lifecycle fixture
+        run: npm run test:uyap-single-case-sync
+
+      - name: Isolated single-case UYAP lifecycle E2E
+        run: npm run test:webview2-uyap-e2e
+
+      - name: Verify observed-schema targeted UYAP search fixture
+        run: npm run test:uyap-targeted-case-search
+
+      - name: Verify user-controlled query migration and history
+        run: npm run test:uyap-user-queries
+
+      - name: Verify CBS unit-list pure adapter
+        run: npm run test:uyap-cbs-list-adapter
+
+      - name: Verify scoped CBS user-query execution
+        run: npm run test:uyap-cbs-user-query
+
+      - name: Verify UYAP capability and blocker contract
+        run: npm run test:uyap-query-capability
+
+      - name: Verify Windows archive path contract
+        run: npm run test:archive-path-contract
+
+      - name: Verify UI inventory evidence states
+        run: npm run test:ui-inventory
+
+      - name: Verify fail-closed UYAP case/document identity contract
+        run: npm run test:uyap-case-document-contract
+
+      - name: Verify targeted CBS party-search privacy and safety
+        run: npm run test:uyap-targeted-cbs-party-search
+
+      - name: Verify 200-document batch and manual-pause safety
+        run: npm run test:uyap-batch-safety
+
+      - name: Isolated targeted UYAP search HTTP E2E
+        run: npm run test:webview2-uyap-targeted-e2e
+
+      - name: Archive document view service contract
+        run: npm run test:document-view-service
+
+      - name: Archive document view HTTP security contract
+        run: npm run test:document-view-http-stable
+
+      - name: Core route PDF UDF ownership and SHA E2E
+        run: npm run test:webview2-archive-route-e2e
 
       - name: Verify web API URLs stay same-origin
         shell: pwsh
@@ -118,6 +207,8 @@ jobs:
           $web = 'dist/package/web-bundle.zip'
           $exeHash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           $webHash = (Get-FileHash $web -Algorithm SHA256).Hash.ToLowerInvariant()
+          Copy-Item 'integration/manifest.json' 'dist/package/integration-manifest.json' -Force
+          $integrationHash = (Get-FileHash 'dist/package/integration-manifest.json' -Algorithm SHA256).Hash.ToLowerInvariant()
           [ordered]@{
             schemaVersion = 1
             product = 'BONO OS Web Desktop Preview'
@@ -134,11 +225,26 @@ jobs:
             webView2Sdk = '${{ steps.ver.outputs.webview2sdk }}'
             coreHealthUri = 'http://127.0.0.1:47831/health'
             previewOrigin = 'loopback ephemeral same-origin proxy'
+            integrationCommit = '${{ github.sha }}'
+            corePackageVersion = '0.9.0'
+            coreDeploymentPackaged = $false
+            chromeExtensionSourceManifestVersion = '0.3.7'
+            chromeExtensionBundleVersion = '0.4.0'
+            chromeExtensionPackaged = $false
+            chromeExtensionLiveInstallRequired = $true
+            uiSourceCommit = '313cd1261cc9570b5b7b867bae70b28877bcc2f2'
+            queryPolicySourceCommit = 'b5ac6d42de3ffcf97fb92cdaa62b72f132ba8845'
+            cbsAdapterSourceCommit = 'd31e48fe35625ac0b9df029b18b300cbd70f1344'
+            identityContractSourceCommit = '9559738f22f8939e05cb956be3f3538ac94f9136'
+            archiveSourceCommit = 'dca93cd26cf94bc2d2d379c368f6e45f7a66bf30'
+            integrationManifest = 'integration-manifest.json'
+            integrationManifestSha256 = $integrationHash
             channel = 'preview'
           } | ConvertTo-Json | Set-Content 'dist/package/release-manifest.json' -Encoding utf8
           @(
             "$exeHash  BONO OS Web Desktop.exe",
-            "$webHash  web-bundle.zip"
+            "$webHash  web-bundle.zip",
+            "$integrationHash  integration-manifest.json"
           ) | Set-Content 'dist/package/SHA256SUMS.txt' -Encoding ascii
 
       - name: Verify package through updater
@@ -175,6 +281,7 @@ jobs:
             dist/package/BONO OS Web Desktop.exe
             dist/package/web-bundle.zip
             dist/package/release-manifest.json
+            dist/package/integration-manifest.json
             dist/package/SHA256SUMS.txt
             dist/BONO-OS-WebView2-Preview-*.zip
           retention-days: 14

@@ -1,0 +1,27 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),net=require('node:net'),{spawnSync}=require('node:child_process');
+const {build}=require('./build_local_return_package'),{operate,hash}=require('./package_operations');
+const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'bono-return-package-')),target=path.join(tmp,'target'),bundle=path.join(tmp,'bundle');
+fs.mkdirSync(path.join(target,'bridge'),{recursive:true});
+const server='const uyap=require("./uyap");\nconst health={ok:true,ui:true,schema:9};\n';
+const uyap='function claimNext(host,lane="any"){return "normal";}\nfunction reportResult(id,result={}){return "normal";}\nmodule.exports={GLOBAL_MIN_INTERVAL_MS,claimNext,reportResult};\n';
+fs.writeFileSync(path.join(target,'bridge/server.js'),server);fs.writeFileSync(path.join(target,'bridge/uyap.js'),uyap);
+const free=()=>new Promise(r=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>r(p));});});
+(async()=>{
+ const m=build(target,bundle);fs.writeFileSync(path.join(target,'.bono-package-state.json'),JSON.stringify({buildId:'previous-observer-build',state:'original'}));
+ const port=await free();assert.equal((await operate(bundle,target,'Apply',port)).state,'installed');assert.equal((await operate(bundle,target,'Apply',port)).state,'installed');
+ assert.equal(JSON.parse(fs.readFileSync(path.join(target,'.bono-package-state.json'))).buildId,'previous-observer-build');
+ assert.equal(JSON.parse(fs.readFileSync(path.join(target,'.bono-local-return-state.json'))).buildId,m.buildId);
+ assert.equal((await operate(bundle,target,'Rollback',port)).state,'original');assert.equal((await operate(bundle,target,'Rollback',port)).state,'original');
+ assert.equal(fs.readFileSync(path.join(target,'bridge/server.js'),'utf8'),server);assert.equal(fs.readFileSync(path.join(target,'bridge/uyap.js'),'utf8'),uyap);
+ await assert.rejects(()=>operate(bundle,target,'Apply',port,{afterFile(){throw Error('synthetic_interruption');}}));
+ assert.equal((await operate(bundle,target,'Verify',port)).state,'partial');assert.equal((await operate(bundle,target,'Apply',port)).state,'installed');
+ assert.equal((await operate(bundle,target,'Rollback',port)).state,'original');
+ const quote=s=>"'"+s.replaceAll("'","''")+"'";
+ const cmd="function Get-CimInstance { [pscustomobject]@{Name='node.exe';CommandLine=$null} }; & "+quote(path.join(bundle,'observation_package.ps1'))+' -TargetRoot '+quote(target)+' -Mode Apply -CorePort '+port+' -NodeExe '+quote(process.execPath)+'; exit $LASTEXITCODE';
+ const blocked=spawnSync('powershell',['-NoProfile','-Command',cmd],{encoding:'utf8'});assert.equal(blocked.status,1);assert.equal((await operate(bundle,target,'Verify',port)).state,'original');
+ fs.writeFileSync(path.join(target,'bridge/server.js'),'unknown');await assert.rejects(()=>operate(bundle,target,'Apply',port));
+ assert.throws(()=>build(target,path.join(target,'unsafe')),/isolated/);
+ fs.writeFileSync(path.join(target,'bridge/server.js'),server+server);assert.throws(()=>build(target,path.join(tmp,'bad-anchors')),/anchor_not_unique/);
+ console.log(JSON.stringify({ok:true,tests:['separate_return_journal_after_observer_rollback','apply_and_rollback_idempotent','exact_preimage_restored','partial_overlay_resumes_safely','unreadable_node_keeps_ps_preflight_closed','unknown_preimage_rejected','nonunique_anchor_rejected','isolated_output_required']}));
+})().catch(e=>{console.error(e);process.exitCode=1;});

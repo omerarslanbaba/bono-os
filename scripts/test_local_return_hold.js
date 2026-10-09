@@ -1,0 +1,21 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'bono-local-return-'));
+process.env.BONO_DB_PATH=path.join(tmp,'source.db');process.env.BONO_UYAP_EXECUTION_HOLD='1';
+const db=require('../bridge/db'),uyap=require('../bridge/uyap');
+const setting=(k,v)=>db.prepare('INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)').run(k,v);
+setting('uyap_integration_mode','browser_readonly');setting('uyap_manual_download_pause','1');setting('uyap_session_state','ready');
+uyap.approveEndpoint({endpointKey:'hold.fixture',method:'POST',host:'avukat.uyap.gov.tr',path:'/avukat_mahkemeleri_sorgula.ajx',minIntervalMs:2200});
+for(let i=0;i<270;i++)uyap.enqueue({commandType:'fetch_json',endpointKey:'hold.fixture',payload:{context:{discovery:true}}});
+db.prepare("INSERT INTO uyap_command_queue(command_type,endpoint_key,status,dispatched_at) VALUES('fetch_json','hold.fixture','running',datetime('now','-10 minutes'))").run();
+const queueBefore=JSON.stringify(db.prepare('SELECT * FROM uyap_command_queue ORDER BY id').all()),rateBefore=JSON.stringify(uyap.rateState());
+for(const lane of ['query','download','any'])for(let i=0;i<4;i++)assert.equal(uyap.claimNext('avukat.uyap.gov.tr',lane).reason,'local_return_hold');
+const running=db.prepare("SELECT id FROM uyap_command_queue WHERE status='running'").get().id;
+assert.equal(uyap.reportResult(running,{ok:true,status:200,data:[[]]}).reason,'local_return_hold');
+// A pause toggle, mode change, time passage or mutable process.env cannot release a boot hold.
+setting('uyap_manual_download_pause','0');setting('uyap_integration_mode','official_api');delete process.env.BONO_UYAP_EXECUTION_HOLD;
+assert(uyap.executionHeld());assert.equal(uyap.claimNext('avukat.uyap.gov.tr').reason,'local_return_hold');
+assert.equal(JSON.stringify(db.prepare('SELECT * FROM uyap_command_queue ORDER BY id').all()),queueBefore);
+assert.equal(JSON.stringify({...uyap.rateState(),integration_mode:'browser_readonly'}),rateBefore);
+db.close();
+console.log(JSON.stringify({ok:true,tests:['270_queued_rows_unchanged','stale_running_row_not_recovered','all_lanes_blocked_before_writes','late_result_not_imported','boot_hold_not_released_by_env_or_settings'],networkRequests:0,temporaryDB:true}));

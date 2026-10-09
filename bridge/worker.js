@@ -10,6 +10,7 @@ const workflow=require("./workflow_engine");
 const eventBus=require("./event_bus");
 const v09=require("./v09");
 const uyap=require("./uyap");
+const userQueries=require("./uyap_user_queries").install(db,uyap);
 
 const ROOT=path.join(__dirname,"..");
 const DATA=path.join(ROOT,"data");

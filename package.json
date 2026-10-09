@@ -7,6 +7,25 @@
     "start": "node bridge/server.js",
     "bridge": "node bridge/server.js",
     "check": "node --check bridge/server.js && node --check bridge/worker.js && node --check bridge/repository.js && node --check bridge/jobs.js && node --check bridge/uyap.js && node --check bridge/v04.js && node --check bridge/v05.js && node --check bridge/v06.js && node --check bridge/v09.js && node --check bridge/workflow_engine.js && node --check bridge/event_bus.js && node --check bridge/udf_adapter.js && node --check bridge/deadline_engine.js && node --check extension/content.js && node --check extension/page_probe.js",
-    "test:uyap": "node scripts/test_uyap_rate.js"
+    "test:uyap": "node scripts/test_uyap_rate.js",
+    "test:uyap-single-case-sync": "node scripts/test_uyap_single_case_sync.js",
+    "test:webview2-uyap-e2e": "node scripts/test_webview2_uyap_single_case_e2e.js",
+    "test:uyap-targeted-case-search": "node scripts/test_uyap_targeted_case_search.js",
+    "test:webview2-uyap-targeted-e2e": "node scripts/test_webview2_uyap_targeted_search_e2e.js",
+    "test:document-view-service": "node scripts/document_view_service_selftest.js",
+    "test:document-view-http": "node scripts/document_view_http_selftest.js",
+    "test:webview2-archive-route-e2e": "node scripts/test_webview2_archive_route_e2e.js",
+    "test:uyap-targeted-cbs-party-search": "node scripts/test_uyap_targeted_cbs_party_search.js",
+    "test:uyap-batch-safety": "node scripts/test_uyap_batch_safety.js",
+    "test:integration-manifest": "node scripts/test_integration_manifest.js",
+    "test:single-file-windows-pipeline": "node scripts/test_single_file_windows_pipeline.js",
+    "test:uyap-case-document-contract": "node scripts/test_uyap_case_document_contract.js",
+    "test:document-view-http-stable": "node scripts/test_document_view_http_stable.js",
+    "test:uyap-user-queries": "node scripts/test_user_queries.js && node scripts/test_user_query_extension.js && node scripts/test_webview2_uyap_single_case_e2e.js && node scripts/test_webview2_uyap_targeted_search_e2e.js",
+    "test:uyap-cbs-list-adapter": "node scripts/test_uyap_cbs_list_adapter.js",
+    "test:uyap-cbs-user-query": "node scripts/test_uyap_cbs_user_query_integration.js",
+    "test:uyap-query-capability": "node scripts/test_uyap_query_capability_contract.js",
+    "test:archive-path-contract": "node scripts/desktop_archive_paths_selftest.js",
+    "test:ui-inventory": "node scripts/test_ui_inventory.mjs"
   }
 }

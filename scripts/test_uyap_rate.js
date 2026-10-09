@@ -1,41 +1,22 @@
-const uyap=require('../bridge/uyap');
-const db=require('../bridge/db');
-
-function setMode(mode){
-  db.prepare(`INSERT INTO app_settings(key,value,updated_at) VALUES('uyap_integration_mode',?,datetime('now'))
-    ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=datetime('now')`).run(mode);
-}
-function clean(){
-  db.prepare("DELETE FROM uyap_command_queue WHERE endpoint_key='__rate_test__'").run();
-  db.prepare("DELETE FROM uyap_endpoints WHERE endpoint_key='__rate_test__'").run();
-  db.prepare("UPDATE uyap_rate_state SET last_dispatch_ms=0,next_allowed_ms=0,circuit_open_until_ms=0,consecutive_failures=0,last_status=NULL,state='ready' WHERE id=1").run();
-}
-
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+// Isolation is mandatory before importing production modules. Never uses the installed DB.
+const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'bono-rate-'));process.env.BONO_DB_PATH=path.join(tmp,'source.db');
+const uyap=require('../bridge/uyap'),db=require('../bridge/db');
+const setting=(key,value)=>db.prepare('INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)').run(key,String(value));
 (async()=>{
-  clean();
-  setMode('official_api');
-  uyap.resume();
-  uyap.approveEndpoint({endpointKey:'__rate_test__',method:'GET',host:'avukat.uyap.gov.tr',path:'/__bono_local_test__',purpose:'local rate test',minIntervalMs:2200});
-  const a=uyap.enqueue({commandType:'download_document',endpointKey:'__rate_test__',payload:{fileName:'a.udf'}});
-  const b=uyap.enqueue({commandType:'download_document',endpointKey:'__rate_test__',payload:{fileName:'b.udf'}});
-  const first=uyap.claimNext('avukat.uyap.gov.tr');
-  const immediate=uyap.claimNext('avukat.uyap.gov.tr');
-  if(!first || first.hardMinIntervalMs<2200) throw new Error('Minimum aralık uygulanmadı');
-  if(!immediate?.wait || immediate.retryAfterMs<2000) throw new Error('İkinci komut erken çıktı');
-  uyap.reportResult(a,{ok:true,status:200,contentType:'application/octet-stream',size:10,fileName:'a.udf'});
-  await new Promise(r=>setTimeout(r,2750));
-  const second=uyap.claimNext('avukat.uyap.gov.tr');
-  if(!second || second.id!==b) throw new Error('İkinci komut bekleme sonrası çıkmadı');
-  uyap.reportResult(b,{ok:false,status:429,error:'local simulated rate limit'});
-  const state=uyap.rateState();
-  if(state.state!=='rate_limited' || state.circuit_open_until_ms<=Date.now()) throw new Error('429 devre kesici çalışmadı');
-  console.log(JSON.stringify({
-    ok:true,
-    hardMinIntervalMs:first.hardMinIntervalMs,
-    immediateRetryAfterMs:immediate.retryAfterMs,
-    circuitState:state.state
-  }));
-})().finally(()=>{
-  clean();
-  setMode('observe_only');
-});
+ setting('uyap_integration_mode','browser_readonly');setting('uyap_session_state','ready');setting('uyap_manual_download_pause','1');
+ uyap.resume();
+ assert.throws(()=>uyap.approveEndpoint({endpointKey:'forbidden.test',method:'GET',host:'avukat.uyap.gov.tr',path:'/__bono_local_test__'}),/izin listesinde/);
+ uyap.approveEndpoint({endpointKey:'rate.fixture',method:'POST',host:'avukat.uyap.gov.tr',path:'/avukat_mahkemeleri_sorgula.ajx',purpose:'isolated scheduler fixture',minIntervalMs:2200});
+ const a=uyap.enqueue({commandType:'fetch_json',endpointKey:'rate.fixture',payload:{}}),b=uyap.enqueue({commandType:'fetch_json',endpointKey:'rate.fixture',payload:{}});
+ const first=uyap.claimNext('avukat.uyap.gov.tr');assert.equal(first.id,a);assert(first.hardMinIntervalMs>=2200);
+ const next=uyap.claimNext('avukat.uyap.gov.tr');assert.equal(next.wait,true);assert(next.retryAfterMs>0);assert.equal(db.prepare('SELECT status FROM uyap_command_queue WHERE id=?').get(b).status,'queued');
+ uyap.reportResult(a,{ok:true,status:200,contentType:'application/json',data:{}});
+ const deadline=uyap.rateState().next_allowed_ms;await new Promise(r=>setTimeout(r,Math.max(0,deadline-Date.now())+30));
+ const second=uyap.claimNext('avukat.uyap.gov.tr');assert.equal(second.id,b);assert(Date.now()>=deadline);
+ uyap.reportResult(b,{ok:false,status:429,error:'synthetic rate limit'});const state=uyap.rateState();assert.equal(state.state,'rate_limited');assert(state.circuit_open_until_ms>Date.now());
+ const c=uyap.enqueue({commandType:'fetch_json',endpointKey:'rate.fixture',payload:{}});const blocked=uyap.claimNext('avukat.uyap.gov.tr');assert(blocked.wait);assert.equal(blocked.reason,'rate_limited');assert.equal(db.prepare('SELECT status FROM uyap_command_queue WHERE id=?').get(c).status,'queued');
+ assert.equal(uyap.sessionState().manualDownloadPaused,true);
+ console.log(JSON.stringify({ok:true,tests:['disallowed_endpoint_rejected','real_scheduler_spacing','not_dispatched_early','query_with_download_pause','429_circuit_blocks_next'],networkRequests:0,temporaryDB:true}));
+})().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>db.close());

@@ -1,0 +1,35 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'bono-observation-'));
+process.env.BONO_DB_PATH=path.join(dir,'fixture.db');
+process.env.USERPROFILE=dir;
+const db=require('../bridge/db'),uyap=require('../bridge/uyap');
+const catalog=require('../extension/observation_contracts');
+const {cleanEvent,record}=require('../bridge/uyap_observation_events');
+const input={eventId:'fixture-event-0001',observedAt:'2026-01-01T00:00:00.000Z',url:'https://avukat.uyap.gov.tr/list_dosya_evraklar.ajx?token=SECRET',method:'POST',status:200,
+ request:{body:{dosyaId:'synthetic-A',pageNumber:1,token:'SECRET',text:'DOCUMENT CONTENT'},headers:{Authorization:'SECRET'}},
+ responseEvidence:{pageTotal:1,recentCount:20,groups:[{label:'2020/1(CBS)',shape:'array',count:2},{label:'PRIVATE CONTENT',shape:'array',count:3}],rawText:'DOCUMENT CONTENT'}};
+const event=cleanEvent(input,{tabId:12,frameId:0,sourceUrl:'https://avukat.uyap.gov.tr/dosya-sorgulama?token=SECRET'});
+assert.equal(event.tabId,12);assert.equal(event.frameId,0);assert.equal(event.caseBinding,'unverified');
+assert.equal(event.response.groups[1].label,'unknown');
+assert(!JSON.stringify(event).includes('SECRET'));assert(!JSON.stringify(event).includes('DOCUMENT CONTENT'));
+record(db,input,{tabId:12,frameId:0});record(db,input,{tabId:12,frameId:0});
+record(db,{...input,eventId:'fixture-event-0002',request:{body:{dosyaId:'synthetic-B'}}},{tabId:13,frameId:0});
+assert.equal(db.prepare('SELECT count(*) n FROM uyap_observation_events').get().n,2);
+assert.equal(JSON.parse(db.prepare('SELECT event_json FROM uyap_observation_events WHERE event_id=?').get(input.eventId).event_json).request.body.dosyaId,'synthetic-A');
+assert(catalog.contracts.every(c=>c.executable===false));
+db.prepare("INSERT INTO cases(id,court,case_type,uyap_dosya_id) VALUES(1,'Synthetic CBS','CBS Sorusturma Dosyası','synthetic-A')").run();
+const mixed={tumEvraklar:{'2020/1':[{evrakId:'doc-A',dosyaId:'synthetic-A'}],'2020/2':[{evrakId:'doc-B',dosyaId:'synthetic-B'}]}};
+assert.throws(()=>uyap.upsertRemoteList(1,mixed),/ownership_unverified/);
+assert.equal(db.prepare('SELECT count(*) n FROM uyap_remote_documents').get().n,0);
+for(const [key,urlPath] of [['document.list','/list_dosya_evraklar.ajx'],['case.details','/dosyaAyrintiBilgileri_brd.ajx']])db.prepare('INSERT INTO uyap_endpoints(endpoint_key,method,host,path,enabled,min_interval_ms) VALUES(?,?,?,?,1,1300)').run(key,'POST','avukat.uyap.gov.tr',urlPath);
+db.prepare("INSERT INTO uyap_command_queue(id,command_type,endpoint_key,payload_json,status) VALUES(1,'fetch_json','document.list',?, 'running')").run(JSON.stringify({context:{caseId:1}}));
+assert.equal(uyap.reportResult(1,{ok:true,status:200,data:mixed}).ok,false);
+assert.equal(db.prepare('SELECT status FROM uyap_command_queue WHERE id=1').get().status,'failed');
+db.prepare("INSERT INTO uyap_command_queue(id,command_type,endpoint_key,payload_json,status) VALUES(2,'fetch_json','case.details','{}','running')").run();
+assert.equal(uyap.reportResult(2,{ok:true,status:200,data:{errorCode:'PRTL_GNL_1-1',error:'synthetic denial'}}).state,'authorization');
+assert.equal(db.prepare('SELECT status FROM uyap_command_queue WHERE id=2').get().status,'failed');
+assert.equal(db.prepare('SELECT count(*) n FROM uyap_remote_documents').get().n,0);
+db.close();
+console.log('PASS event isolation, secret exclusion, deduplication, CBS ownership fail-closed, HTTP 200 application denial');

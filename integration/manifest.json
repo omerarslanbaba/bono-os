@@ -1,0 +1,293 @@
+{
+  "schemaVersion": 2,
+  "product": "BONO OS Unified Windows Preview",
+  "channel": "integration-preview",
+  "integrationBranch": "integration/webview2-uyap-single-case",
+  "reality": "isolated-tested-not-live-installed",
+  "deliveries": {
+    "pr13": {
+      "head": "b5ac6d42de3ffcf97fb92cdaa62b72f132ba8845",
+      "name": "user-controlled queries, durable history, queue migration",
+      "codeIntegrated": true,
+      "liveMigrationApplied": false
+    },
+    "pr19": {
+      "head": "d31e48fe35625ac0b9df029b18b300cbd70f1344",
+      "name": "CBS unit/status exact-number adapter",
+      "codeIntegrated": true,
+      "runtimeGateIntegrated": true
+    },
+    "pr17": {
+      "head": "9559738f22f8939e05cb956be3f3538ac94f9136",
+      "name": "case identity and document ownership",
+      "codeIntegrated": true
+    },
+    "pr18": {
+      "head": "00b6cf24ae821a533e840a24121c802a2e46f032",
+      "name": "query capability and blocker diagnostics",
+      "codeIntegrated": true
+    },
+    "pr15": {
+      "head": "1c52830df75ab38e405070bc1830b1ccdcde9bf3",
+      "name": "case inventory and detail usability",
+      "codeIntegrated": true
+    },
+    "pr16": {
+      "head": "1a303fe52c4078c214872404adf2484ec558af44",
+      "name": "Windows archive path contract",
+      "codeIntegrated": true
+    },
+    "pr14": {
+      "head": "cd41e228fda621da4110167772b801df7d85aba4",
+      "name": "VISION and AGENTS",
+      "codeIntegrated": true,
+      "mergedToMain": false
+    },
+    "chatUi": {
+      "head": "313cd1261cc9570b5b7b867bae70b28877bcc2f2"
+    },
+    "chatArchive": {
+      "head": "dca93cd26cf94bc2d2d379c368f6e45f7a66bf30"
+    }
+  },
+  "components": {
+    "core": {
+      "packageVersion": "0.9.0",
+      "queryPolicy": "user_controlled_after_verified_migration"
+    },
+    "webview2": {
+      "sdk": "1.0.3405.78",
+      "uiBaseCommit": "313cd1261cc9570b5b7b867bae70b28877bcc2f2"
+    },
+    "uyap": {
+      "extension": {
+        "packagedWithPreview": false,
+        "sourceManifestVersion": "0.3.7",
+        "releaseBundleVersion": "0.4.0",
+        "sourceRuntimeMode": "normal-development",
+        "liveInstalledVerified": false,
+        "liveReadOnlyPreflight": {
+          "manifestVersion": "0.3.6",
+          "sourceRoot": "AppData/Local/BONO OS/extension",
+          "compatibleWithReleaseBundle": false
+        }
+      },
+      "cbs": {
+        "adapter": "cbs_unit_status_exact_v1",
+        "flowId": "unit_status_list_local_exact_match",
+        "directNumberEndpointClaimed": false,
+        "documentBindingOnIdentityLookup": false
+      }
+    },
+    "archive": {
+      "sourceCommit": "dca93cd26cf94bc2d2d379c368f6e45f7a66bf30",
+      "physicalMutationInCi": false
+    }
+  },
+  "sourceProof": [
+    {
+      "path": "web/js/api.js",
+      "blobSha": "8cce6042ff74cce4699b4a794cb7757e83d36841",
+      "owner": "CHAT-UI"
+    },
+    {
+      "path": "web/js/views/active/uyap.js",
+      "blobSha": "660210cbbe81c428542c17c1158269ab72cd92a5",
+      "owner": "CHAT-UI + integration merge"
+    },
+    {
+      "path": "web/js/views/active/user-queries.js",
+      "blobSha": "dff7549f8ca48ea27369467f362951065cd84849",
+      "owner": "PR13 + integration status labels"
+    },
+    {
+      "path": "web/js/inventory-state.mjs",
+      "blobSha": "a4cabe2ceed082f0b3df86cc8425d37886842ef2",
+      "owner": "PR15"
+    },
+    {
+      "path": "bridge/uyap.js",
+      "blobSha": "044a800f3b9ffdeee95a93e875c439a120e12023",
+      "owner": "PR13/CHAT-UYAP + scoped CBS integration"
+    },
+    {
+      "path": "bridge/uyap_user_queries.js",
+      "blobSha": "55575d4dfea0529001d09c9c2bd7c8a202cf2093",
+      "owner": "PR13 + scoped CBS integration + live-queue reconciliation"
+    },
+    {
+      "path": "bridge/uyap_user_query_http.js",
+      "blobSha": "1233c40e2ff533d0fe97b415fd2c2dcfe719d6a1",
+      "owner": "PR13"
+    },
+    {
+      "path": "bridge/uyap_cbs_list_adapter.js",
+      "blobSha": "9d49715968bea5ebfc77b039c0a790769cabf525",
+      "owner": "PR19"
+    },
+    {
+      "path": "bridge/uyap_case_document_contract.js",
+      "blobSha": "536bc6fe3682a3fc0eeca0c870d24fe7a70a58eb",
+      "owner": "PR17"
+    },
+    {
+      "path": "bridge/uyap_query_capability_contract.js",
+      "blobSha": "39a386fddb62e8da33608d421d26437592a8ab76",
+      "owner": "PR18"
+    },
+    {
+      "path": "bridge/desktop_archive_paths.js",
+      "blobSha": "46025b1a82e4009946ab2073a7b84bd798e9adfa",
+      "owner": "PR16"
+    },
+    {
+      "path": "bridge/document_view_service.js",
+      "blobSha": "9bbb7a31922ace9846909b51c60b84b7e08a7f07",
+      "owner": "CHAT-ARCHIVE"
+    },
+    {
+      "path": "bridge/document_view_http.js",
+      "blobSha": "4621991dc32cf989b3db731da0adf2df47f68195",
+      "owner": "CHAT-ARCHIVE"
+    },
+    {
+      "path": "bridge/document_stream_guard.js",
+      "blobSha": "e8d6e4fa77ce5d9d42541988432941dd8bf9e743",
+      "owner": "CHAT-ARCHIVE"
+    },
+    {
+      "path": "extension/manifest.json",
+      "blobSha": "795d1164d1fc7120afa4d6462fff0b754c354b99",
+      "owner": "PR13"
+    },
+    {
+      "path": "extension/background.js",
+      "blobSha": "13116da3a70edfe39f30c356d55767d934993941",
+      "owner": "PR13"
+    },
+    {
+      "path": "extension/content.js",
+      "blobSha": "c9e75a9de0e58bb9f680273165b78963535136f2",
+      "owner": "PR13"
+    },
+    {
+      "path": "extension/page_probe.js",
+      "blobSha": "f74720680bfbd69f8cc3e8b3c2f61f6d7445d5c4",
+      "owner": "PR13"
+    },
+    {
+      "path": "extension/runtime_mode.js",
+      "blobSha": "00caf02c81d2a192856edfe27356ea2be04e5a44",
+      "owner": "PR13"
+    },
+    {
+      "path": "VISION.md",
+      "blobSha": "bebcec347939e655378ea96b91919c236f5bb6e3",
+      "owner": "PR14"
+    },
+    {
+      "path": "AGENTS.md",
+      "blobSha": "2469a1560c8f7d129bf8d5056523409edba61f44",
+      "owner": "PR14"
+    }
+  ],
+  "verifiedCapabilities": [
+    "file inventory and evidence-separated case detail",
+    "user-controlled case query and durable history",
+    "retired legacy commands cannot revive after verified migration",
+    "court document.list under certified binding",
+    "CBS unit/status list plus local exact investigation-number match under explicit grant",
+    "CBS identity lookup does not bind/import documents",
+    "case/document identity fail-closed contract",
+    "query capability and blocker contract",
+    "manual download pause independent from query execution",
+    "case-scoped PDF/UDF viewing with wrong-case rejection and stream-time SHA verification",
+    "Windows archive path naming contract",
+    "month-only hearing calendar",
+    "same-origin bundled WebView2 UI",
+    "EXE/web/integration-manifest integrity and rollback updater"
+  ],
+  "migration": {
+    "implementationIntegrated": true,
+    "liveApplied": false,
+    "requiresFreshQueueInventory": true,
+    "historicalSnapshotOnly": 270,
+    "historicalSnapshotIsCurrentInvariant": false,
+    "requiresVerifiedDbWalShmBackup": true,
+    "requiresNoRunningOrDispatchedCommands": true,
+    "rollbackMode": "rollback_hold_preserves_history_and_retirements",
+    "expectedCountSource": "verified_backup_manifest_queueCommandIds",
+    "acceptsLegacyAttemptedQueuedAsRetiredUnverified": true,
+    "readOnlyPreflight": {
+      "observedAt": "2026-10-09",
+      "queuedCount": 1873,
+      "queuedIdDigest": "1db21224b42b8d2cfc54b3e0e45149aea0c00f0cb38e087735bd4cec31614db2",
+      "activeRunningOrDispatched": 0,
+      "neverDispatchedQueued": 1872,
+      "attemptedUnverifiedQueued": 1,
+      "attemptedRow": {
+        "id": 15508,
+        "endpointKey": "cbs.units",
+        "attempts": 1,
+        "lastError": "HTTP 401"
+      },
+      "manualDownloadPaused": true,
+      "sessionState": "login_required",
+      "policyTablesPresent": false,
+      "note": "Read-only snapshot only; maintenance must recount after executors stop and before backup/migration."
+    }
+  },
+  "liveBlockers": [
+    "live maintenance must recount the queue after stopping executors and require exact backup-manifest ID digest reconciliation",
+    "one legacy cbs.units row was previously dispatched/HTTP 401 and must be retired as attempted_unverified, never replayed",
+    "PR13 migration has not been applied to the live DB",
+    "compatible 0.4.0 Bridge release bundle has not yet been installed/reloaded in Chrome",
+    "live Core source/preimage and running process state have not yet been verified for update",
+    "existing archive and case inventory preservation has not yet been verified after installation",
+    "no real UYAP query has been executed by this integration task"
+  ],
+  "releaseCandidate": {
+    "label": "end-of-day-unified-live-maintenance-candidate",
+    "requiresFinalWindowsCi": true,
+    "liveInstalled": false,
+    "liveUyapAccepted": false,
+    "liveMaintenanceBundle": {
+      "prepared": true,
+      "payloadSourceHead": "90effb56cafd6da40140a45447e8fc4521541e0d",
+      "buildId": "6987cf76e1dc3b2008be551d09b265be8d8f3d716dd1dd3f711de9a9b5a57d2f",
+      "extensionBuildId": "087650129aef5124dac2689b6f87f873666c3d5563f443c8bb6ea5328b4465b6",
+      "extensionVersion": "0.4.0",
+      "payloadFiles": 26,
+      "tools": 4,
+      "preimageVerifiedAgainstLiveRoot": true,
+      "liveApplied": false
+    }
+  },
+  "liveInstallationPreflight": {
+    "sourceGitHead": "fbad17a69610c7db5cbfaa0be7c51a2303abf019",
+    "sourceGitBranch": "main",
+    "sourceDirty": true,
+    "desktopKind": "legacy BonoDesktop",
+    "corePort": 47831,
+    "dbWalShmPresent": true,
+    "case93Present": true,
+    "case93FileNo": "2026/51832",
+    "case93RemoteDocumentCount": 0,
+    "extensionId": "cgdjpaahcodaibomjekefkgfbeglnijf",
+    "extensionSourcePath": "AppData/Local/BONO OS/extension",
+    "existingDesktopShortcutTarget": "AppData/Local/BONO OS/desktop/BonoDesktop/bin/Release/net8.0-windows/win-x64/publish/BONO OS.exe",
+    "baseline": {
+      "clients": 27,
+      "officeFiles": 12,
+      "cases": 111,
+      "parties": 24,
+      "remoteDocuments": 5778,
+      "localAssets": 2128,
+      "assetLocations": 2489,
+      "case93RemoteDocuments": 0,
+      "archiveFiles": 460,
+      "archiveDirectories": 108,
+      "archiveBytes": 333207676
+    }
+  }
+}

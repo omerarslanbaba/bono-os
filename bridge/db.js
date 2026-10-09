@@ -2,11 +2,12 @@ const { DatabaseSync } = require("node:sqlite");
 const path = require("path");
 const fs = require("fs");
 
-const DB_PATH = path.join(__dirname, "..", "data", "bono.db");
+const DB_PATH = process.env.BONO_DB_PATH || path.join(__dirname, "..", "data", "bono.db");
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 const db = new DatabaseSync(DB_PATH);
 
 db.exec(`
+CREATE TABLE IF NOT EXISTS uyap_observation_events (event_id TEXT PRIMARY KEY,captured_at TEXT NOT NULL,event_json TEXT NOT NULL);
 PRAGMA journal_mode=WAL;
 PRAGMA busy_timeout=5000;
 PRAGMA foreign_keys=ON;

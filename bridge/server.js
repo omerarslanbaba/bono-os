@@ -2,10 +2,15 @@ const http=require("http");
 const fs=require("fs");
 const path=require("path");
 const {Worker}=require("worker_threads");
+for(const lock of [".bono-query-transition.lock",".bono-package.lock"])if(fs.existsSync(path.join(__dirname,"..",lock)))throw Error("maintenance_active");
+if(process.env.BONO_OBSERVATION_ONLY==="1"){
+  require("./observation_server").start();
+}else{
 const repo=require("./repository");
 const db=require("./db");
 const jobs=require("./jobs");
 const uyap=require("./uyap");
+const userQueries=require("./uyap_user_queries").install(db,uyap);
 const v04=require("./v04");
 const udfAdapter=require("./udf_adapter");
 const deadlineEngine=require("./deadline_engine");
@@ -14,8 +19,9 @@ const v06=require("./v06");
 const v09=require("./v09");
 const workflow=require("./workflow_engine");
 const eventBus=require("./event_bus");
+const documentViewHttp=require("./document_view_http");
 
-const PORT=47831;
+const PORT=Number(process.env.BONO_PORT||47831);
 const ROOT=path.join(__dirname,"..");
 const DATA_DIR=path.join(ROOT,"data");
 const WEB_DIR=path.join(ROOT,"web");
@@ -51,8 +57,10 @@ const server=http.createServer(async(req,res)=>{
   const u=new URL(req.url,"http://127.0.0.1:"+PORT);
   const p=u.pathname;
   try{
+    if(await require("./uyap_user_query_http")(req,res,{path:p,origin:"http://127.0.0.1:"+PORT,service:userQueries,json,readBody}))return;
+    if(documentViewHttp.handleDocumentViewRequest(req,res,db)) return;
     if(req.method==="GET"&&p==="/favicon.ico"){res.writeHead(204);return res.end()}
-    if(req.method==="GET"&&p==="/health") return json(res,200,{ok:true,service:"BONO OS",port:PORT,ui:true,schema:9});
+    if(req.method==="GET"&&p==="/health") return json(res,200,{ok:true,service:"BONO OS",port:PORT,ui:true,schema:9,uyapExecutionHeld:uyap.executionHeld()});
     if(req.method==="GET"&&p==="/api/summary") return json(res,200,repo.summary());
     if(req.method==="GET"&&p==="/api/brief") return json(res,200,repo.brief());
     if(req.method==="GET"&&p==="/api/search") return json(res,200,{query:u.searchParams.get("q")||"",results:repo.search(u.searchParams.get("q")||"",Number(u.searchParams.get("limit")||25))});
@@ -277,38 +285,80 @@ const server=http.createServer(async(req,res)=>{
       return json(res,202,{ok:true,known,discoveryCommands:discovery.commandIds.length,cbsCommandId:cbs.commandId,status:uyap.archiveStatus()});
     }
     if(req.method==="GET"&&p==="/api/uyap/cases") return json(res,200,uyap.cases());
+    if(req.method==="GET"&&p==="/api/uyap/case-search-schema") return json(res,200,uyap.caseSearchSchemaStatus());
+    if(req.method==="GET"&&p==="/api/uyap/case-search/options") return json(res,200,uyap.caseSearchOptions());
+    if(req.method==="POST"&&p==="/api/uyap/case-search"){
+      const b=await readBody(req);
+      if(uyap.sessionState().state==="login_required") return json(res,409,{error:"UYAP oturumu gerekli."});
+      const out=uyap.enqueueTargetedCaseSearch(b);
+      audit("lawyer","uyap_targeted_case_search","uyap",null,{searchId:out.searchId,commandId:out.commandId});
+      return json(res,202,{ok:true,accepted:true,...out,status:uyap.targetedCaseSearchStatus(out.searchId)});
+    }
+    m=p.match(/^\/api\/uyap\/case-search\/([A-Za-z0-9-]+)$/);
+    if(req.method==="GET"&&m){
+      const out=uyap.targetedCaseSearchStatus(m[1]);
+      return out?json(res,200,out):json(res,404,{error:"UYAP dosya araması bulunamadı"});
+    }
+
+    if(req.method==="GET"&&p==="/api/uyap/cbs-party-search-schema") return json(res,200,uyap.cbsPartySearchSchemaStatus());
+    if(req.method==="GET"&&p==="/api/uyap/cbs-units"){
+      return json(res,200,uyap.cbsUnitOptions(Number(u.searchParams.get("ilKodu"))));
+    }
+    if(req.method==="POST"&&p==="/api/uyap/cbs-party-search"){
+      const b=await readBody(req);
+      if(uyap.sessionState().state==="login_required") return json(res,409,{error:"UYAP oturumu gerekli."});
+      const out=uyap.enqueueTargetedCbsPartySearch(b);
+      audit("lawyer","uyap_targeted_cbs_party_search","uyap",null,{searchId:out.searchId,commandIds:out.commandIds});
+      return json(res,202,{ok:true,accepted:true,...out,status:uyap.targetedCbsPartySearchStatus(out.searchId)});
+    }
+    m=p.match(/^\/api\/uyap\/cbs-party-search\/([A-Za-z0-9-]+)$/);
+    if(req.method==="GET"&&m){
+      const out=uyap.targetedCbsPartySearchStatus(m[1]);
+      return out?json(res,200,out):json(res,404,{error:"CBS hedefli arama bulunamadı"});
+    }
 
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/remote-documents$/);
     if(req.method==="GET"&&m) return json(res,200,uyap.remoteDocuments(Number(m[1])));
+    m=p.match(/^\/api\/uyap\/cases\/(\d+)\/document-sync-status$/);
+    if(req.method==="GET"&&m) return json(res,200,uyap.caseDocumentSyncStatus(Number(m[1])));
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/download-summary$/);
     if(req.method==="GET"&&m) return json(res,200,uyap.caseDownloadSummary(Number(m[1])));
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/sync-documents$/);
     if(req.method==="POST"&&m){
-      const id=uyap.enqueueCaseDocumentSync(Number(m[1]),{priority:6,purpose:"manual_case_sync",source:"native_case_detail"});
-      audit("lawyer","uyap_sync_documents","case",m[1],{commandId:id});
-      return json(res,202,{ok:true,id});
+      const caseId=Number(m[1]);
+      const before=uyap.caseDocumentSyncStatus(caseId);
+      if(before.sessionState==="login_required") return json(res,409,{error:"UYAP oturumu gerekli.",sync:before});
+      const id=uyap.enqueueCaseDocumentSync(caseId,{priority:6,purpose:"manual_case_sync",source:"web_case_detail"});
+      const sync=uyap.caseDocumentSyncStatus(caseId);
+      audit("lawyer","uyap_sync_documents","case",m[1],{commandId:id,state:sync.state});
+      return json(res,202,{ok:true,accepted:true,id,commandId:Number(id),sync});
     }
     m=p.match(/^\/api\/uyap\/cases\/(\d+)\/download-missing$/);
     if(req.method==="POST"&&m){
       const b=await readBody(req);
+      if(b.confirmed!==true) return json(res,409,{error:"Evrak batch kuyruğu için açık kullanıcı onayı gerekli."});
       const caseId=Number(m[1]),limit=Math.max(1,Math.min(200,Number(b.limit)||200));
-      uyap.setDocumentDownloadState("ready","per_file_batch:"+caseId);
       const out=uyap.enqueuePendingDownloads(caseId,limit);
-      audit("lawyer","uyap_download_case_batch","case",caseId,{limit,queued:out.queued});
+      audit("lawyer","uyap_download_case_batch","case",caseId,{limit,queued:out.queued,confirmed:true,manualDownloadPaused:uyap.sessionState().manualDownloadPaused});
       return json(res,202,{ok:true,...out});
     }
     if(req.method==="POST"&&p==="/api/uyap/downloads/pause"){
-      const out=uyap.setDocumentDownloadState("paused_manual","manual_download_pause");
+      const out=uyap.setManualDownloadPause(true,"manual_download_pause");
       return json(res,200,out);
     }
     if(req.method==="POST"&&p==="/api/uyap/downloads/resume"){
-      const out=uyap.setDocumentDownloadState("ready","");
+      const b=await readBody(req);
+      if(b.confirmed!==true) return json(res,409,{error:"UYAP indirmelerini devam ettirmek için açık kullanıcı onayı gerekli."});
+      const out=uyap.setManualDownloadPause(false,"");
+      audit("lawyer","uyap_downloads_resume","uyap",null,{confirmed:true});
       return json(res,200,out);
     }
     m=p.match(/^\/api\/uyap\/remote-documents\/(\d+)\/download$/);
     if(req.method==="POST"&&m){
+      const b=await readBody(req);
+      if(b.confirmed!==true) return json(res,409,{error:"UYAP evrak indirme kuyruğu için açık kullanıcı onayı gerekli."});
       const id=uyap.enqueueRemoteDocumentDownload(Number(m[1]));
-      audit("lawyer","uyap_download_document","uyap_remote_document",m[1],{commandId:id});
+      audit("lawyer","uyap_download_document","uyap_remote_document",m[1],{commandId:id,confirmed:true,manualDownloadPaused:uyap.sessionState().manualDownloadPaused});
       return json(res,202,{ok:true,id});
     }
     if(req.method==="POST"&&p==="/api/uyap/hearings/sync-range"){
@@ -410,8 +460,9 @@ const server=http.createServer(async(req,res)=>{
         const pagePath=String(d.path||"");
         if(/(^|\/)login(?:\.|\/|$)/i.test(pagePath)) uyap.setSessionLoginRequired("uyap_login_page");
       }
-      if(kind==="network_observation" && event?.payload?.data?.url){
-        const d=event.payload.data;
+      if(kind==="network_observation"){
+        const d=event?.payload?.data||{};
+        stored={payload:{kind,data:{error:'observation_rejected'}}};
         try{
           const parsed=new URL(d.url);
           stored={
@@ -424,10 +475,11 @@ const server=http.createServer(async(req,res)=>{
               status:d.status,
               contentType:d.contentType,
               durationMs:d.durationMs,
-              sampleKeys:Array.isArray(d.sampleKeys)?d.sampleKeys.slice(0,50):[],
-              error:d.error?String(d.error).slice(0,500):undefined
+              sampleKeys:Array.isArray(d.sampleKeys)?d.sampleKeys.slice(0,50).filter(k=>['errorCode','error','tumEvraklar','son20Evrak','pageTotal','status','data','rows','total'].includes(k)):[],
+              error:d.error?'network_error':undefined
             }}
           };
+          // Controlled evidence is accepted only by the observation-only bootstrap.
           uyap.observe({...stored.payload.data,request:d.request||null,responseSummary:d.responseSummary||null});
         }catch{}
       }
@@ -438,6 +490,7 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==="GET"&&staticFile(p,res)) return;
     res.writeHead(404,{"Content-Type":"text/plain; charset=utf-8"});res.end("BONO: bulunamadı");
   }catch(e){
+    if(String(req.url).split('?')[0]==='/events'){if(!res.headersSent)return json(res,400,{ok:false,error:'observation_rejected'});return res.end();}
     console.error(e);
     if(!res.headersSent) return json(res,500,{ok:false,error:e.message});
     try{res.end()}catch{}
@@ -449,11 +502,15 @@ const bucket=new Date().toISOString().slice(0,13);
 jobs.enqueue("rebuild_search",{},"startup-search:"+new Date().toISOString().slice(0,10),30);
 jobs.enqueue("scan_documents",{},"document-scan:"+bucket,60);
 
-const worker=new Worker(path.join(__dirname,"worker.js"));
-worker.on("error",e=>console.error("BONO worker error",e));
-worker.on("exit",code=>{if(code!==0)console.error("BONO worker exit",code)});
+if(process.env.BONO_DISABLE_WORKER!=="1"){
+  const worker=new Worker(path.join(__dirname,"worker.js"));
+  worker.on("error",e=>console.error("BONO worker error",e));
+  worker.on("exit",code=>{if(code!==0)console.error("BONO worker exit",code)});
+}
 
 v04.setHeartbeat("server","ok",{pid:process.pid,port:PORT});
 setInterval(()=>v04.setHeartbeat("server","ok",{pid:process.pid,port:PORT}),30000);
 
 server.listen(PORT,"127.0.0.1",()=>console.log("BONO OS http://127.0.0.1:"+PORT));
+
+}

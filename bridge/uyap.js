@@ -1,3 +1,8 @@
+let runtimePolicy=null;
+function setRuntimePolicy(policy){if(runtimePolicy)throw Error("runtime_policy_already_installed");runtimePolicy=policy;}
+// Process-scoped maintenance hold; no HTTP or database setting can release it.
+const UYAP_EXECUTION_HELD=process.env.BONO_UYAP_EXECUTION_HOLD==="1";
+function executionHeld(){return UYAP_EXECUTION_HELD;}
 const db=require("./db");
 const fs=require("fs");
 const path=require("path");
@@ -77,9 +82,10 @@ function cleanObservation(input){
   const u=new URL(input.url);
   if(!isUyapHost(u.hostname)) throw new Error("UYAP dışı host reddedildi");
   const method=String(input.method||"GET").toUpperCase();
-  const sampleKeys=Array.isArray(input.sampleKeys)?input.sampleKeys.slice(0,50).map(String):[];
-  const request=sanitizeObservedRequest(input.request||null);
-  const responseSummary=sanitizeObservedRequest(input.responseSummary||null);
+  const safeKeys=new Set(['errorCode','error','tumEvraklar','son20Evrak','pageTotal','status','data','rows','total']);
+  const sampleKeys=Array.isArray(input.sampleKeys)?input.sampleKeys.slice(0,50).map(String).filter(k=>safeKeys.has(k)):[];
+  const request=require('./observation_privacy').request(input.request);
+  const responseSummary=require('./observation_privacy').response(input.responseSummary);
   return {
     method,host:u.hostname.toLowerCase(),path:u.pathname,
     status:Number(input.status||0)||null,
@@ -103,9 +109,10 @@ function observe(input){
       last_seen_at=datetime('now'),
       hit_count=uyap_endpoint_observations.hit_count+1`)
     .run(x.method,x.host,x.path,x.status,x.contentType,JSON.stringify(x.sampleKeys),requestJson,responseJson);
+  const explicitErrorObservation=!!x.responseSummary?.applicationError||x.sampleKeys.some(k=>["errorcode","error"].includes(String(k).toLowerCase()));
   if(AUTHENTICATED_OBSERVATION_PATHS.has(x.path)&&(x.status===401||x.status===403)){
     setSessionLoginRequired("auth_probe_http_"+x.status+":"+x.path);
-  }else if(sessionState().state==="login_required"&&x.status>=200&&x.status<400&&/json/i.test(String(x.contentType||""))&&(READ_ONLY_ENDPOINTS.has(x.path)||AUTHENTICATED_OBSERVATION_PATHS.has(x.path))){
+  }else if(sessionState().state==="login_required"&&!explicitErrorObservation&&x.status>=200&&x.status<400&&/json/i.test(String(x.contentType||""))&&(READ_ONLY_ENDPOINTS.has(x.path)||AUTHENTICATED_OBSERVATION_PATHS.has(x.path))){
     recoverSession("successful_network_observation:"+x.path);
   }
   return x;
@@ -140,6 +147,7 @@ function setEndpointEnabled(endpointKey,enabled){
   return db.prepare("SELECT * FROM uyap_endpoints WHERE endpoint_key=?").get(endpointKey);
 }
 function enqueue({commandType,endpointKey,payload,priority=100,notBeforeMs=0}){
+  runtimePolicy?.beforeEnqueue({commandType,endpointKey,payload});
   if(integrationMode()!=="browser_readonly") throw new Error("UYAP entegrasyonu salt-okuma tarayıcı modunda değil; komut kuyruğu kapalı");
   const ep=db.prepare("SELECT * FROM uyap_endpoints WHERE endpoint_key=? AND enabled=1").get(endpointKey);
   if(!ep) throw new Error("Endpoint onaylı/aktif değil");
@@ -149,7 +157,7 @@ function enqueue({commandType,endpointKey,payload,priority=100,notBeforeMs=0}){
   if(commandType==="fetch_json" && ep.path==="/view_document_brd.uyap") throw new Error("PDF endpointi JSON okuma için kullanılamaz");
   const r=db.prepare(`INSERT INTO uyap_command_queue(command_type,endpoint_key,payload_json,priority,not_before_ms)
     VALUES(?,?,?,?,?)`).run(commandType,endpointKey,JSON.stringify(payload||{}),Number(priority)||100,Number(notBeforeMs)||0);
-  return Number(r.lastInsertRowid);
+  const id=Number(r.lastInsertRowid);runtimePolicy?.onEnqueue(id);return id;
 }
 function setting(key,defaultValue=null){
   const r=db.prepare("SELECT value FROM app_settings WHERE key=?").get(key);
@@ -203,6 +211,7 @@ function setSessionLoginRequired(reason="uyap_session_expired"){
   return sessionState();
 }
 function recoverSession(source="network_observation"){
+  if(runtimePolicy?.automaticRecoveryAllowed===false){if(runtimePolicy.allowSessionRecovery?.(source)){setSetting("uyap_session_state","ready");setSetting("uyap_session_reason","");}return sessionState();}
   const current=sessionState();
   if(current.state!=="login_required"&&(current.documentDownloadState==="ready"||current.manualDownloadPaused))return current;
   setSetting("uyap_session_state","ready");
@@ -276,6 +285,8 @@ function rateState(){
   return {...state,integration_mode:integrationMode()};
 }
 function claimNext(host,lane="any"){
+  const blocked=runtimePolicy?.beforeClaim();if(blocked)return blocked;
+  if(executionHeld())return {wait:true,reason:"local_return_hold",retryAfterMs:60000};
   if(integrationMode()!=="browser_readonly") return {wait:true,reason:"observe_only",retryAfterMs:60000};
   if(sessionState().state==="login_required") return {wait:true,reason:"uyap_login_required",retryAfterMs:5000};
   lane=["download","query"].includes(String(lane||"").toLowerCase())?String(lane).toLowerCase():"any";
@@ -285,7 +296,7 @@ function claimNext(host,lane="any"){
       (payload_json LIKE '%"sessionRefresh":true%' OR payload_json LIKE '%"purpose":"session_refresh_documents"%')`).get().n;
     if(!Number(activeRefresh||0))setDocumentDownloadState("ready","");
   }
-  const documentDownloadsPaused=setting("uyap_document_download_state","ready")!=="ready";
+  const documentDownloadsPaused=sessionState().manualDownloadPaused||setting("uyap_document_download_state","ready")!=="ready";
   db.prepare(`UPDATE uyap_command_queue SET status='queued',not_before_ms=0,error='stale command recovered'
     WHERE status='running' AND dispatched_at IS NOT NULL AND dispatched_at < datetime('now','-3 minutes')`).run();
   const now=Date.now();
@@ -315,6 +326,7 @@ function claimNext(host,lane="any"){
       FROM uyap_command_queue q
       JOIN uyap_endpoints e ON e.endpoint_key=q.endpoint_key
       WHERE q.status='queued' AND q.attempts<q.max_attempts AND q.not_before_ms<=? AND e.enabled=1
+      ${runtimePolicy?.selectionSql||''}
       ${documentDownloadsPaused?"AND q.command_type!='download_document'":""}
       ${laneFilter}
       ${host?"AND e.host=?":""}`;
@@ -338,6 +350,7 @@ function claimNext(host,lane="any"){
     const spacing=Math.max(GLOBAL_MIN_INTERVAL_MS,Number(row.min_interval_ms)||0);
     const jitter=Math.floor(Math.random()*(JITTER_MAX_MS+1));
     db.prepare(`UPDATE uyap_command_queue SET status='running',attempts=attempts+1,dispatched_at=datetime('now'),error=NULL WHERE id=?`).run(row.id);
+    runtimePolicy?.onClaim(row.id);
     if(lane!=="any")LANE_NEXT_ALLOWED_MS[lane]=now+spacing+jitter;
     db.prepare(`UPDATE uyap_rate_state SET last_dispatch_ms=?,next_allowed_ms=?,state='ready',updated_at=datetime('now') WHERE id=1`)
       .run(now,now+spacing+jitter);
@@ -356,12 +369,34 @@ function claimNext(host,lane="any"){
   }catch(e){db.exec("ROLLBACK");throw e}
 }
 function reportResult(id,result={}){
+  if(executionHeld())return {ok:false,reason:"local_return_hold"};
+  if(!runtimePolicy)return reportResultUnchecked(id,result);
+  db.exec('BEGIN IMMEDIATE');
+  try{const denied=runtimePolicy.beforeResult(id,result);if(denied){db.exec('COMMIT');return denied;}
+    const out=reportResultUnchecked(id,result);runtimePolicy.afterResult(id,result);db.exec('COMMIT');return out;
+  }catch{db.exec('ROLLBACK');runtimePolicy.resultFailure(id);return {ok:false,reason:'query_processing_failed'};}
+}
+function reportResultUnchecked(id,result={}){
+  if(executionHeld())return {ok:false,reason:"local_return_hold"};
   const row=db.prepare("SELECT * FROM uyap_command_queue WHERE id=?").get(id);
   if(!row) throw new Error("UYAP komutu bulunamadı");
   if(row.status==="completed") return {ok:true,state:"ready",circuitUntil:0,ignored:"already_completed"};
   if(row.status==="cancelled") return {ok:false,state:"ready",circuitUntil:0,ignored:"already_cancelled"};
   const status=Number(result.status||0)||0;
+  const applicationError=require("../extension/observation_contracts").applicationError(result.data);
+  if(applicationError){
+    db.prepare("UPDATE uyap_command_queue SET status='failed',finished_at=datetime('now'),error=?,result_meta_json=? WHERE id=?").run(applicationError.category,JSON.stringify({httpStatus:status,applicationError:applicationError.code,retryable:false}),id);
+    return {ok:false,state:applicationError.category,retryable:false};
+  }
   const ok=!!result.ok && status>=200 && status<400;
+  if(ok&&row.endpoint_key==="document.list"){
+    const context=JSON.parse(row.payload_json||"{}").context||{};
+    try{ require("../extension/observation_contracts").assertImportAllowed(db.prepare("SELECT court,case_type FROM cases WHERE id=?").get(Number(context.caseId))); }
+    catch(e){
+      db.prepare("UPDATE uyap_command_queue SET status='failed',finished_at=datetime('now'),error=? WHERE id=?").run(e.message,id);
+      return {ok:false,state:e.message,retryable:false};
+    }
+  }
   const now=Date.now();
   let state="ready",circuitUntil=0,failures=0;
   const current=rateState();
@@ -382,7 +417,10 @@ function reportResult(id,result={}){
     const cleanData=rawData==null?null:sanitizeResultData(rawData);
     const payload=row.payload_json?JSON.parse(row.payload_json):{};
     const ctx=payload?.context||{};
-    const resultJson=cleanData==null?null:JSON.stringify(cleanData);
+    const targetedCasePage=row.endpoint_key==="case.search"&&ctx.targetedCaseSearch&&Array.isArray(cleanData);
+    const targetedCbsPage=row.endpoint_key==="cbs.search"&&ctx.targetedCbsPartySearch&&Array.isArray(cleanData);
+    const targetedPartyPage=row.endpoint_key==="case.parties"&&ctx.targetedCbsPartySearch&&Array.isArray(cleanData);
+    const resultJson=cleanData==null?null:((targetedCasePage||targetedCbsPage||targetedPartyPage)?null:JSON.stringify(cleanData));
     db.prepare(`UPDATE uyap_command_queue SET status='completed',finished_at=datetime('now'),result_meta_json=?,result_json=? WHERE id=?`)
       .run(JSON.stringify(safeResult(result)),resultJson,id);
     if(row.endpoint_key==="document.viewer_params"&&ctx.purpose==="refresh_document_tokens"){
@@ -409,24 +447,29 @@ function reportResult(id,result={}){
       }
     }
     if(row.endpoint_key==="case.search"&&Array.isArray(cleanData)){
-      upsertCasesFromSearch(cleanData);
-      if(ctx.discovery&&ctx.stage==="cases"){
-        const list=Array.isArray(cleanData?.[0])?cleanData[0]:[];
-        const total=Number(cleanData?.[1]||0),pageSize=Number(payload?.body?.pageSize||500),page=Number(ctx.pageNumber||1);
-        if(total>page*pageSize) enqueueCaseSearchPage({yargiTuru:ctx.yargiTuru,birimTuru2:ctx.birimTuru2,dosyaDurumKod:ctx.dosyaDurumKod,pageNumber:page+1,syncDocuments:ctx.syncDocuments});
-        if(ctx.syncDocuments){
-          for(const item of list){
-            const ext="uyap:case:"+String(item?.birimId||"")+":"+String(item?.dosyaNo||"");
-            const c=db.prepare("SELECT id FROM cases WHERE external_id=?").get(ext);
-            if(c?.id){
-              try{
-                if(ctx.sessionRefresh) enqueueCaseDocumentSync(c.id,{priority:6,purpose:"session_refresh_documents",source:"session_case_search"});
-                else enqueueCaseDocumentSync(c.id);
-              }catch{}
+      if(ctx.targetedCaseSearch){
+        const summary=finalizeTargetedCaseSearchPage(cleanData,ctx,payload);
+        db.prepare("UPDATE uyap_command_queue SET result_json=? WHERE id=?").run(JSON.stringify(summary),id);
+      }else{
+        upsertCasesFromSearch(cleanData);
+        if(ctx.discovery&&ctx.stage==="cases"){
+          const list=Array.isArray(cleanData?.[0])?cleanData[0]:[];
+          const total=Number(cleanData?.[1]||0),pageSize=Number(payload?.body?.pageSize||500),page=Number(ctx.pageNumber||1);
+          if(total>page*pageSize) enqueueCaseSearchPage({yargiTuru:ctx.yargiTuru,birimTuru2:ctx.birimTuru2,dosyaDurumKod:ctx.dosyaDurumKod,pageNumber:page+1,syncDocuments:ctx.syncDocuments});
+          if(ctx.syncDocuments){
+            for(const item of list){
+              const ext="uyap:case:"+String(item?.birimId||"")+":"+String(item?.dosyaNo||"");
+              const c=db.prepare("SELECT id FROM cases WHERE external_id=?").get(ext);
+              if(c?.id){
+                try{
+                  if(ctx.sessionRefresh) enqueueCaseDocumentSync(c.id,{priority:6,purpose:"session_refresh_documents",source:"session_case_search"});
+                  else enqueueCaseDocumentSync(c.id);
+                }catch{}
+              }
             }
           }
+          if(ctx.sessionRefresh) maybeFinishSessionRefresh();
         }
-        if(ctx.sessionRefresh) maybeFinishSessionRefresh();
       }
     }
     if(row.endpoint_key==="cbs.provinces"&&ctx.discovery&&ctx.stage==="cbs_provinces"){
@@ -442,17 +485,29 @@ function reportResult(id,result={}){
         for(const s of statuses) enqueueCbsSearchPage({ilKodu:ctx.ilKodu,birimId:bid,dosyaDurumKod:s,pageNumber:1,syncDocuments:ctx.syncDocuments});
       }
     }
+    if(row.endpoint_key==="case.parties"&&ctx.targetedCbsPartySearch&&Array.isArray(cleanData)){
+      const summary=finalizeTargetedPartyResult(cleanData,ctx,payload);
+      db.prepare("UPDATE uyap_command_queue SET result_json=? WHERE id=?").run(JSON.stringify(summary),id);
+    }
     if(row.endpoint_key==="cbs.search"&&Array.isArray(cleanData)){
-      upsertCasesFromSearch(cleanData);
-      if(ctx.discovery&&ctx.stage==="cbs_cases"){
-        const list=Array.isArray(cleanData?.[0])?cleanData[0]:[];
-        const total=Number(cleanData?.[1]||0),pageSize=Number(payload?.body?.pageSize||500),page=Number(ctx.pageNumber||1);
-        if(total>page*pageSize) enqueueCbsSearchPage({ilKodu:ctx.ilKodu,birimId:ctx.birimId,dosyaDurumKod:ctx.dosyaDurumKod,pageNumber:page+1,syncDocuments:ctx.syncDocuments});
-        if(ctx.syncDocuments){
-          for(const item of list){
-            const ext="uyap:case:"+String(item?.birimId||"")+":"+String(item?.dosyaNo||"");
-            const c=db.prepare("SELECT id FROM cases WHERE external_id=?").get(ext);
-            if(c?.id){try{enqueueCaseDocumentSync(c.id)}catch{}}
+      if(ctx.explicitCbsCaseLookup){
+        // Integration-only scoped listing: retain sanitized [rows,total] for the
+        // user-query adapter. Never bulk-upsert, auto-page or start documents here.
+      }else if(ctx.targetedCbsPartySearch){
+        const summary=finalizeTargetedCbsPage(cleanData,ctx,payload);
+        db.prepare("UPDATE uyap_command_queue SET result_json=? WHERE id=?").run(JSON.stringify(summary),id);
+      }else{
+        upsertCasesFromSearch(cleanData);
+        if(ctx.discovery&&ctx.stage==="cbs_cases"){
+          const list=Array.isArray(cleanData?.[0])?cleanData[0]:[];
+          const total=Number(cleanData?.[1]||0),pageSize=Number(payload?.body?.pageSize||500),page=Number(ctx.pageNumber||1);
+          if(total>page*pageSize) enqueueCbsSearchPage({ilKodu:ctx.ilKodu,birimId:ctx.birimId,dosyaDurumKod:ctx.dosyaDurumKod,pageNumber:page+1,syncDocuments:ctx.syncDocuments});
+          if(ctx.syncDocuments){
+            for(const item of list){
+              const ext="uyap:case:"+String(item?.birimId||"")+":"+String(item?.dosyaNo||"");
+              const c=db.prepare("SELECT id FROM cases WHERE external_id=?").get(ext);
+              if(c?.id){try{enqueueCaseDocumentSync(c.id)}catch{}}
+            }
           }
         }
       }
@@ -553,6 +608,197 @@ function cbsUnitId(x){
     const v=x?.[k]; if(v!==undefined&&v!==null&&String(v).trim())return String(v);
   }
   return null;
+}
+function observedEndpointTemplate(pathName,requiredBodyTypes){
+  const obs=db.prepare(`SELECT id,status,last_seen_at,hit_count,sample_request_json
+    FROM uyap_endpoint_observations WHERE path=? AND sample_request_json IS NOT NULL
+    ORDER BY last_seen_at DESC LIMIT 1`).get(pathName);
+  let parsed=null,parseError=null;
+  if(obs?.sample_request_json){
+    try{parsed=JSON.parse(obs.sample_request_json)}catch(e){parseError=String(e?.message||e)}
+  }
+  const body=parsed?.body;
+  const verified=!!body&&typeof body==="object"&&!Array.isArray(body)&&Object.entries(requiredBodyTypes||{}).every(([k,t])=>
+    Object.prototype.hasOwnProperty.call(body,k)&&typeof body[k]===t);
+  return {obs,parsed,parseError,verified};
+}
+function cbsPartySearchSchemaStatus(){
+  const cbs=observedEndpointTemplate("/avukat_dosya_sorgula_cbs_brd.ajx",{
+    dosyaDurumKod:"number",pageSize:"number",pageNumber:"number",birimId:"string",birimTuru2:"string",birimTuru3:"string"
+  });
+  const parties=observedEndpointTemplate("/dosya_taraf_bilgileri_brd.ajx",{dosyaId:"string"});
+  return {
+    contractVersion:"uyap.cbs-party-search-schema.v1",
+    ready:cbs.verified&&parties.verified,
+    cbsSearch:{observed:!!cbs.parsed,verified:cbs.verified,observedAt:cbs.obs?.last_seen_at||null,hitCount:Number(cbs.obs?.hit_count||0),
+      bodyShape:cbs.parsed?shapeOfObservedObject(cbs.parsed.body):null,parseError:cbs.parseError},
+    partyLookup:{observed:!!parties.parsed,verified:parties.verified,observedAt:parties.obs?.last_seen_at||null,hitCount:Number(parties.obs?.hit_count||0),
+      bodyShape:parties.parsed?shapeOfObservedObject(parties.parsed.body):null,parseError:parties.parseError},
+    matching:{partyField:"adi",roleField:"rol",entityTypeField:"kisiKurum",mode:"exact_normalized"},
+    safeguards:{requiresObservedUnit:true,requiresDateWindow:true,maxWindowDays:120,maxCandidates:50,noDocumentList:true,noDownloads:true}
+  };
+}
+function cbsUnitOptions(ilKodu){
+  const code=Number(ilKodu);if(!Number.isInteger(code)||code<1||code>81)throw new Error("Geçersiz il kodu");
+  const rows=db.prepare(`SELECT result_json,finished_at FROM uyap_command_queue
+    WHERE endpoint_key='cbs.units' AND status='completed' AND result_json IS NOT NULL
+      AND json_valid(payload_json)=1 AND CAST(json_extract(payload_json,'$.context.ilKodu') AS INTEGER)=?
+    ORDER BY id DESC`).all(code);
+  const seen=new Set(),units=[];
+  for(const row of rows){
+    let data=null;try{data=JSON.parse(row.result_json)}catch{}
+    if(!Array.isArray(data))continue;
+    for(const x of data){
+      const id=cbsUnitId(x),name=String(x?.birimAdi||x?.ad||"").trim();
+      if(!id||!name||seen.has(id))continue;seen.add(id);
+      units.push({birimId:id,birimAdi:name,observedAt:row.finished_at||null});
+    }
+  }
+  units.sort((a,b)=>a.birimAdi.localeCompare(b.birimAdi,"tr"));
+  return {contractVersion:"uyap.cbs-units.v1",ilKodu:code,units};
+}
+function uyapObjectDate(value){
+  const d=value?.date||value;
+  const y=Number(d?.year),m=Number(d?.month),day=Number(d?.day);
+  if(!Number.isInteger(y)||!Number.isInteger(m)||!Number.isInteger(day))return null;
+  return String(y).padStart(4,"0")+"-"+String(m).padStart(2,"0")+"-"+String(day).padStart(2,"0");
+}
+function hashPartyName(name){
+  return crypto.createHash("sha256").update("party-v1|"+nrm(name)).digest("hex");
+}
+function targetedCbsCandidate(item){
+  return {
+    dosyaNo:String(item?.dosyaNo||""),dosyaDurumKod:Number(item?.dosyaDurumKod||0),
+    dosyaDurum:String(item?.dosyaDurum||""),dosyaTurKod:Number(item?.dosyaTurKod||0),
+    dosyaTur:String(item?.dosyaTur||""),birimAdi:String(item?.birimAdi||""),
+    birimId:String(item?.birimId||""),dosyaAcilisTarihi:item?.dosyaAcilisTarihi||null
+  };
+}
+function enqueueTargetedCbsPage(ctx,dosyaDurumKod,pageNumber){
+  const schema=cbsPartySearchSchemaStatus();if(!schema.ready)throw new Error("CBS/party gözlem şeması hazır değil");
+  const t=observedEndpointTemplate("/avukat_dosya_sorgula_cbs_brd.ajx",{
+    dosyaDurumKod:"number",pageSize:"number",pageNumber:"number",birimId:"string",birimTuru2:"string",birimTuru3:"string"
+  });
+  const body={...(t.parsed?.body||{})};
+  body.dosyaDurumKod=Number(dosyaDurumKod);body.pageSize=500;body.pageNumber=Number(pageNumber);
+  body.birimId="";body.birimTuru2=String(ctx.birimId);body.birimTuru3="3";
+  return enqueue({commandType:"fetch_json",endpointKey:"cbs.search",priority:6,payload:{
+    query:{...(t.parsed?.query||{})},body,context:{
+      targetedCbsPartySearch:true,searchId:String(ctx.searchId),targetKey:String(ctx.targetKey),
+      targetPartyHash:String(ctx.targetPartyHash),ilKodu:Number(ctx.ilKodu),birimId:String(ctx.birimId),
+      dosyaDurumKod:Number(dosyaDurumKod),pageNumber:Number(pageNumber),
+      openedFrom:String(ctx.openedFrom),openedTo:String(ctx.openedTo),maxCandidates:Number(ctx.maxCandidates)
+    }
+  }});
+}
+function enqueueTargetedPartyLookup(ctx,item){
+  const t=observedEndpointTemplate("/dosya_taraf_bilgileri_brd.ajx",{dosyaId:"string"});
+  if(!t.verified)throw new Error("UYAP taraf sorgusu şeması doğrulanmadı");
+  const body={...(t.parsed?.body||{}),dosyaId:uyapOpaqueId(item?.dosyaId)};
+  const candidate=targetedCbsCandidate(item);
+  return enqueue({commandType:"fetch_json",endpointKey:"case.parties",priority:6,payload:{
+    query:{...(t.parsed?.query||{})},body,context:{
+      targetedCbsPartySearch:true,searchId:String(ctx.searchId),targetKey:String(ctx.targetKey),
+      targetPartyHash:String(ctx.targetPartyHash),candidate
+    }
+  }});
+}
+function enqueueTargetedCbsPartySearch(input={}){
+  if(sessionState().state==="login_required")throw new Error("UYAP oturumu gerekli");
+  const schema=cbsPartySearchSchemaStatus();if(!schema.ready)throw new Error("CBS/party gözlem şeması hazır değil");
+  const ilKodu=Number(input.ilKodu),birimId=String(input.birimId||"").trim();
+  const partyName=String(input.partyName||"").trim();if(!partyName)throw new Error("Taraf adı gerekli");
+  const openedFrom=String(input.openedFrom||""),openedTo=String(input.openedTo||"");
+  const from=parseYmd(openedFrom),to=parseYmd(openedTo);if(to<from)throw new Error("Tarih aralığı geçersiz");
+  const days=Math.floor((to-from)/86400000)+1;if(days>120)throw new Error("CBS hedefli arama tarih aralığı en fazla 120 gün olabilir");
+  const unit=cbsUnitOptions(ilKodu).units.find(x=>String(x.birimId)===birimId);
+  if(!unit)throw new Error("CBS birimi gerçek cbs.units sonucunda doğrulanmadı");
+  const statuses=[...new Set((Array.isArray(input.statuses)?input.statuses:[0]).map(Number).filter(x=>x===0||x===1))];
+  if(!statuses.length)throw new Error("Dosya durumu gerekli");
+  const maxCandidates=Math.max(1,Math.min(50,Number(input.maxCandidates)||25));
+  const targetPartyHash=hashPartyName(partyName);
+  const targetKey=crypto.createHash("sha256").update([ilKodu,birimId,statuses.join(","),openedFrom,openedTo,targetPartyHash].join("|")).digest("hex");
+  const active=db.prepare(`SELECT id,payload_json FROM uyap_command_queue
+    WHERE status IN ('queued','running') AND json_valid(payload_json)=1
+      AND json_extract(payload_json,'$.context.targetedCbsPartySearch')=1
+      AND json_extract(payload_json,'$.context.targetKey')=? ORDER BY id LIMIT 1`).get(targetKey);
+  if(active?.id){
+    let p={};try{p=JSON.parse(active.payload_json||"{}")}catch{}
+    return {searchId:String(p?.context?.searchId||""),commandIds:[Number(active.id)],dedup:true};
+  }
+  const searchId=crypto.randomUUID(),ctx={searchId,targetKey,targetPartyHash,ilKodu,birimId,openedFrom,openedTo,maxCandidates};
+  const commandIds=statuses.map(s=>enqueueTargetedCbsPage(ctx,s,1));
+  return {searchId,commandIds,dedup:false,unit:{ilKodu,birimId,birimAdi:unit.birimAdi},statuses,openedFrom,openedTo,maxCandidates};
+}
+function finalizeTargetedCbsPage(cleanData,ctx,payload){
+  const list=Array.isArray(cleanData?.[0])?cleanData[0]:[];
+  const total=Number(cleanData?.[1]||0),page=Number(ctx.pageNumber||1),pageSize=Number(payload?.body?.pageSize||500);
+  const from=String(ctx.openedFrom||""),to=String(ctx.openedTo||"");
+  const candidates=list.filter(item=>{const d=uyapObjectDate(item?.dosyaAcilisTarihi);return d&&d>=from&&d<=to});
+  const already=Number(db.prepare(`SELECT count(*) n FROM uyap_command_queue
+    WHERE endpoint_key='case.parties' AND json_valid(payload_json)=1
+      AND json_extract(payload_json,'$.context.targetedCbsPartySearch')=1
+      AND json_extract(payload_json,'$.context.searchId')=?`).get(String(ctx.searchId))?.n||0);
+  const capacity=Math.max(0,Number(ctx.maxCandidates||25)-already);
+  const selected=candidates.slice(0,capacity),partyCommandIds=[];
+  for(const item of selected)partyCommandIds.push(enqueueTargetedPartyLookup(ctx,item));
+  const limitReached=candidates.length>selected.length||already+selected.length>=Number(ctx.maxCandidates||25);
+  let nextCommandId=null;
+  const hasMore=total>page*pageSize;
+  if(hasMore&&!limitReached)nextCommandId=enqueueTargetedCbsPage(ctx,Number(ctx.dosyaDurumKod),page+1);
+  return {type:"targeted_cbs_list_result",searchId:String(ctx.searchId),page,total,
+    pageResultCount:list.length,dateCandidateCount:candidates.length,partyChecksQueued:partyCommandIds.length,
+    partyCommandIds,hasMore:hasMore&&!!nextCommandId,nextCommandId,limitReached};
+}
+function finalizeTargetedPartyResult(cleanData,ctx,payload){
+  const parties=Array.isArray(cleanData)?cleanData:[];
+  const matches=parties.filter(x=>hashPartyName(x?.adi||"")===String(ctx.targetPartyHash||""));
+  let caseInfo=null;
+  if(matches.length){
+    const candidate={...(ctx.candidate||{}),dosyaId:payload?.body?.dosyaId};
+    upsertCasesFromSearch([[candidate],1]);
+    const ext="uyap:case:"+String(candidate?.birimId||"")+":"+String(candidate?.dosyaNo||"");
+    const c=db.prepare("SELECT id FROM cases WHERE external_id=?").get(ext);
+    caseInfo=safeTargetedCase(candidate,c?.id||null);
+  }
+  return {type:"targeted_cbs_party_result",searchId:String(ctx.searchId),matched:matches.length>0,
+    matchCount:matches.length,case:caseInfo,roles:[...new Set(matches.map(x=>String(x?.rol||"")).filter(Boolean))],
+    partyCount:parties.length};
+}
+function targetedCbsPartySearchStatus(searchId){
+  searchId=String(searchId||"").trim();
+  const rows=db.prepare(`SELECT id,endpoint_key,status,priority,attempts,max_attempts,created_at,dispatched_at,finished_at,error,payload_json,result_json
+    FROM uyap_command_queue
+    WHERE json_valid(payload_json)=1
+      AND json_extract(payload_json,'$.context.targetedCbsPartySearch')=1
+      AND json_extract(payload_json,'$.context.searchId')=?
+    ORDER BY id`).all(searchId);
+  if(!rows.length)return null;
+  const commands=rows.map(r=>({id:Number(r.id),endpointKey:r.endpoint_key,status:r.status,priority:Number(r.priority||0),
+    attempts:Number(r.attempts||0),maxAttempts:Number(r.max_attempts||0),createdAt:r.created_at||null,
+    dispatchedAt:r.dispatched_at||null,finishedAt:r.finished_at||null,error:r.error||null}));
+  const matches=[];let candidateLimitReached=false,partyChecks=0;
+  for(const r of rows){
+    if(!r.result_json)continue;
+    try{
+      const x=JSON.parse(r.result_json);
+      if(x?.type==="targeted_cbs_list_result"){candidateLimitReached=candidateLimitReached||!!x.limitReached;partyChecks+=Number(x.partyChecksQueued||0)}
+      if(x?.type==="targeted_cbs_party_result"&&x.matched&&x.case)matches.push(x.case);
+    }catch{}
+  }
+  const uniqueMatches=[...new Map(matches.map(x=>[String(x.caseId||"")+"|"+x.court+"|"+x.fileNo,x])).values()];
+  const session=sessionState(),running=rows.some(r=>r.status==="running"),queued=rows.some(r=>r.status==="queued");
+  let state="not_found",label="Belirtilen tarafla eşleşen CBS dosyası bulunamadı",terminal=true,success=false,requiresLogin=false;
+  if(uniqueMatches.length===1){state="completed";label="CBS soruşturma dosyası bulundu";success=true}
+  else if(uniqueMatches.length>1){state="ambiguous";label="Aynı tarafla birden fazla CBS dosyası eşleşti"}
+  else if(session.state==="login_required"&&(running||queued)){state="login_required";label="UYAP oturumu gerekli";terminal=false;requiresLogin=true}
+  else if(running){state="running";label="CBS dosyası ve taraf bilgileri sorgulanıyor";terminal=false}
+  else if(queued){state="queued";label="CBS hedefli arama bekliyor";terminal=false}
+  else if(rows.some(r=>r.status==="failed")){state="failed";label="CBS hedefli arama başarısız"}
+  else if(candidateLimitReached){state="candidate_limit_reached";label="Aday limiti doldu; tarih aralığını daraltın"}
+  return {contractVersion:"uyap.targeted-cbs-party-search.v1",searchId,state,label,terminal,success,requiresLogin,
+    pollAfterMs:["queued","running"].includes(state)?1500:null,partyChecks,candidateLimitReached,matches:uniqueMatches,
+    commands,session:{state:session.state,manualDownloadPaused:session.manualDownloadPaused}};
 }
 function enqueueCbsDiscovery({statuses=[0,1],syncDocuments=false}={}){
   const id=enqueue({commandType:"fetch_json",endpointKey:"cbs.provinces",
@@ -683,9 +929,9 @@ function mergeRemoteDocumentRows(targetId,sourceId){
     FROM correspondence_match_suggestions WHERE remote_document_id=?`).run(target.id,source.id);
   db.prepare("DELETE FROM correspondence_match_suggestions WHERE remote_document_id=?").run(source.id);
 
-  const sourceLike='%"remoteDocumentDbId":'+source.id+'%';
   db.prepare(`UPDATE uyap_command_queue SET status='cancelled',finished_at=datetime('now'),error='merged_duplicate_remote_document'
-    WHERE command_type='download_document' AND status IN ('queued','running','failed') AND payload_json LIKE ?`).run(sourceLike);
+    WHERE command_type='download_document' AND status IN ('queued','running','failed')
+      AND ${downloadCommandMatchesRemoteSql()}`).run(Number(source.id));
 
   let status=remoteStatusRank(source.status)>remoteStatusRank(target.status)?source.status:target.status;
   const localAsset=target.local_asset_id||source.local_asset_id||null;
@@ -709,14 +955,8 @@ function mergeRemoteDocumentRows(targetId,sourceId){
   return target.id;
 }
 function upsertRemoteList(caseId,data,{baseline=false}={}){
-  let docs=[];
-  if(Array.isArray(data?.tumEvraklar)) docs=data.tumEvraklar;
-  else if(data?.tumEvraklar&&typeof data.tumEvraklar==="object"){
-    for(const [group,items] of Object.entries(data.tumEvraklar)){
-      if(!Array.isArray(items))continue;
-      for(const item of items) docs.push({...item,__uyapGroup:group});
-    }
-  }else if(Array.isArray(data?.son20Evrak)) docs=data.son20Evrak;
+  require("../extension/observation_contracts").assertImportAllowed(db.prepare("SELECT court,case_type FROM cases WHERE id=?").get(Number(caseId)));
+  const docs=documentListDocs(data);
   const ins=db.prepare(`INSERT INTO uyap_remote_documents(case_id,remote_document_id,stable_key,remote_title,document_type,document_date,original_file_name,status,is_baseline,metadata_json)
     VALUES(?,?,?,?,?,?,?,'discovered',?,?)`);
   const upd=db.prepare(`UPDATE uyap_remote_documents SET stable_key=?,remote_document_id=?,remote_title=?,document_type=?,document_date=?,original_file_name=?,
@@ -742,9 +982,9 @@ function upsertRemoteList(caseId,data,{baseline=false}={}){
         String(oldMeta.dosyaId||"")!==String(d?.dosyaId||"");
       upd.run(stable,remoteId,title||null,d.tur||null,isoDate(d.onaylandigiTarih),fileName,JSON.stringify(d),exists.id);
       if(tokenChanged){
-        const like='%"remoteDocumentDbId":'+exists.id+'%';
         const cancelled=db.prepare(`UPDATE uyap_command_queue SET status='cancelled',finished_at=datetime('now'),error='stale_remote_metadata'
-          WHERE command_type='download_document' AND status IN ('queued','failed') AND payload_json LIKE ?`).run(like).changes;
+          WHERE command_type='download_document' AND status IN ('queued','failed')
+            AND ${downloadCommandMatchesRemoteSql()}`).run(Number(exists.id)).changes;
         if(cancelled>0&&!exists.local_asset_id) db.prepare("UPDATE uyap_remote_documents SET status='discovered',last_seen_at=datetime('now') WHERE id=?").run(exists.id);
       }
       updated++;
@@ -813,15 +1053,392 @@ function cases(){
   }
   return rows.filter(r=>!hiddenMediationIds.has(Number(r.id))&&!(linkedIds.has(r.id)&&String(r.external_id||"").startsWith("uyap:")));
 }
+function documentListCommandMatchesCaseSql(){
+  return "json_valid(payload_json)=1 AND CAST(json_extract(payload_json,'$.context.caseId') AS INTEGER)=?";
+}
+function documentListDocs(data){
+  const docs=[];
+  if(Array.isArray(data?.tumEvraklar)) docs.push(...data.tumEvraklar);
+  else if(data?.tumEvraklar&&typeof data.tumEvraklar==="object"){
+    for(const [group,items] of Object.entries(data.tumEvraklar)){
+      if(!Array.isArray(items))continue;
+      for(const item of items) docs.push({...item,__uyapGroup:group});
+    }
+  }else if(Array.isArray(data?.son20Evrak)) docs.push(...data.son20Evrak);
+  return docs;
+}
 function remoteDocuments(caseId){
   const c=linkedUyapCase(caseId);if(!c)return [];
   return db.prepare("SELECT * FROM uyap_remote_documents WHERE case_id=? ORDER BY COALESCE(document_date,'') DESC,id DESC").all(Number(c.id));
 }
+function shapeOfObservedObject(value){
+  if(!value||typeof value!=="object"||Array.isArray(value))return {};
+  const out={};
+  for(const [k,v] of Object.entries(value)){
+    out[k]=Array.isArray(v)?"array":(v===null?"null":typeof v);
+  }
+  return out;
+}
+function caseSearchObservedTemplate(){
+  const ep=db.prepare("SELECT endpoint_key,method,host,path,enabled,min_interval_ms,last_verified_at FROM uyap_endpoints WHERE endpoint_key='case.search'").get();
+  const pathName=String(ep?.path||"/search_phrase_detayli.ajx");
+  const obs=db.prepare(`SELECT id,method,host,path,status,last_seen_at,hit_count,sample_request_json
+    FROM uyap_endpoint_observations
+    WHERE path=? AND sample_request_json IS NOT NULL
+    ORDER BY last_seen_at DESC LIMIT 1`).get(pathName);
+  if(!obs?.sample_request_json)return {ep,pathName,obs:null,parsed:null,parseError:null};
+  try{return {ep,pathName,obs,parsed:JSON.parse(obs.sample_request_json),parseError:null}}
+  catch(e){return {ep,pathName,obs,parsed:null,parseError:String(e?.message||e)}}
+}
+function verifiedCaseSearchObservedFields(parsed){
+  const body=parsed?.body;
+  if(!body||typeof body!=="object"||Array.isArray(body))return false;
+  const required={
+    dosyaDurumKod:"number",pageSize:"number",pageNumber:"number",
+    birimId:"string",birimTuru2:"string",birimTuru3:"string"
+  };
+  return Object.entries(required).every(([k,t])=>Object.prototype.hasOwnProperty.call(body,k)&&typeof body[k]===t);
+}
+function caseSearchSchemaStatus(){
+  const {ep,pathName,obs,parsed,parseError}=caseSearchObservedTemplate();
+  const observed=!!parsed;
+  const verified=observed&&verifiedCaseSearchObservedFields(parsed);
+  return {
+    contractVersion:"uyap.case-search-schema.v1",
+    endpoint:{
+      key:"case.search",
+      method:String(ep?.method||"POST"),
+      host:String(ep?.host||"avukat.uyap.gov.tr"),
+      path:pathName,
+      enabled:!!Number(ep?.enabled||0)
+    },
+    state:verified?"ready":(observed?"observed_unverified":"observation_required"),
+    observed,
+    verified,
+    observedAt:obs?.last_seen_at||null,
+    observationId:obs?.id?Number(obs.id):null,
+    observationStatus:obs?.status==null?null:Number(obs.status),
+    hitCount:obs?.hit_count==null?0:Number(obs.hit_count),
+    requestShape:observed?{
+      query:shapeOfObservedObject(parsed?.query),
+      body:shapeOfObservedObject(parsed?.body),
+      headers:Object.keys(parsed?.headers||{}).sort()
+    }:null,
+    fieldBindings:verified?{
+      request:{
+        status:"dosyaDurumKod",
+        pageSize:"pageSize",
+        pageNumber:"pageNumber",
+        unitId:"birimId",
+        unitType:"birimTuru2",
+        jurisdictionType:"birimTuru3"
+      },
+      response:{
+        court:"birimAdi",
+        courtUnitId:"birimId",
+        fileNumber:"dosyaNo",
+        opaqueCaseId:"dosyaId"
+      },
+      note:"Yıl ve esas numarası request alanı değildir; response dosyaNo üzerinde exact eşleşir."
+    }:null,
+    parseError,
+    targetedSearch:{
+      ready:verified,
+      requiredInputs:["yargiTuru","birimTuru2","court","year","baseNumber","dosyaDurumKod"],
+      reason:verified?"observed_schema_verified":(observed?"observed_schema_missing_required_fields":"request_schema_not_observed")
+    },
+    liveQueryRequired:!observed,
+    message:verified
+      ?"Gerçek /search_phrase_detayli.ajx şeması doğrulandı. Hedef mahkeme/yıl/esas response üzerinde exact filtrelenir."
+      :(observed?"Request gözlemlendi ancak gerekli alanlar doğrulanamadı. Payload üretilmez.":"Gerçek /search_phrase_detayli.ajx request şeması henüz gözlemlenmedi. Payload tahmin edilmez.")
+  };
+}
+function caseSearchOptions(){
+  const schema=caseSearchSchemaStatus();
+  const rows=db.prepare(`SELECT id,payload_json,result_json,finished_at FROM uyap_command_queue
+    WHERE endpoint_key='case.units' AND status='completed' AND result_json IS NOT NULL
+    ORDER BY id DESC`).all();
+  const seen=new Set(),units=[];
+  for(const row of rows){
+    let payload=null,data=null;
+    try{payload=JSON.parse(row.payload_json||"{}");data=JSON.parse(row.result_json||"[]")}catch{continue}
+    const y=Number(payload?.body?.yargiTuru??payload?.context?.yargiTuru);
+    if(!Number.isFinite(y)||!Array.isArray(data))continue;
+    for(const unit of data){
+      const b2=String(unit?.tablo||"").trim(),label=String(unit?.kod||"").trim();
+      if(!b2||!label)continue;
+      const key=y+"|"+b2;if(seen.has(key))continue;seen.add(key);
+      units.push({yargiTuru:y,birimTuru2:b2,label,observedAt:row.finished_at||null});
+    }
+  }
+  units.sort((a,b)=>a.label.localeCompare(b.label,"tr")||a.yargiTuru-b.yargiTuru||a.birimTuru2.localeCompare(b.birimTuru2));
+  return {contractVersion:"uyap.case-search-options.v1",schemaState:schema.state,ready:schema.targetedSearch.ready,units};
+}
+function normalizeTargetText(value){
+  return String(value||"").normalize("NFKC").toLocaleLowerCase("tr-TR").replace(/[^\p{L}\p{N}]+/gu," ").trim().replace(/\s+/g," ");
+}
+function normalizeTargetFileNo(year,baseNumber){
+  const y=Number(year),n=Number(baseNumber);
+  if(!Number.isInteger(y)||y<1900||y>2200)throw new Error("Geçersiz dosya yılı");
+  if(!Number.isInteger(n)||n<1)throw new Error("Geçersiz esas numarası");
+  return y+"/"+n;
+}
+function responseFileNo(value){
+  const m=String(value||"").match(/(\d{4})\s*\/\s*(\d+)/);
+  return m?(Number(m[1])+"/"+Number(m[2])):"";
+}
+function targetedCaseMatches(item,ctx){
+  return responseFileNo(item?.dosyaNo)===String(ctx.targetDosyaNo||"") &&
+    normalizeTargetText(item?.birimAdi)===String(ctx.targetCourtKey||"");
+}
+function safeTargetedCase(item,caseId=null){
+  return {
+    caseId:caseId==null?null:Number(caseId),
+    court:String(item?.birimAdi||""),
+    fileNo:String(item?.dosyaNo||""),
+    status:String(item?.dosyaDurum||""),
+    caseType:String(item?.dosyaTur||""),
+    birimId:String(item?.birimId||"")
+  };
+}
+function enqueueTargetedCaseSearchPage(ctx,pageNumber){
+  const schema=caseSearchSchemaStatus();
+  if(!schema.targetedSearch.ready)throw new Error("UYAP hedefli dosya arama şeması hazır değil: "+schema.targetedSearch.reason);
+  const {parsed}=caseSearchObservedTemplate();
+  const body={...(parsed?.body||{})};
+  body.dosyaDurumKod=Number(ctx.dosyaDurumKod);
+  body.pageSize=500;
+  body.pageNumber=Number(pageNumber);
+  body.birimId="";
+  body.birimTuru2=String(ctx.birimTuru2);
+  body.birimTuru3=String(ctx.yargiTuru);
+  return enqueue({commandType:"fetch_json",endpointKey:"case.search",
+    payload:{query:{...(parsed?.query||{})},body,context:{
+      targetedCaseSearch:true,searchId:String(ctx.searchId),targetKey:String(ctx.targetKey),
+      targetCourt:String(ctx.targetCourt),targetCourtKey:String(ctx.targetCourtKey),targetDosyaNo:String(ctx.targetDosyaNo),
+      yargiTuru:Number(ctx.yargiTuru),birimTuru2:String(ctx.birimTuru2),dosyaDurumKod:Number(ctx.dosyaDurumKod),
+      pageNumber:Number(pageNumber),source:"targeted_case_search"
+    }},
+    priority:6});
+}
+function enqueueTargetedCaseSearch(input={}){
+  if(sessionState().state==="login_required")throw new Error("UYAP oturumu gerekli");
+  const schema=caseSearchSchemaStatus();
+  if(!schema.targetedSearch.ready)throw new Error("UYAP hedefli dosya arama şeması hazır değil: "+schema.targetedSearch.reason);
+  const yargiTuru=Number(input.yargiTuru),birimTuru2=String(input.birimTuru2||"").trim();
+  const court=String(input.court||"").trim(),courtKey=normalizeTargetText(court);
+  const targetDosyaNo=normalizeTargetFileNo(input.year,input.baseNumber);
+  const dosyaDurumKod=Number(input.dosyaDurumKod);
+  if(!Number.isInteger(yargiTuru)||yargiTuru<0)throw new Error("Yargı türü gerekli");
+  if(!birimTuru2)throw new Error("Yargı birimi türü gerekli");
+  if(!courtKey)throw new Error("Mahkeme adı gerekli");
+  if(![0,1].includes(dosyaDurumKod))throw new Error("Dosya durumu 0 veya 1 olmalı");
+  const option=caseSearchOptions().units.find(x=>Number(x.yargiTuru)===yargiTuru&&String(x.birimTuru2)===birimTuru2);
+  if(!option)throw new Error("Yargı birimi gerçek case.units gözleminde doğrulanmadı");
+  const targetKey=crypto.createHash("sha256").update([yargiTuru,birimTuru2,dosyaDurumKod,courtKey,targetDosyaNo].join("|")).digest("hex");
+  const active=db.prepare(`SELECT id,payload_json FROM uyap_command_queue
+    WHERE endpoint_key='case.search' AND status IN ('queued','running')
+      AND json_valid(payload_json)=1
+      AND json_extract(payload_json,'$.context.targetedCaseSearch')=1
+      AND json_extract(payload_json,'$.context.targetKey')=?
+    ORDER BY id LIMIT 1`).get(targetKey);
+  if(active?.id){
+    let p={};try{p=JSON.parse(active.payload_json||"{}")}catch{}
+    return {searchId:String(p?.context?.searchId||""),commandId:Number(active.id),dedup:true,target:{court,fileNo:targetDosyaNo,yargiTuru,birimTuru2,dosyaDurumKod}};
+  }
+  const searchId=crypto.randomUUID();
+  const ctx={searchId,targetKey,targetCourt:court,targetCourtKey:courtKey,targetDosyaNo,yargiTuru,birimTuru2,dosyaDurumKod};
+  const commandId=enqueueTargetedCaseSearchPage(ctx,1);
+  return {searchId,commandId,dedup:false,target:{court,fileNo:targetDosyaNo,yargiTuru,birimTuru2,dosyaDurumKod}};
+}
+function targetedCaseSearchStatus(searchId){
+  searchId=String(searchId||"").trim();
+  const rows=db.prepare(`SELECT id,status,priority,attempts,max_attempts,created_at,dispatched_at,finished_at,error,payload_json,result_json
+    FROM uyap_command_queue
+    WHERE endpoint_key='case.search' AND json_valid(payload_json)=1
+      AND json_extract(payload_json,'$.context.targetedCaseSearch')=1
+      AND json_extract(payload_json,'$.context.searchId')=?
+    ORDER BY id`).all(searchId);
+  if(!rows.length)return null;
+  let first={};try{first=JSON.parse(rows[0].payload_json||"{}")?.context||{}}catch{}
+  const target={court:String(first.targetCourt||""),fileNo:String(first.targetDosyaNo||""),yargiTuru:Number(first.yargiTuru),birimTuru2:String(first.birimTuru2||""),dosyaDurumKod:Number(first.dosyaDurumKod)};
+  const commands=rows.map(r=>({id:Number(r.id),status:r.status,priority:Number(r.priority||0),attempts:Number(r.attempts||0),maxAttempts:Number(r.max_attempts||0),createdAt:r.created_at||null,dispatchedAt:r.dispatched_at||null,finishedAt:r.finished_at||null,error:r.error||null}));
+  let match=null,ambiguous=false,lastHasMore=false;
+  for(const row of rows){
+    if(row.status!=="completed"||!row.result_json)continue;
+    try{
+      const x=JSON.parse(row.result_json);
+      if(x?.type!=="targeted_case_search_result")continue;
+      lastHasMore=!!x.hasMore;
+      if(Array.isArray(x.matches)&&x.matches.length){
+        if(x.matches.length>1)ambiguous=true;
+        match=x.matches[0]||match;
+      }
+    }catch{}
+  }
+  const session=sessionState();
+  const running=rows.find(r=>r.status==="running"),queued=rows.find(r=>r.status==="queued");
+  let state="not_found",label="UYAP'ta eşleşen dosya bulunamadı",terminal=true,success=false,requiresLogin=false;
+  if(match&&!ambiguous){state="completed";label="UYAP dosyası bulundu";success=true}
+  else if(ambiguous){state="ambiguous";label="Birden fazla exact eşleşme bulundu"}
+  else if(session.state==="login_required"&&(running||queued)){state="login_required";label="UYAP oturumu gerekli";terminal=false;requiresLogin=true}
+  else if(running){state="running";label="UYAP'ta dosya aranıyor";terminal=false}
+  else if(queued){state="queued";label="UYAP dosya araması bekliyor";terminal=false}
+  else if(rows.some(r=>r.status==="failed")){state="failed";label="UYAP dosya araması başarısız"}
+  else if(rows.some(r=>r.status==="cancelled"&&/401|403|auth|login/i.test(String(r.error||"")))){state="login_required";label="UYAP oturumu gerekli";terminal=false;requiresLogin=true}
+  return {
+    contractVersion:"uyap.targeted-case-search.v1",searchId,state,label,terminal,success,requiresLogin,
+    pollAfterMs:["queued","running"].includes(state)?1500:null,target,commands,match:match||null,
+    session:{state:session.state,manualDownloadPaused:session.manualDownloadPaused}
+  };
+}
+function finalizeTargetedCaseSearchPage(cleanData,ctx,payload){
+  const list=Array.isArray(cleanData?.[0])?cleanData[0]:[];
+  const total=Number(cleanData?.[1]||0),pageSize=Number(payload?.body?.pageSize||500),page=Number(ctx.pageNumber||1);
+  const exact=list.filter(item=>targetedCaseMatches(item,ctx));
+  const matches=[];
+  if(exact.length){
+    upsertCasesFromSearch([exact,exact.length]);
+    for(const item of exact){
+      const ext="uyap:case:"+String(item?.birimId||"")+":"+String(item?.dosyaNo||"");
+      const c=db.prepare("SELECT id FROM cases WHERE external_id=?").get(ext);
+      matches.push(safeTargetedCase(item,c?.id||null));
+    }
+  }
+  let nextCommandId=null;
+  const hasMore=!matches.length&&total>page*pageSize;
+  if(hasMore)nextCommandId=enqueueTargetedCaseSearchPage(ctx,page+1);
+  return {
+    type:"targeted_case_search_result",searchId:String(ctx.searchId),page,pageSize,total,
+    matchCount:matches.length,matches,hasMore,nextCommandId
+  };
+}
+function buildDocumentSyncContract(base){
+  const state=String(base?.state||"not_synced");
+  const terminal=["completed","empty","failed","metadata_unbound","unlinked"].includes(state);
+  const success=["completed","empty"].includes(state);
+  const requiresLogin=state==="login_required";
+  const active=!!base?.commandId&&["queued","running"].includes(String(base?.commandStatus||""));
+  const command=base?.commandId?{
+    id:Number(base.commandId),
+    status:base.commandStatus||null,
+    priority:base.priority==null?null:Number(base.priority),
+    attempts:base.attempts==null?null:Number(base.attempts),
+    maxAttempts:base.maxAttempts==null?null:Number(base.maxAttempts),
+    createdAt:base.createdAt||null,
+    dispatchedAt:base.dispatchedAt||null,
+    finishedAt:base.finishedAt||null,
+    error:base.error||null
+  }:null;
+  const documents={
+    remoteCount:Number(base?.remoteCount||0),
+    physicalCount:Number(base?.physicalCount||0),
+    resultCount:base?.resultCount==null?null:Number(base.resultCount),
+    hasResultPayload:!!base?.hasResultPayload
+  };
+  const freshness={
+    stale:!!base?.stale,
+    staleAfterMinutes:Number(base?.staleAfterMinutes||30)
+  };
+  const session={
+    state:base?.sessionState||"unknown",
+    manualDownloadPaused:!!base?.manualDownloadPaused
+  };
+  return {
+    contractVersion:"uyap.document-sync.v1",
+    caseId:Number(base?.caseId||0),
+    requestedCaseId:Number(base?.requestedCaseId||base?.caseId||0),
+    uyapDosyaIdPresent:!!base?.uyapDosyaIdPresent,
+    state,
+    label:String(base?.label||""),
+    terminal,
+    success,
+    requiresLogin,
+    active,
+    pollAfterMs:["queued","running"].includes(state)?1500:null,
+    canSync:!!base?.uyapDosyaIdPresent&&!["queued","running"].includes(state)&&!requiresLogin,
+    command,
+    documents,
+    freshness,
+    session,
+    // Backward-compatible flat fields for the current web UI.
+    commandId:command?.id||null,
+    commandStatus:command?.status||null,
+    remoteCount:documents.remoteCount,
+    physicalCount:documents.physicalCount,
+    resultCount:documents.resultCount,
+    hasResultPayload:documents.hasResultPayload,
+    error:command?.error||base?.error||null,
+    createdAt:command?.createdAt||null,
+    dispatchedAt:command?.dispatchedAt||null,
+    finishedAt:command?.finishedAt||null,
+    stale:freshness.stale,
+    staleAfterMinutes:freshness.staleAfterMinutes,
+    sessionState:session.state,
+    manualDownloadPaused:session.manualDownloadPaused
+  };
+}
+function caseDocumentSyncStatus(caseId){
+  const c=linkedUyapCase(caseId);
+  if(!c){
+    const session=sessionState();
+    return buildDocumentSyncContract({
+      caseId:Number(caseId),requestedCaseId:Number(caseId),uyapDosyaIdPresent:false,
+      state:"unlinked",label:"UYAP dosyası bulunamadı",
+      remoteCount:0,physicalCount:0,resultCount:null,hasResultPayload:false,
+      stale:true,staleAfterMinutes:30,sessionState:session.state,manualDownloadPaused:session.manualDownloadPaused
+    });
+  }
+  const cid=Number(c.id);
+  const remoteCount=Number(db.prepare("SELECT count(*) n FROM uyap_remote_documents WHERE case_id=?").get(cid)?.n||0);
+  const physicalCount=Number(db.prepare("SELECT count(*) n FROM uyap_remote_documents WHERE case_id=? AND (local_asset_id IS NOT NULL OR filed_path IS NOT NULL)").get(cid)?.n||0);
+  const last=db.prepare(`SELECT id,status,priority,attempts,max_attempts,created_at,dispatched_at,finished_at,error,result_meta_json,result_json,payload_json
+    FROM uyap_command_queue
+    WHERE endpoint_key='document.list' AND ${documentListCommandMatchesCaseSql()}
+    ORDER BY id DESC LIMIT 1`).get(cid);
+  const session=sessionState();
+  const profile=db.prepare("SELECT poll_interval_minutes FROM uyap_sync_profiles WHERE case_id=?").get(cid);
+  const staleMinutes=Math.max(5,Number(profile?.poll_interval_minutes||30));
+  let resultCount=null,hasResultPayload=false;
+  if(last?.result_json){
+    hasResultPayload=true;
+    try{resultCount=documentListDocs(JSON.parse(last.result_json)).length}catch{resultCount=null}
+  }
+  let state="not_synced",label="UYAP evrak listesi henüz sorgulanmadı";
+  if(last){
+    if(last.status==="queued"){state=session.state==="login_required"?"login_required":"queued";label=state==="login_required"?"UYAP oturumu gerekli":"Evrak listesi sorgusu bekliyor"}
+    else if(last.status==="running"){state="running";label="UYAP'tan evrak listesi sorgulanıyor"}
+    else if(last.status==="failed"||last.status==="cancelled"){
+      state=(session.state==="login_required"||/401|403|auth|login/i.test(String(last.error||"")))?"login_required":"failed";
+      label=state==="login_required"?"UYAP oturumu gerekli":"Evrak listesi sorgusu başarısız";
+    }else if(last.status==="completed"){
+      if(!hasResultPayload){state="failed";label="Sorgu tamamlandı ancak sonuç yükü alınamadı"}
+      else if(Number(resultCount||0)>0&&remoteCount===0){state="metadata_unbound";label="UYAP evrak metadata'sı BONO listesine işlenemedi"}
+      else if(Number(resultCount||0)===0&&remoteCount===0){state="empty";label="UYAP sorgusu tamamlandı; evrak bulunamadı"}
+      else {state="completed";label="UYAP evrak listesi hazır"}
+    }
+  }else if(session.state==="login_required"){
+    state="login_required";label="UYAP oturumu gerekli";
+  }
+  const completedAt=last?.status==="completed"?last.finished_at:null;
+  const completedMs=completedAt?Date.parse(String(completedAt).replace(" ","T")+"Z"):NaN;
+  const stale=Number.isFinite(completedMs)?Date.now()-completedMs>staleMinutes*60*1000:true;
+  return buildDocumentSyncContract({
+    caseId:cid,requestedCaseId:Number(caseId),uyapDosyaIdPresent:!!c.uyap_dosya_id,
+    state,label,commandId:last?Number(last.id):null,commandStatus:last?.status||null,
+    priority:last?.priority??null,attempts:last?.attempts??null,maxAttempts:last?.max_attempts??null,
+    remoteCount,physicalCount,resultCount,hasResultPayload,
+    error:last?.error||null,createdAt:last?.created_at||null,dispatchedAt:last?.dispatched_at||null,finishedAt:last?.finished_at||null,
+    stale,staleAfterMinutes:staleMinutes,sessionState:session.state,manualDownloadPaused:session.manualDownloadPaused
+  });
+}
 function enqueueCaseDocumentSync(caseId,{priority=10,purpose="",source=""}={}){
   const c=linkedUyapCase(caseId); if(!c)throw new Error("UYAP case bulunamadı");
   if(!c.uyap_dosya_id)throw new Error("Dosyanın UYAP dosyaId bilgisi yok; önce dosya sorgusu yapılmalı");
-  const active=db.prepare("SELECT id,priority,payload_json FROM uyap_command_queue WHERE endpoint_key='document.list' AND status IN ('queued','running') AND payload_json LIKE ? ORDER BY id LIMIT 1")
-    .get('%"caseId":'+Number(c.id)+'%');
+  const active=db.prepare(`SELECT id,priority,payload_json FROM uyap_command_queue
+    WHERE endpoint_key='document.list' AND status IN ('queued','running')
+      AND ${documentListCommandMatchesCaseSql()}
+    ORDER BY id LIMIT 1`).get(Number(c.id));
   if(active?.id){
     if(purpose||Number(priority)<Number(active.priority||999)){
       let p={};try{p=JSON.parse(active.payload_json||"{}")}catch{}
@@ -864,6 +1481,17 @@ function caseContentDownloadBlocked(caseId){
   const names=[c.client_name,...db.prepare("SELECT name FROM parties WHERE case_id=?").all(Number(caseId)).map(x=>x.name)];
   return names.some(x=>nrm(x).includes("mahsun ozturk"));
 }
+function downloadCommandMatchesRemoteSql(){
+  return "json_valid(payload_json)=1 AND CAST(json_extract(payload_json,'$.context.remoteDocumentDbId') AS INTEGER)=?";
+}
+function downloadCommandMatchesCaseSql(){
+  return "json_valid(payload_json)=1 AND CAST(json_extract(payload_json,'$.context.caseId') AS INTEGER)=?";
+}
+function activeCaseDownloadCount(caseId){
+  return Number(db.prepare(`SELECT count(*) n FROM uyap_command_queue
+    WHERE command_type='download_document' AND status IN ('queued','running')
+      AND ${downloadCommandMatchesCaseSql()}`).get(Number(caseId))?.n||0);
+}
 function enqueueRemoteDocumentDownload(remoteDbId){
   if(sessionState().state==="login_required")return null;
   const d=db.prepare("SELECT * FROM uyap_remote_documents WHERE id=?").get(Number(remoteDbId)); if(!d)throw new Error("UYAP evrakı bulunamadı");
@@ -873,10 +1501,10 @@ function enqueueRemoteDocumentDownload(remoteDbId){
     }
     return null;
   }
-  const sameCommandLike='%\"remoteDocumentDbId\":'+d.id+'%';
   const existingCommand=db.prepare(`SELECT id FROM uyap_command_queue
-    WHERE command_type='download_document' AND status IN ('queued','running') AND payload_json LIKE ?
-    ORDER BY id DESC LIMIT 1`).get(sameCommandLike);
+    WHERE command_type='download_document' AND status IN ('queued','running')
+      AND ${downloadCommandMatchesRemoteSql()}
+    ORDER BY id DESC LIMIT 1`).get(Number(d.id));
   if(existingCommand)return null;
   if(caseContentDownloadBlocked(d.case_id)){
     let meta={};try{meta=JSON.parse(d.metadata_json||"{}")}catch{}
@@ -926,32 +1554,57 @@ function caseDownloadSummary(caseId){
     else if(p.action==="skip")skipped++;
   }
   const lastSync=db.prepare(`SELECT finished_at FROM uyap_command_queue
-    WHERE endpoint_key='document.list' AND status='completed' AND payload_json LIKE ?
-    ORDER BY id DESC LIMIT 1`).get('%"caseId":'+Number(c.id)+'%')?.finished_at||null;
+    WHERE endpoint_key='document.list' AND status='completed' AND ${documentListCommandMatchesCaseSql()}
+    ORDER BY id DESC LIMIT 1`).get(Number(c.id))?.finished_at||null;
+  const session=sessionState();
+  const activeCommands=activeCaseDownloadCount(c.id);
   return {
     caseId:Number(c.id),requestedCaseId:Number(caseId),total:rows.length,existing,queued,
     missingDownloadable,review,skipped,summarize,lastSync,
-    batchSize:200,downloadState:sessionState().documentDownloadState
+    batchSize:200,activeCommands,capacity:Math.max(0,200-activeCommands),
+    manualDownloadPaused:session.manualDownloadPaused,
+    downloadState:session.documentDownloadState,
+    downloadReason:session.documentDownloadReason
   };
 }
 function enqueuePendingDownloads(caseId,limit=200){
   const c=linkedUyapCase(caseId); if(!c)throw new Error("UYAP case bulunamadı");
   limit=Math.max(1,Math.min(200,Number(limit)||200));
-  const active=db.prepare("SELECT count(*) n FROM uyap_remote_documents WHERE case_id=? AND status='download_queued'").get(Number(c.id)).n;
-  const rows=db.prepare("SELECT id FROM uyap_remote_documents WHERE case_id=? AND local_asset_id IS NULL AND status='discovered' ORDER BY COALESCE(document_date,'') DESC,id DESC").all(Number(c.id));
-  let queued=0,skipped=0,review=0;
-  for(const r of rows){
-    if(queued>=limit)break;
-    const before=db.prepare("SELECT status FROM uyap_remote_documents WHERE id=?").get(r.id)?.status;
-    try{if(enqueueRemoteDocumentDownload(r.id))queued++}catch{}
-    const after=db.prepare("SELECT status FROM uyap_remote_documents WHERE id=?").get(r.id)?.status;
-    if(before!==after&&after==="skipped")skipped++;
-    if(before!==after&&after==="review")review++;
+  let active=0,capacity=0,queued=0,skipped=0,review=0;
+  let tx=false;
+  try{
+    // Aynı case için eşzamanlı batch çağrılarını SQLite writer lock ile sırala.
+    // Böylece aktif queued/running toplamı hiçbir anda 200'ü aşmaz.
+    db.exec("BEGIN IMMEDIATE"); tx=true;
+    active=activeCaseDownloadCount(c.id);
+    capacity=Math.max(0,200-active);
+    const batchLimit=Math.min(limit,capacity);
+    if(batchLimit>0){
+      const rows=db.prepare("SELECT id FROM uyap_remote_documents WHERE case_id=? AND local_asset_id IS NULL AND status='discovered' ORDER BY COALESCE(document_date,'') DESC,id DESC").all(Number(c.id));
+      for(const r of rows){
+        if(queued>=batchLimit)break;
+        const before=db.prepare("SELECT status FROM uyap_remote_documents WHERE id=?").get(r.id)?.status;
+        try{if(enqueueRemoteDocumentDownload(r.id))queued++}catch{}
+        const after=db.prepare("SELECT status FROM uyap_remote_documents WHERE id=?").get(r.id)?.status;
+        if(before!==after&&after==="skipped")skipped++;
+        if(before!==after&&after==="review")review++;
+      }
+    }
+    db.exec("COMMIT"); tx=false;
+  }catch(e){
+    if(tx){try{db.exec("ROLLBACK")}catch{}}
+    throw e;
   }
-  return {active:Number(active||0),queued,skipped,review,limit,summary:caseDownloadSummary(c.id)};
+  return {
+    active:Number(active||0),capacity:Number(capacity||0),queued,skipped,review,limit,
+    activeAfter:activeCaseDownloadCount(c.id),
+    summary:caseDownloadSummary(c.id)
+  };
 }
 function ingestDownloadedDocument(commandId){
   const q=db.prepare("SELECT * FROM uyap_command_queue WHERE id=?").get(Number(commandId)); if(!q)throw new Error("UYAP komutu bulunamadı");
+  if(String(q.command_type||"")!=="download_document")throw new Error("UYAP ingest yalnız download_document komutları için geçerli");
+  if(String(q.status||"")!=="completed")throw new Error("UYAP ingest yalnız completed indirme komutları için geçerli: "+String(q.status||"unknown"));
   const payload=q.payload_json?JSON.parse(q.payload_json):{},meta=q.result_meta_json?JSON.parse(q.result_meta_json):{};
   const remoteDbId=Number(payload?.context?.remoteDocumentDbId||0); if(!remoteDbId)throw new Error("Remote evrak bağlamı eksik");
   const remote=db.prepare("SELECT * FROM uyap_remote_documents WHERE id=?").get(remoteDbId); if(!remote)throw new Error("Remote evrak bulunamadı");
@@ -1018,8 +1671,10 @@ function enqueueKnownCaseDocuments(){
   const rows=db.prepare("SELECT id FROM cases WHERE external_id LIKE 'uyap:%' AND uyap_dosya_id IS NOT NULL ORDER BY id").all();
   let queued=0,skipped=0;
   for(const r of rows){
-    const active=db.prepare("SELECT id FROM uyap_command_queue WHERE endpoint_key='document.list' AND status IN ('queued','running') AND payload_json LIKE ? ORDER BY id LIMIT 1")
-      .get('%"caseId":'+Number(r.id)+'%');
+    const active=db.prepare(`SELECT id FROM uyap_command_queue
+      WHERE endpoint_key='document.list' AND status IN ('queued','running')
+        AND ${documentListCommandMatchesCaseSql()}
+      ORDER BY id LIMIT 1`).get(Number(r.id));
     if(active){skipped++;continue}
     try{enqueueCaseDocumentSync(r.id);queued++}catch{skipped++}
   }
@@ -1055,4 +1710,4 @@ function discoveryStatus(){
   const withDocs=db.prepare("SELECT count(DISTINCT case_id) n FROM uyap_remote_documents").get().n;
   return {...counts,totalCases:Number(totalCases||0),casesWithDocuments:Number(withDocs||0),rate:rateState()};
 }
-module.exports={GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,recoverSession,queue,cases,remoteDocuments,documentDownloadPolicy,caseDownloadSummary,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,discoveryStatus};
+module.exports={setRuntimePolicy,executionHeld,GLOBAL_MIN_INTERVAL_MS,observe,observations,endpoints,approveEndpoint,setEndpointEnabled,enqueue,claimNext,reportResult,pause,resume,rateState,sessionState,setSessionLoginRequired,setDocumentDownloadState,setManualDownloadPause,recoverSession,queue,cases,remoteDocuments,caseDocumentSyncStatus,caseSearchSchemaStatus,caseSearchOptions,enqueueTargetedCaseSearch,targetedCaseSearchStatus,documentDownloadPolicy,caseDownloadSummary,activeCaseDownloadCount,enqueueCaseDocumentSync,enqueueRemoteDocumentDownload,enqueuePendingDownloads,enqueueKnownCaseDocuments,archiveStatus,ingestDownloadedDocument,upsertRemoteList,upsertHearings,upsertCasesFromSearch,enqueueHearingRange,enqueueCaseDiscovery,enqueueCaseSearchPage,enqueueCbsDiscovery,enqueueCbsUnits,enqueueCbsSearchPage,cbsPartySearchSchemaStatus,cbsUnitOptions,enqueueTargetedCbsPartySearch,targetedCbsPartySearchStatus,discoveryStatus};
