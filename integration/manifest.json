@@ -248,9 +248,19 @@
   ],
   "releaseCandidate": {
     "label": "end-of-day-unified-live-maintenance-candidate",
+    "codeHeadBeforeManifest": "42b9a34161f054ec411e34c9eb3b53a5722e769d",
+    "requiresFinalWindowsCi": true,
     "liveInstalled": false,
     "liveUyapAccepted": false,
-    "finalWindowsCiRequiredAfterFreshQueueMigrationFix": true
+    "liveMaintenanceBundle": {
+      "prepared": true,
+      "sourceHead": "42b9a34161f054ec411e34c9eb3b53a5722e769d",
+      "buildId": "ae302b4d2408f040e8cced06859cf23e43aa45c9d279de977578e3bee88c8eb1",
+      "extensionBuildId": "087650129aef5124dac2689b6f87f873666c3d5563f443c8bb6ea5328b4465b6",
+      "payloadFiles": 16,
+      "tools": 4,
+      "liveApplied": false
+    }
   },
   "liveInstallationPreflight": {
     "sourceGitHead": "fbad17a69610c7db5cbfaa0be7c51a2303abf019",
