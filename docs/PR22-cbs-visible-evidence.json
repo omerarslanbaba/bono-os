@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "authorized_live_visible_ui_and_existing_bridge_summary",
+  "observedDate": "2026-10-09",
+  "caseId": 93,
+  "panel": {
+    "unit": "Eskişehir Cumhuriyet Başsavcılığı",
+    "caseNo": "2026/51832",
+    "caseType": "CBS Sorusturma Dosyası"
+  },
+  "visibleGroups": [
+    {
+      "caseNo": "2026/51962",
+      "kind": "cbs_investigation"
+    },
+    {
+      "caseNo": "2026/11706",
+      "kind": "instruction"
+    },
+    {
+      "caseNo": "2026/51832",
+      "kind": "cbs_investigation",
+      "visibleCategoryCount": 23,
+      "sumOfDisplayedCategoryCounts": 51
+    },
+    {
+      "caseNo": "2026/9621",
+      "kind": "instruction"
+    }
+  ],
+  "hierarchy": "All documents > source-labelled group > document category; leaf identity not inspected",
+  "identity": {
+    "domItemIdRole": "UI-local tree position, not proof of UYAP dosyaId",
+    "latestBridgeRequestMatchesStoredCaseId": false,
+    "bridgeObservationIds": [
+      11,
+      12
+    ],
+    "bridgeLastSeenUtc": "2026-10-09 09:16:35",
+    "eventTabCorrelation": "unknown",
+    "groupSourceDosyaId": "unknown",
+    "documentEvrakId": "unknown",
+    "downloadReference": "unknown",
+    "legalRelationship": "unknown",
+    "completeDocumentCount": "unknown"
+  },
+  "decision": {
+    "stopReason": "uncorrelated_request_identity_mismatch",
+    "metadataImportAllowed": false,
+    "downloadAllowed": false,
+    "executable": false,
+    "newAgentCaseSearch": false,
+    "newAgentDocumentRequest": false,
+    "documentContentOpened": false
+  }
+}
