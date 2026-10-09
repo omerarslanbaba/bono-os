@@ -269,3 +269,142 @@ node scripts/test_uyap_linked_legal_case_contract.js
 ```
 
 Testler sentetik fixture üzerinde çalışır; canlı Core, DB, Chrome veya UYAP oturumuna erişmez.
+
+
+## 12. Genel CBS evrak parser çıktısı ile bağlantılı dosya uyumu
+
+Ek sözleşme: `bono.cbs-linked-document-adapter.v1`
+
+Saf adaptör:
+
+`contracts/uyap_cbs_linked_document_adapter.js`
+
+Bu adaptör PR #22 parser'ını çağırmaz ve parser mantığını tekrar etmez. Entegrasyon katmanı parser'ın sanitize edilmiş çıktısını adaptöre verir.
+
+### En küçük parser arayüzü
+
+Adaptör yalnız şu alanları tüketir:
+
+```json
+{
+  "tumEvraklar": {
+    "<dinamik görünüm başlığı>": [
+      {
+        "dosyaId": "<opaque kaynak>",
+        "evrakId": "<opaque evrak>",
+        "ggEvrakId": "<opaque görünüm/evrak referansı>",
+        "ekEvrakListesi": [
+          {
+            "anaEvrakId": "<opaque ana evrak referansı>",
+            "evrakId": "<opaque ek evrak>",
+            "sira": 1,
+            "ekTuru": "<tür>"
+          }
+        ]
+      }
+    ]
+  },
+  "son20Evrak": []
+}
+```
+
+Ek evrakta ayrı `dosyaId` yoksa doğrudan içinde bulunduğu ana evrağın **açık `dosyaId` değeri** kaynak bağlamı olarak kullanılır. Bu yalnız belge kaynak bağlamıdır; `anaEvrakId` semantiği tahmin edilmez. Ek evrak kendi `dosyaId` değerini taşıyıp ana evrakla çelişirse kaynak `unknown` olur.
+
+### Grup başlığı kaynak kimliği değildir
+
+Dinamik `tumEvraklar` object key'i yalnız `displayGroup.title` olarak saklanır.
+
+Sabit kurallar:
+
+- grup başlığı kaynak `dosyaId` değildir;
+- grup başlığı `relationType` üretmez;
+- grup başlığı `verified` üretmez;
+- aynı grup altında birden fazla açık `dosyaId` bulunabilir;
+- grup karışık kaynak taşıyorsa tek kaynak case üretmek yasaktır;
+- tek kaynak görünse dahi yalnız grup başlığından case oluşturulmaz.
+
+Her occurrence kendi item/ana-evrak kaynak kimliğini taşır.
+
+### Ana evrak ve ek evrak
+
+Her görünüm occurrence'ı ayrı rol taşır:
+
+- `documentRole = main`
+- `documentRole = attachment`
+
+Ek evrak ayrıca:
+
+- `anaEvrakId`
+- `parentMainEvrakId`
+- `parentMainGgEvrakId`
+- `sira`
+- `ekTuru`
+
+alanlarını ayrı saklar.
+
+`anaEvrakId` ile `evrakId`/`ggEvrakId` arasında gözlemlenmemiş anlam eşlemesi uydurulmaz.
+
+### Legal document identity ve görünüm occurrence
+
+Mükerrerlik anahtarı:
+
+`<source dosyaId>::<evrakId>`
+
+`evrakId` tek başına unique kabul edilmez.
+
+Bu nedenle:
+
+- aynı `evrakId` + farklı `dosyaId` = ayrı hukuki evrak kayıtları;
+- aynı `dosyaId + evrakId` farklı grup veya `son20Evrak` görünümünde tekrar ederse = tek hukuki evrak kaydı, birden çok görünüm occurrence'ı;
+- kaynak `dosyaId` bilinmiyorsa evrak başka occurrence ile otomatik dedup edilmez.
+
+Grup başlığı legal document identity'nin parçası değildir.
+
+### Kaynak dosya ile görüntüleme dosyası
+
+Parser occurrence'ı iki farklı bilgiyi taşır:
+
+1. `observedView`: evrakın hangi BONO/UYAP dosya ekranından gözlemlendiği;
+2. `linkedProjection`: kaynak dosya ile görüntüleme dosyası arasındaki bağlantılı-case sözleşmesinin sonucu.
+
+`observedView.visible = true` olması hukuki dosya ilişkisini kanıtlamaz.
+
+`linkedProjection` yalnız mevcut `bono.linked-legal-cases.v1` graph'ı ve açıkça verilen ilişki yolu üzerinden hesaplanır.
+
+### İndirme kapsamı
+
+`buildAutomaticDownloadScope()` yalnız şu durumda evrakı otomatik aday yapar:
+
+- kaynak `dosyaId + evrakId` biliniyor;
+- kaynak `dosyaId`, graph içindeki doğrulanmış case identity ile exact eşleşiyor;
+- belge kendi kaynak dosyasından görüntüleniyor **veya** görüntüleme dosyasına giden ilişki yolu tamamen `verified`;
+- linked projection `mayAutoInclude=true`.
+
+Şunlar otomatik kapsam dışıdır:
+
+- `user_selected_unverified`;
+- `unknown` ilişki;
+- graph'ta bulunmayan kaynak `dosyaId`;
+- eksik kaynak `dosyaId`;
+- çelişkili ek-evrak kaynak kimliği.
+
+Kullanıcı seçimi görünümü mümkün kılabilir; otomatik indirme yetkisi üretmez.
+
+### Chat-3 parser birleşim noktası
+
+Parser tarafında gereken **en küçük çıktı**:
+
+- `tumEvraklar` dinamik grup object'i;
+- ana item'da `dosyaId`, `evrakId`, `ggEvrakId`;
+- nested `ekEvrakListesi` ve içindeki `anaEvrakId`, `evrakId`, `sira`, `ekTuru`;
+- varsa `son20Evrak`.
+
+Adapter tarafına ayrıca runtime entegrasyonu şu üç şeyi verir:
+
+- `linkedCaseGraph`;
+- `displayCaseNodeId`;
+- kaynak case node bazında açık `viewPathsBySourceCaseNodeId`.
+
+Parser'ın grup başlığından case/link/verified üretmesi gerekmez ve istenmez.
+
+Bu arayüz Core, Bridge, DB, migration veya download motoru davranışı tanımlamaz.
