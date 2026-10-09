@@ -1,0 +1,43 @@
+# UYAP araçları ve BONO teslim zinciri — 2026-10-09
+
+Bu çalışma kaynak incelemesi ve izole uygulamadır. Üçüncü taraf ürünler gerçek UYAP hesabında denenmedi. Reklam edilen özellikler canlı başarı kanıtı değildir. Korunan extension paketleri çıkarılmadı; üçüncü taraf kod kopyalanmadı.
+
+## Kısa teknik karşılaştırma
+
+| Kaynak | Kanıtlanan yaklaşım / sınır | Lisans ve BONO kararı |
+|---|---|---|
+| [T-akıbet](https://t-akibet.com/) / [Chrome kaydı](https://chromewebstore.google.com/detail/t-ak%C4%B1bet-ofis-hukuk-yaz%C4%B1l/ndpblfomgbiikdbpcagmnagmnleehiii) | Ürün belgeleri extension üzerinden dosya/evrak indirme ve dönüşüm özelliklerini tanıtıyor. Endpoint, kimlik bağı, worker teslimi ve oturum kurtarma uygulaması kamuya açık belgelerden doğrulanamıyor. | Kapalı uygulama kodu yeniden kullanılmadı. Kullanıcı açısından az adımlı işlem hedefi alındı. |
+| [UYAP Dosya İndirici](https://chromewebstore.google.com/detail/uyap-dosya-i%CC%87ndirici/onihkmdhciecmlbalilofannoihdhgci) | Mağaza tanıtımı indirme yeteneği bildiriyor; uygulama içi CBS kimlik/parametre sözleşmesi kanıtlamıyor. | Kaynak/lisans üzerinden yeniden kullanım izni doğrulanmadı; kopyalanmadı. |
+| [uyapindirici.org](https://uyapindirici.org/) | Açık dosyanın Evrak listesinden başlama, ZIP, özgün evrakı koruma, isteğe bağlı PDF, sınırlı paralellik, duraklatma ve eksik dosyaları gösterme ürün tarafından belgeleniyor. Güncel portalda bağımsız test yapılmadı; iç endpointler unknown. | Teknik sözleşme kaynağı olarak kullanılmadı. Listeleme/indirme sonucunu ayrı gösterme ve eksikliği gizlememe yaklaşımı BONO ilkeleriyle uyumlu. |
+| [alperxx/uyap — uyap.js](https://github.com/alperxx/uyap/blob/master/uyap.js) | Kaynak `span.file` üzerinden `evrak_id` topluyor, Set ile tekrarı kaldırıyor, sabit dosyaId ile eski Vatandaş indirme bağlantısına 2 saniyelik aralıkla tıklıyor. Döngü son öğeyi atlayabiliyor. Güncel Avukat/CBS akışının çalıştığını veya grup aidiyetini kanıtlamıyor. | Son push 2019-01-14; repo ağacında lisans yok. Kod alınmadı. Kimliği gerçek listeden alma fikri geçerli; selector/URL BONO'ya taşınmadı. |
+| [mihalidis/UYAP-PTT-Chrome-Extention](https://github.com/mihalidis/UYAP-PTT-Chrome-Extention) | `background.js` gerçek kaynağı incelendi: content mesajından PTT sekmesi açıyor, tab bazlı bekleyen yanıt ve süre sınırı kullanıyor. Bu bir CBS evrak listeleyici değildir. Bellekteki pendingMap worker yeniden başlama garantisi vermez. | Son push 2026-09-29; [CC BY-NC 4.0](https://raw.githubusercontent.com/mihalidis/UYAP-PTT-Chrome-Extention/master/LICENSE). Ticari kullanım yazılı izin gerektiriyor; kod alınmadı. |
+| [symbuzzer/Evrak](https://github.com/symbuzzer/Evrak) | [UdfHtmlConverter.kt](https://github.com/symbuzzer/Evrak/blob/master/app/src/main/java/com/avalibeyaz/evrak/ui/UdfHtmlConverter.kt) ZIP içindeki content.xml'i okuyup HTML'e dönüştürüyor. Android belge görüntüleyici; yetkili UYAP oturumunda sorgu/indirme motoru değil. | Son push 2026-10-07; Apache-2.0. Lisans bildirimleriyle ileride görüntüleme için değerlendirilebilir; bu görevde kod alınmadı. |
+| [cagatayus/uyap-takvim-ics-olusturucu](https://github.com/cagatayus/uyap-takvim-ics-olusturucu) | Gerçek `interceptor.js`: XHR ve fetch yanıtını belirli duruşma endpointinde gözleyip sayfaya mesaj gönderiyor. Evrak/CBS kaynak aidiyeti veya komut teslim protokolü sağlamıyor. Bu incelemede son commit tarihi ayrıca doğrulanmadı. | [MIT](https://github.com/cagatayus/uyap-takvim-ics-olusturucu/blob/main/LICENSE), bildirim korunarak kullanılabilir. BONO zaten aynı gözlem ilkesini kullandığından tekrar kopyalanmadı. |
+
+[UYAP topic](https://github.com/topics/uyap) ve ek kaynak taramasında e-imza giriş aracı Sello, UDF üretim/dönüşüm araçları da bulundu. Bunlar CBS indirme sözleşmesinin yerine geçmiyor. Mağaza kaydı, yakın tarihli commit veya açık kaynak olması güncel portal uyumluluğu kanıtı sayılmadı.
+
+## Mimari kararı ve gerçek düzeltme
+
+Desktop kullanıcı onayını/sonucu gösterir; Core izin, tekilleştirme, geçmiş ve aidiyet kontrolünü tutar; küçük kuyruk iki yürütücünün aynı işi almasını engeller; Bridge tarayıcı oturumunda çalışır; Archive fiziksel dosya/bütünlük sorumluluğunu taşır. Bunları ikinci bir motorla değiştirmek için üstünlük kanıtı bulunmadı. Oturum sırlarını Core'a taşımak gerekmiyor. Açık, yüklenmiş UYAP sayfası gerekir; **aktif sekme** gerekmez. Worker tarayıcı tarafından durdurulabilir; [Chrome yaşam döngüsü belgesi](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle) bellek değişkenlerinin güvenilir kalıcı durum olmadığını açıklar.
+
+Bulunan hata: `/commands/next`, Core'un `wait` nesnesini HTTP 204'e çevirip nedenini kaybediyordu. Background/content bunu boş kuyruk/idle olarak gösteriyordu. Geriye uyumlu 204 korunarak izinli `X-Bono-Wait-Reason` başlığı eklendi. Serbest hata metni taşınmıyor. Oturum engeli, bakım kilidi, hız sınırı, lane meşgul ve hata bekleme nedeni ayrı kalıyor. UI, Core login_required bilgisini Bridge'in genel oturum belirsizliğinin arkasında gizlemiyor.
+
+İkinci hata: claim bağlamı yalnız MV3 worker belleğindeydi. Şimdi yalnız komut/tab/frame/sayfa/yürütme kimliği, build ve zaman `chrome.storage.session` içinde tutuluyor. Sırlar, hedef dosya kimliği, payload, response veya evrak içeriği tutulmuyor. 10 dakika, build, tab/frame ve sayfa eşleşmesi zorunlu. Worker yeniden başlayınca yalnız **aynı sonucun yerel teslimi** devam edebilir; portal sorgusu tekrar gönderilmez. Browser restart sonrası claim geri yüklenmez. Auth probe işareti de aynı açık kullanıcı işlemi için worker yeniden başlasa dahi ikinci probe'u engeller. Gönderim sırasında belirsiz kesinti varsa otomatik yeniden denemek yerine doğrulama eksik kalır.
+
+Normal sorgu zaten komutun doğrudan istek/yanıt dönüşünü kullanıyor; manuel observer başlangıcı şart değil. CBS belge gruplarının gerçek kaynak/çocuk sözleşmesi hâlâ eksik: dosya keşif başarısı evrak listesi başarısı yapılmadı, metadata kapısı açılmadı. Başka ürünün URL/DOM yapısı bu eksikliği kanıtlayamaz.
+
+## Salt-okunur canlı bulgu
+
+Bu görevde `/api/uyap/session` GET yanıtında kurulu Bridge'in Core'a `idle` durumunu ve mevcut UYAP sekmesini bildirdiği görüldü; dolayısıyla geçmiş `bridge_not_seen` durumu sürekli bağlantı yokluğu olarak yorumlanamaz. Son kontrol 2026-10-09 14:16:53 UTC: bridge_stale, session login_required, manualDownloadPaused=true. Önceki bağlantı görüldü fakat **şu anda kesintisiz bağlantı veya geçerli oturum kanıtlanmış değil**. Core'un oturum tanısı önceki auth gözleminde HTTP401'e dayanıyor; bu görev yeni auth isteği göndermedi. Eski kabul anında neden alınmadığı kesinleştirilemedi.
+
+Kaynak DB'nin salt-okunur incelemesinde #17614 ve #17615 failed / attempts=0 / user_action_expired: yürütülmemiş, geçmiş silinmemiş. Bu görev queue değişikliği veya sonuç üretmedi. Kurulu paketin bu görevde değiştiği iddia edilmiyor.
+
+## Test ve canlı kabul kapısı
+
+`test:bridge-user-query-e2e` gerçek Core HTTP ve gerçek extension kaynaklarını sentetik Chrome/UYAP ile çalıştırır: aktif olmayan sekme, bir kullanıcı sorgusu, bir kez auth probe, yerel teslim hatası sırasında worker yeniden başlama, aynı sonucu yerel yeniden teslim, yabancı tab/sayfa/yürütme reddi, CBS kimlik dönüşü fakat metadata engeli, HTTP200 uygulama reddi, Core login bekleme nedeninin korunması, tanı sırasında sıfır ek portal isteği ve pause korunması. Gerçek WebView2/Chrome kabulü değildir.
+
+Regresyonlar: user query policy/270 arşiv/idempotency/expired grant, extension explicit action, WebView2 HTTP akışları, usability, controlled observation, causality ve capability. Tam çıktılar çalışma alanı `outputs/PR22-delivery-research-tests.txt` dosyasında tutulur.
+
+Tek canlı kabul önerisi: ayrı onayla mevcut dosyaların preimage hash/yedeği alınarak yalnız background.js, content.js, server.js'in ilgili tanı değişikliği ve case-query-state.mjs'in paketlenmiş UI karşılığı kurulur; normal Core/Bridge sürüm eşleşmesi doğrulanır. Eski content guard nedeniyle sayfa yenilemesi gerekebilir; panel/oturum korunacağı garanti edilmez. Yalnız bağlantı/oturum GET kontrolleri hazır olursa BONO'dan case93 için **bir** açık yenileme yapılır. Hazır değilse hiç komut oluşturulmadan durulur. İkinci sorgu, #17614/#17615 replay, migration, CBS metadata importu, indirme veya pause değişikliği yok. CBS keşfi başarılı olsa bile evrak listesi ve indirme başarılı sayılmaz.
+
+Rollback: yalnız yeni kod/paket dosyalarını doğrulanmış yedek preimage'lerine döndürür; DB/history restore veya sorgu replay yapmaz. Yeni session claim alanını eski background kullanmaz. Canlı kurulum için henüz paket hazırlanıp uygulanmadı; mevcut canlı baseline farklılıkları korunarak paketlenmesi ve ayrı onay gerekir.

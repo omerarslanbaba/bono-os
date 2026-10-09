@@ -14,7 +14,10 @@ export function queryOverview(rows=[],docCount=0){
 }
 export function queryWaitReason(row,sessionInfo={}){
  if(!row||!['queued','running'].includes(row.state))return '';
+ const waitLabels={uyap_login_required:'UYAP yeniden giriş bekliyor; yeni sorgu gönderilmiyor.',local_return_hold:'Yerel bakım kilidi açık.',observe_only:'Entegrasyon yalnız gözlem modunda.',rate_limit:'Sorgu hız sınırı bekleniyor.',lane_rate_limit:'Sorgu hız sınırı bekleniyor.',lane_busy:'Başka işlem tamamlanması bekleniyor.',error_backoff:'UYAP hata bekleme süresi devam ediyor.',permission_denied:'UYAP izin engeli.'};
+ if(waitLabels[sessionInfo.bridge?.waitReason])return waitLabels[sessionInfo.bridge.waitReason];
  const session=sessionInfo.session||{},rate=sessionInfo.rate||{};
+ if(session.state==='login_required')return 'UYAP yeniden giriş bekliyor; yeni sorgu gönderilmiyor.';
  const bridge=sessionInfo.bridge||{},reasons={bridge_not_seen:'Chrome Bridge bağlantısı henüz görülmedi.',bridge_stale:'Chrome Bridge bağlantısından güncel haber alınamıyor.',probe_not_ready:'Chrome sayfa yürütücüsü hazır değil.',probe_conflict:'Chrome sayfasında eski yürütücü sürümü var.',session_unverified:'Chrome UYAP oturumu henüz doğrulanamadı.',core_unavailable:'Bridge Core bağlantısını kuramıyor.',result_delivery_failed:'Komut sonucu Core’a iletilemedi; sorgu tekrarlanmadı.',returning_result:'UYAP yanıtı Core’a iletiliyor.'};
  if(reasons[bridge.state]&&(!bridge.commandId||Number(bridge.commandId)===Number(row.command_id)))return reasons[bridge.state];
  if(session.state&&session.state!=='ready')return 'Oturum/bağlantı engeli: '+session.state;

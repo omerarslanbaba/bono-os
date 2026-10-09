@@ -95,6 +95,9 @@ async function main(){
  must(runtime.deliveryCalls()===2,'local-only delivery retry missing');
  const foreign=await runtime.foreignResult({id,ok:true});must(foreign.reason==='executor_context_mismatch','foreign executor accepted');
  const result=runtime.messages.find(m=>m.type==='command_result').data;
+ must((await runtime.sendResult({...result,executionContext:{...result.executionContext,documentId:'another-page'}})).reason==='executor_context_mismatch','same tab different page accepted after worker restart');
+ must((await runtime.sendResult({...result,executionContext:{...result.executionContext,id:'another-execution'}})).reason==='executor_context_mismatch','different execution accepted after worker restart');
+ must(!JSON.stringify(runtime.stored).includes('fixture-opaque'),'claim storage leaked target identity');
  must(result.executionContext?.id&&result.executionContext.documentId,'missing command/document context');
  const before=runtime.deliveryCalls();runtime.injectResult({...result,executionContext:{...result.executionContext,id:'wrong'}});await settle();must(runtime.deliveryCalls()===before,'old or foreign result forwarded');
  const info=await req('/api/uyap/session');must(info.body.session.manualDownloadPaused===true,'pause changed');
@@ -118,6 +121,12 @@ async function main(){
  let deniedHistory;
  for(let i=0;i<30;i++){deniedRuntime.tick();await settle();deniedHistory=await req('/api/uyap/cases/1/query-history');if(deniedHistory.body[0]?.state==='failed')break;}
  must(deniedHistory.body[0]?.error_code==='uyap_application_denied','HTTP200 denial was not distinguished: '+JSON.stringify(deniedHistory));
- console.log(JSON.stringify({ok:true,realCoreHttp:true,realExtensionSources:true,syntheticChromeAndUyap:true,inactiveTab:true,cbsIdentityReturned:true,cbsMetadataStillBlocked:true,http200DenialDistinguished:true,metadataReturned:1,portalQueryCount:1,localDeliveryRetryOnly:true,foreignAndLateResultRejected:true,noAutomaticDownload:true,manualPausePreserved:true}));
+ const blocker=new DatabaseSync(dbPath);blocker.prepare("update app_settings set value='login_required' where key='uyap_session_state'").run();blocker.close();
+ // Core deliberately retains an in-flight command diagnostic for 15 seconds.
+ await new Promise(resolve=>setTimeout(resolve,15500));
+ const portalBefore=cbsRuntime.portalRequests.length;cbsRuntime.tick();await settle();
+ const blocked=await req('/api/uyap/session');must(blocked.body.bridge.waitReason==='uyap_login_required','Core wait reason lost in real background/content pipeline: '+JSON.stringify(blocked.body));
+ must(cbsRuntime.portalRequests.length===portalBefore,'session diagnosis sent a portal request');
+ console.log(JSON.stringify({ok:true,realCoreHttp:true,realExtensionSources:true,syntheticChromeAndUyap:true,inactiveTab:true,mv3RestartDeliveryRecovered:true,sameTabDifferentPageAndExecutionRejected:true,coreSessionWaitPreserved:true,diagnosisWithoutPortalRequest:true,cbsIdentityReturned:true,cbsMetadataStillBlocked:true,http200DenialDistinguished:true,metadataReturned:1,portalQueryCount:1,localDeliveryRetryOnly:true,foreignAndLateResultRejected:true,noAutomaticDownload:true,manualPausePreserved:true}));
 }
 main().catch(e=>{console.error(e);console.error(childErr);process.exitCode=1}).finally(()=>{try{cp.kill()}catch{}setTimeout(()=>{try{fs.rmSync(root,{recursive:true,force:true})}catch{}},100)});

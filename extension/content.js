@@ -75,9 +75,9 @@
   }
 
   let lastBridgeStatus='',lastBridgeAt=0;
-  function reportBridge(state,commandId=null){
-    const key=state+':'+commandId;if(key===lastBridgeStatus&&Date.now()-lastBridgeAt<5000)return;lastBridgeStatus=key;lastBridgeAt=Date.now();
-    try{chrome.runtime.sendMessage({type:'BONO_BRIDGE_STATUS',state,commandId,documentId,buildId:config.buildId}).catch(()=>{});}catch{}
+  function reportBridge(state,commandId=null,waitReason=null){
+    const key=state+':'+commandId+':'+waitReason;if(key===lastBridgeStatus&&Date.now()-lastBridgeAt<5000)return;lastBridgeStatus=key;lastBridgeAt=Date.now();
+    try{chrome.runtime.sendMessage({type:'BONO_BRIDGE_STATUS',state,commandId,waitReason,documentId,buildId:config.buildId}).catch(()=>{});}catch{}
   }
 
   function dispatchCommand(command, laneHint = null) {
@@ -142,9 +142,9 @@
     if (active.has(lane)) {const x=active.get(lane);reportBridge(x.deliveryFailed?'result_delivery_failed':x.delivering?'returning_result':'command_received',x.id);return;}
     if(polling.has(lane))return;polling.add(lane);
     try {
-      const reply = await chrome.runtime.sendMessage({ type: "BONO_POLL", host: location.hostname, lane });
+      const reply = await chrome.runtime.sendMessage({ type: "BONO_POLL", host: location.hostname, lane, documentId });
       const command = reply?.command;
-      if (!reply?.ok || !command?.id) {reportBridge(reply?.reason==='tab_not_authenticated'?'session_unverified':reply?.reason==='probe_unavailable'?'probe_not_ready':reply?.ok?'idle':'core_unavailable');return;}
+      if (!reply?.ok || !command?.id) {reportBridge(reply?.reason==='tab_not_authenticated'||reply?.reason==='uyap_login_required'?'session_unverified':reply?.reason==='probe_unavailable'?'probe_not_ready':reply?.ok?'idle':'core_unavailable',null,reply?.reason||null);return;}
       dispatchCommand(command, lane);
     } catch {reportBridge('core_unavailable');}finally{polling.delete(lane);}
   }

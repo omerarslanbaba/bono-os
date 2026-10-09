@@ -13,6 +13,7 @@ const uyap=require("./uyap");
 const userQueries=require("./uyap_user_queries").install(db,uyap);
 let bridgeState=null;
 const bridgeStates=new Set(['probe_not_ready','probe_conflict','session_unverified','idle','core_unavailable','command_received','returning_result','result_delivery_failed']);
+const bridgeWaitReasons=new Set(['uyap_login_required','local_return_hold','observe_only','rate_limit','lane_rate_limit','lane_busy','error_backoff','permission_denied']);
 const v04=require("./v04");
 const udfAdapter=require("./udf_adapter");
 const deadlineEngine=require("./deadline_engine");
@@ -268,7 +269,7 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='POST'&&p==='/api/uyap/bridge-state'){
       const b=await readBody(req);
       if(!bridgeStates.has(b.state)||!Number.isSafeInteger(b.tabId)||b.frameId!==0)return json(res,400,{ok:false,error:'invalid_bridge_state'});
-      if(!bridgeState||!bridgeState.commandId||b.commandId||Date.now()-bridgeState.at>15000)bridgeState={state:b.state,commandId:Number.isSafeInteger(b.commandId)?b.commandId:null,tabId:b.tabId,frameId:0,at:Date.now()};
+      if(!bridgeState||!bridgeState.commandId||b.commandId||Date.now()-bridgeState.at>15000)bridgeState={state:b.state,commandId:Number.isSafeInteger(b.commandId)?b.commandId:null,tabId:b.tabId,frameId:0,waitReason:bridgeWaitReasons.has(b.waitReason)?b.waitReason:null,at:Date.now()};
       return json(res,200,{ok:true});
     }
     if(req.method==="GET"&&p==="/api/uyap/session") return json(res,200,{session:uyap.sessionState(),rate:uyap.rateState(),bridge:bridgeState&&Date.now()-bridgeState.at<30000?bridgeState:{state:bridgeState?'bridge_stale':'bridge_not_seen'}});
@@ -397,7 +398,7 @@ const server=http.createServer(async(req,res)=>{
     }
     if(req.method==="GET"&&p==="/api/uyap/commands/next"){
       const cmd=uyap.claimNext(u.searchParams.get("host")||"",u.searchParams.get("lane")||"any");
-      if(!cmd || cmd.wait){res.writeHead(204);return res.end()}
+      if(!cmd || cmd.wait){if(cmd?.wait&&bridgeWaitReasons.has(cmd.reason))res.setHeader('X-Bono-Wait-Reason',cmd.reason);res.writeHead(204);return res.end()}
       audit("bridge","dispatch_uyap_command","uyap_command",cmd.id,{endpointKey:cmd.endpointKey,commandType:cmd.commandType,hardMinIntervalMs:cmd.hardMinIntervalMs});
       return json(res,200,cmd);
     }

@@ -12,6 +12,8 @@ const {JSDOM}=require(process.env.BONO_UI_TEST_MODULES||'../dist/ui-test-env/nod
  check('missing identity/parties not fabricated',()=>assert.equal(state.partyText({}),'Taraf bilgisi kaydedilmemiş'));
  check('opening date only from provided fields',()=>{assert.equal(state.openingDate({synced_at:'2030'}),'');assert.equal(state.openingDate({dosyaAcilisTarihi:{date:{year:2030,month:2,day:3}}}),'2030-02-03')});
  check('queue reason does not invent executor status',()=>assert.match(state.queryWaitReason({state:'queued'},{session:{state:'ready'},rate:{state:'ready'}}),/bildirilmedi/));
+ check('Core login denial takes priority over Bridge heartbeat',()=>assert.match(state.queryWaitReason({state:'queued'},{session:{state:'login_required'},bridge:{state:'session_unverified'}}),/yeniden giriş/));
+ check('allowlisted Core wait reason is visible without arbitrary text',()=>{assert.match(state.queryWaitReason({state:'queued'},{bridge:{state:'idle',waitReason:'rate_limit'}}),/hız sınırı/);assert(!state.queryWaitReason({state:'queued'},{bridge:{state:'idle',waitReason:'secret-token'}}).includes('secret-token'))});
  check('bridge delivery and readiness diagnostics are explicit',()=>{assert.match(state.queryWaitReason({state:'running',command_id:9},{bridge:{state:'result_delivery_failed',commandId:9}}),/iletilemedi/);assert.match(state.queryWaitReason({state:'queued'},{bridge:{state:'probe_not_ready'}}),/hazır değil/);assert.match(state.queryWaitReason({state:'queued'},{bridge:{state:'bridge_stale'}}),/güncel haber/)});
  const dom=new JSDOM('<div id="app"></div>',{url:'http://localhost/#uyap'}),document=dom.window.document;
  const esc=v=>String(v??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));

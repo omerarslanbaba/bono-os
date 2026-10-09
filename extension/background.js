@@ -16,7 +16,7 @@ const authKey = id => "bonoUyapAuth:" + id;
 async function nextCommand(host,lane="any") {
   if(OBSERVATION_ONLY)return;
   const r = await fetch(LOCAL + "/api/uyap/commands/next?host=" + encodeURIComponent(host) + "&lane=" + encodeURIComponent(lane), {cache:"no-store"});
-  if (r.status === 204) return null;
+  if (r.status === 204) {const reason=r.headers.get('X-Bono-Wait-Reason');return waitReasons.has(reason)?{wait:true,reason}:null;}
   if (!r.ok) throw new Error("BONO Core HTTP " + r.status);
   return await r.json();
 }
@@ -53,9 +53,22 @@ function authenticatedObservation(data) {
 }
 const probedActions=new Set();
 const claimedCommands=new Map();
+const waitReasons=new Set(['uyap_login_required','local_return_hold','observe_only','rate_limit','lane_rate_limit','lane_busy','error_backoff','permission_denied']);
+const claimKey=id=>'bonoClaim:'+id;
+async function rememberClaim(id,claim){
+ claimedCommands.set(id,claim);
+ // Session storage survives MV3 worker suspension, but not a browser restart.
+ // Never store request parameters, credentials, response bodies or document content.
+ if(chrome.storage.session)await chrome.storage.session.set({[claimKey(id)]:claim});
+}
+async function readClaim(id){
+ const claim=claimedCommands.get(id)||(chrome.storage.session?(await chrome.storage.session.get(claimKey(id)))[claimKey(id)]:null);
+ if(!claim||Date.now()-claim.at>600000||claim.buildId!==BONO_RUNTIME_CONFIG.buildId){claimedCommands.delete(id);if(chrome.storage.session)await chrome.storage.session.remove(claimKey(id));return null;}
+ return claim;
+}
 async function reportBridgeStatus(sender,message){
  if(!sender.tab?.id||Number(sender.frameId||0)!==0||new URL(sender.tab.url||'').origin!=='https://avukat.uyap.gov.tr')return;
- await fetch(LOCAL+'/api/uyap/bridge-state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:message.state,commandId:message.commandId,tabId:sender.tab.id,frameId:0,buildId:message.buildId})});
+ await fetch(LOCAL+'/api/uyap/bridge-state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:message.state,commandId:message.commandId,tabId:sender.tab.id,frameId:0,waitReason:waitReasons.has(message.waitReason)?message.waitReason:null})});
 }
 async function senderCanExecute(sender) {
   if (!sender?.tab?.id || Number(sender.frameId||0)!==0) return false;
@@ -70,7 +83,13 @@ async function senderCanExecute(sender) {
     const action=await r.json();
     const tab=await chrome.tabs.get(tabId);
     if(new URL(tab.url).origin!=='https://avukat.uyap.gov.tr')return false;
-    if(action.pending&&action.actionId&&!probedActions.has(action.actionId)){probedActions.add(action.actionId);try{await chrome.tabs.sendMessage(tabId,{type:"BONO_AUTH_PROBE"},{frameId:0});}catch{probedActions.delete(action.actionId);throw Error('probe_unavailable');}}
+    if(action.pending&&action.actionId&&!probedActions.has(action.actionId)){
+      probedActions.add(action.actionId);
+      const key='bonoAuthProbe:'+action.actionId;
+      // Mark before dispatch: uncertain worker interruption must not send a second portal probe.
+      if(chrome.storage.session){const previous=(await chrome.storage.session.get(key))[key];if(previous)return false;await chrome.storage.session.set({[key]:true});}
+      try{await chrome.tabs.sendMessage(tabId,{type:"BONO_AUTH_PROBE"},{frameId:0});}catch{throw Error('probe_unavailable');}
+    }
   } catch(e){throw Error(e.message==='probe_unavailable'?'probe_unavailable':'core_unavailable');}
   return false;
 }
@@ -134,17 +153,21 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
       const senderUrl=new URL(sender.tab?.url||'');
       if(!sender.tab?.id||Number(sender.frameId||0)!==0||senderUrl.protocol!=='https:'||!senderUrl.hostname.endsWith('.uyap.gov.tr')||message.host!==senderUrl.hostname){sendResponse({ok:false,reason:'wrong_executor_context'});return;}
       if(!(await senderCanExecute(sender))){sendResponse({ok:true,command:null,reason:"tab_not_authenticated"});return;}
+      if(typeof message.documentId!=='string'||!message.documentId||message.documentId.length>80){sendResponse({ok:false,reason:'wrong_executor_context'});return;}
       const command=await nextCommand(String(message.host||""),String(message.lane||"any"));
-      if(command?.id){for(const [id,c] of claimedCommands)if(Date.now()-c.at>600000)claimedCommands.delete(id);claimedCommands.set(Number(command.id),{tabId:sender.tab.id,frameId:0,at:Date.now()});}
-      sendResponse({ok:true,command});
+      if(command?.id){
+        await rememberClaim(Number(command.id),{tabId:sender.tab.id,frameId:0,at:Date.now(),documentId:message.documentId,browserDocumentId:sender.documentId||null,buildId:BONO_RUNTIME_CONFIG.buildId});
+      }
+      sendResponse({ok:true,command:command?.id?command:null,reason:command?.wait?(waitReasons.has(command.reason)?command.reason:'core_wait_unknown'):null});
     })().catch(e=>sendResponse({ok:false,reason:e.message==='probe_unavailable'?'probe_unavailable':'core_unavailable'}));
     return true;
   }
   if(message.type==="BONO_RESULT"){
     (async()=>{
       const data=message.data||{},tabId=sender.tab?.id;
-      const claim=claimedCommands.get(Number(data.id));
-      if(!claim||claim.tabId!==tabId||Number(sender.frameId||0)!==claim.frameId){sendResponse({ok:false,reason:'executor_context_mismatch'});return;}
+      const claim=await readClaim(Number(data.id));
+      if(!claim||claim.tabId!==tabId||Number(sender.frameId||0)!==claim.frameId||new URL(sender.tab?.url||'').origin!=='https://avukat.uyap.gov.tr'||claim.documentId!==data.executionContext?.documentId||(claim.browserDocumentId&&claim.browserDocumentId!==sender.documentId)||typeof data.executionContext?.id!=='string'||data.executionContext.id.length>80||(claim.executionId&&claim.executionId!==data.executionContext.id)){sendResponse({ok:false,reason:'executor_context_mismatch'});return;}
+      if(!claim.executionId){claim.executionId=data.executionContext.id;await rememberClaim(Number(data.id),claim);}
       if(tabId&&Number(sender.frameId||0)===0){
         const ct=String(data.contentType||"");
         if(Number(data.status||0)===401||Number(data.status||0)===403){
