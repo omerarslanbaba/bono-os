@@ -26,7 +26,9 @@ async function transition(root,source,dir,mode='BackupMigrate',port=47831){
   if(mode==='BackupOnly')return backup(source,dir);
   if(mode==='RollbackHold'){const db=new DatabaseSync(source);try{policy.rollbackHold(db);return {state:'rollback_hold',retirementsPreserved:true};}finally{db.close();}}
   if(mode!=='BackupMigrate')throw Error('unsupported_transition_mode');
-  const manifest=backup(source,dir),db=new DatabaseSync(source);try{return policy.migrate(db,{expectedQueued:270,backupManifest:manifest});}finally{db.close();}
+  const manifest=backup(source,dir),freshQueued=Array.isArray(manifest.queueCommandIds)?manifest.queueCommandIds.length:null;
+  if(!Number.isSafeInteger(freshQueued))throw Error('backup_queue_inventory_missing');
+  const db=new DatabaseSync(source);try{return policy.migrate(db,{expectedQueued:freshQueued,backupManifest:manifest});}finally{db.close();}
  }finally{if(fd!==undefined){fs.closeSync(fd);fs.unlinkSync(lock);}await new Promise(r=>gate.close(r));}
 }
 if(require.main===module){const [root,source,dir,mode,port]=process.argv.slice(2);transition(root,source,dir,mode,Number(port)||47831).then(r=>console.log(JSON.stringify(r))).catch(()=>{console.error('query_transition_rejected; no automatic restore or queue revival');process.exitCode=1;});}
