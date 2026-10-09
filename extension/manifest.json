@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BONO OS Bridge",
-  "version": "0.3.7",
+  "version": "0.4.1",
   "description": "BONO OS read-only local bridge for authorized UYAP sessions.",
   "permissions": ["storage","alarms","tabs"],
   "host_permissions": ["https://*.uyap.gov.tr/*", "http://127.0.0.1:47831/*"],
