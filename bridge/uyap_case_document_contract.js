@@ -251,6 +251,9 @@ function queryCapability(request,{caseSearchSchemaVerified=false,cbsSearchSchema
 }
 
 module.exports={
+  // CBS review output is deliberately separate from the legacy import validator.
+  // Calling this pure adapter cannot enqueue, persist or authorize documents.
+  parseCbsDocumentList:require('./uyap_cbs_document_parser').parseCbsDocumentList,
   normalizeCourt,
   normalizeFileNo,
   exactCaseTarget,
