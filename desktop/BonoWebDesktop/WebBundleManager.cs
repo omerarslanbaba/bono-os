@@ -14,7 +14,7 @@ internal static class WebBundleManager
         if (string.IsNullOrWhiteSpace(identity.WebSha256))
             throw new InvalidOperationException("Web bundle SHA-256 bilgisi manifestte bulunamadı.");
 
-        var bundlePath = Path.Combine(AppContext.BaseDirectory, BundleFileName);
+        var bundlePath = Path.Combine(ReleaseIdentity.PackageDirectory, BundleFileName);
         if (!File.Exists(bundlePath))
             throw new FileNotFoundException("Paketlenmiş BONO OS web kaynakları bulunamadı.", bundlePath);
 

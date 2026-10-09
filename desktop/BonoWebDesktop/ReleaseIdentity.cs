@@ -1,5 +1,4 @@
 using System.IO;
-using System.Reflection;
 using System.Text.Json;
 
 namespace BonoWebDesktop;
@@ -11,6 +10,10 @@ public sealed record ReleaseIdentity(
     string ExeSha256,
     string WebSha256)
 {
+    // IncludeAllContentForSelfExtract relocates AppContext.BaseDirectory to .net cache.
+    // Sidecar release files belong beside the launched apphost, never beside extracted DLLs.
+    public static string PackageDirectory => Path.GetDirectoryName(Environment.ProcessPath)
+        ?? throw new InvalidOperationException("BONO OS çalıştırılabilir dosyasının konumu belirlenemedi.");
     public bool CommitsMatch =>
         !string.IsNullOrWhiteSpace(ExeCommit) &&
         !string.IsNullOrWhiteSpace(WebCommit) &&
@@ -24,10 +27,7 @@ public sealed record ReleaseIdentity(
         var path = Path.Combine(baseDirectory, "release-manifest.json");
         if (!File.Exists(path))
         {
-            var info = Assembly.GetExecutingAssembly()
-                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unpackaged";
-            var shortCommit = info.Contains('+') ? info[(info.LastIndexOf('+') + 1)..] : "unpackaged";
-            return new(info, shortCommit, "unpackaged", "", "");
+            throw new FileNotFoundException("BONO OS sürüm manifesti EXE yanında bulunamadı.", path);
         }
 
         using var doc = JsonDocument.Parse(File.ReadAllText(path));

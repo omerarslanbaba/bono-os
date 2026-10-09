@@ -61,7 +61,7 @@ public partial class MainWindow : Window
             }
 
             StatusText.Text = "Paketlenmiş BONO OS arayüzü doğrulanıyor.";
-            var identity = ReleaseIdentity.Load(AppContext.BaseDirectory);
+            var identity = ReleaseIdentity.Load(ReleaseIdentity.PackageDirectory);
             var webRoot = WebBundleManager.Prepare(identity);
 
             if (_previewServer is not null)
