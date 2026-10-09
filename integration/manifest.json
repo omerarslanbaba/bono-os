@@ -219,5 +219,12 @@
     "live Core source/preimage and running process state have not yet been verified for update",
     "existing archive and case inventory preservation has not yet been verified after installation",
     "no real UYAP query has been executed by this integration task"
-  ]
+  ],
+  "releaseCandidate": {
+    "label": "end-of-day-live-maintenance-candidate",
+    "parentHead": "81c15a688769c26c2151e20774bd9718f737f119",
+    "requiresFinalWindowsCi": true,
+    "liveInstalled": false,
+    "liveUyapAccepted": false
+  }
 }
