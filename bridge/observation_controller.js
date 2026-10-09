@@ -25,7 +25,7 @@ class ObservationController{
   if(url.origin!=='https://avukat.uyap.gov.tr'||!paths.has(url.pathname))return {accepted:false,reason:'out_of_scope'};
   if(s.seen.has(d.eventId))return {accepted:false,reason:'duplicate_event'};
   if(!/^[a-zA-Z0-9-]{8,100}$/.test(d.eventId||'')||Date.parse(d.observedAt)<s.started||!Number.isFinite(Date.parse(d.observedAt)))return {accepted:false,reason:'late_or_invalid_event'};
-  if(!['observed_target_group_click','observed_target_documents_tab'].includes(d.action?.kind)||d.action.caseNo!==s.caseNo||!Number.isFinite(d.action.at)||d.action.at<s.started||d.action.at>Date.parse(d.observedAt)){this.stop('action_unverified');return {accepted:false,reason:'action_unverified'};}
+  if(!['observed_target_group_click','observed_target_documents_tab','observed_target_row_open'].includes(d.action?.kind)||d.action.caseNo!==s.caseNo||!Number.isFinite(d.action.at)||d.action.at<s.started||d.action.at>Date.parse(d.observedAt)){this.stop('action_unverified');return {accepted:false,reason:'action_unverified'};}
   const causal=d.initiator==='synchronous_target_panel_action'&&/^[a-zA-Z0-9-]{8,100}$/.test(d.action.id||'')&&/^[a-zA-Z0-9-]{8,100}$/.test(d.panelContext?.reference||'')&&d.action.panelReference===d.panelContext.reference&&d.panelContext.caseNo===s.caseNo&&d.panelContext.unitName===s.unitName&&Number.isSafeInteger(d.sequence)&&d.sequence>0;
   if(!causal){this.stop('panel_request_origin_unverified');return {accepted:false,reason:'panel_request_origin_unverified'};}
   if(s.actionId&&(s.actionId!==d.action.id||s.panelReference!==d.panelContext.reference)){this.stop('panel_context_changed');return {accepted:false,reason:'panel_context_changed'};}

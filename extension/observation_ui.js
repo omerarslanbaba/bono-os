@@ -16,7 +16,7 @@ document.getElementById('start').onclick=async()=>{
   if(!document.getElementById('confirmed').checked)throw new Error('Panel doğrulaması gerekli.');
   const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
   const result=await chrome.runtime.sendMessage({type:'BONO_OBSERVATION_START',tabId:tab.id,frameId:Number(document.getElementById('frame').value),caseId:Number(document.getElementById('case').value),contextConfirmed:true});
-  statusNode.textContent=result.ok?'Gözlem açık. Hedef panelde Evrak sekmesine bir kez tıklayın. Yeni istek oluşmazsa tekrar denemeyin.':result.error;
+  statusNode.textContent=result.ok?'Gözlem açık. Panel kapalıysa doğruladığınız satırın Pencere Görünümü düğmesine yalnız bir kez basın; açıksa Evrak sekmesine bir kez tıklayın. Yeni istek oluşmazsa tekrar denemeyin.':result.error;
   if(result.ok)statusTimer=setTimeout(refreshStatus,1500);
  }catch{statusNode.textContent='Gözlem başlatılamadı; sayfayı otomatik yenilemeyin.';}
 };

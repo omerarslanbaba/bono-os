@@ -3,23 +3,40 @@ const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('nod
 const {DatabaseSync}=require('node:sqlite');
 const catalog=require('../extension/observation_contracts');
 const {ObservationController}=require('../bridge/observation_controller');
-function harness({documentTab=false}={}){
+function harness({documentTab=false,rowOpen=false,wrongRow=false,missingPanel=false}={}){
  const listeners={},messages=[],requests=[];
  const header={getClientRects:()=>[{}],textContent:'2026/51832 Fixture CBS - CBS Sorusturma Dosyası',children:[],isConnected:true};
  const panel={isConnected:true,contains:e=>e===header};
  const group={textContent:documentTab?'Evrak':'2026/51832(CBS Sorusturma Dosyası)',getAttribute:k=>documentTab&&k==='role'?'tab':null,children:[],isConnected:true,parentElement:panel,contains:()=>false};
- const document={body:{},documentElement:{},querySelectorAll:()=>[header]};
+ const row={isConnected:true,querySelectorAll:()=>[{textContent:'Fixture CBS'},{textContent:wrongRow?'2026/99999':'2026/51832'}]};
+ const opener={textContent:'',isConnected:true,getAttribute:k=>k==='id'?'dosya-goruntule':null,closest:()=>row};
+ const tab={...group,textContent:'Evrak',getClientRects:()=>[{}],getAttribute:k=>k==='role'?'tab':null};
+ const document={body:{},documentElement:{},querySelectorAll:s=>missingPanel?[]:s==='[role="tab"]'?[tab]:[header]};
  const root={BONO_OBSERVATION_CONTRACTS:catalog,addEventListener:(k,f)=>listeners[k]=f,postMessage:m=>messages.push(m),fetch:()=>new Promise(resolve=>requests.push(resolve)),XMLHttpRequest:function(){}};
  root.XMLHttpRequest.prototype={open(){},send(){}};
  vm.runInNewContext(fs.readFileSync('extension/controlled_probe.js','utf8'),{window:root,document,location:{origin:'https://avukat.uyap.gov.tr',href:'https://avukat.uyap.gov.tr/dosya-sorgulama'},crypto,URL,URLSearchParams,Date,MutationObserver:class{observe(){}}});
  root.BONO_CONTROLLED_PROBE.install({documentId:'doc-one',buildId:'build-one'});
  const session={id:'session-one-0001',documentId:'doc-one',buildId:'build-one',caseNo:'2026/51832',unitName:'Fixture CBS',expires:Date.now()+60000};
  listeners.message({source:root,data:{channel:'BONO_UYAP_CONTENT',type:'observation_arm',session}});
- const click={isTrusted:true,eventPhase:1,composedPath:()=>[group,panel]};listeners.click(click);
+ const click={isTrusted:true,eventPhase:1,composedPath:()=>rowOpen?[opener,row]:[group,panel]};listeners.click(click);
  const response=data=>({status:200,headers:{get:k=>k==='content-type'?'application/json':null},clone:()=>({text:async()=>JSON.stringify(data)})});
  return {root,click,messages,requests,response};
 }
 (async()=>{
+ const opened=harness({rowOpen:true});
+ const openedRequest=opened.root.fetch('/list_dosya_evraklar.ajx',{method:'POST',body:'{"dosyaId":"file-one-0001"}'});
+ opened.click.eventPhase=0;opened.requests[0](opened.response({tumEvraklar:[]}));await openedRequest;
+ const openedEvent=opened.messages.find(m=>m.type==='network_observation').data;
+ assert.equal(openedEvent.action.kind,'observed_target_row_open');
+ assert.equal(openedEvent.initiator,'synchronous_target_panel_action');
+ assert.equal(openedEvent.action.panelReference,openedEvent.panelContext.reference);
+ for(const options of [{rowOpen:true,wrongRow:true},{rowOpen:true,missingPanel:true}]){
+  const blocked=harness(options);
+  const request=blocked.root.fetch('/list_dosya_evraklar.ajx',{method:'POST',body:'{"dosyaId":"file-one-0001"}'});
+  blocked.requests[0](blocked.response({tumEvraklar:[]}));await request;
+  assert.equal(blocked.messages.filter(m=>m.type==='network_observation').length,0);
+  assert(blocked.messages.some(m=>m.type==='observation_stopped'));
+ }
  const tabHarness=harness({documentTab:true});
  const tabRequest=tabHarness.root.fetch('/list_dosya_evraklar.ajx',{method:'POST',body:'{"dosyaId":"file-one-0001"}'});
  tabHarness.click.eventPhase=0;tabHarness.requests[0](tabHarness.response({tumEvraklar:[]}));await tabRequest;
@@ -44,12 +61,13 @@ function harness({documentTab=false}={}){
  const start=()=>controller.start({caseId:93,tabId:1,frameId:0,documentId:'doc-one',contextConfirmed:true,buildId:'build-one',probeVersion:2,causalVersion:1});
  let s=start();
  const wrap=e=>({sessionId:s.id,documentId:'doc-one',tabId:1,frameId:0,payload:{data:{...e,observedAt:new Date().toISOString(),action:{...e.action,at:s.started},sessionId:s.id}}});
+ assert(controller.accept(wrap(openedEvent)).accepted);controller.stop();s=start();
  const good=wrap(events[1]);
  assert.equal(controller.accept({...good,tabId:2}).reason,'target_or_session_mismatch');
  assert.equal(controller.accept({...good,sessionId:'old-session'}).reason,'target_or_session_mismatch');
  assert(controller.accept(good).accepted);
  assert.equal(controller.accept(good).reason,'duplicate_event');
- let saved=JSON.parse(db.prepare('SELECT event_json FROM uyap_observation_events').get().event_json);
+ let saved=JSON.parse(db.prepare('SELECT event_json FROM uyap_observation_events ORDER BY rowid DESC').get().event_json);
  assert.equal(saved.metadataImportAllowed,false);assert.equal(saved.downloadAllowed,false);
  assert.equal(saved.identityGraph.nodes.find(n=>n.ids.dosyaId)?.ids.dosyaId,saved.requestReference);
  assert(!JSON.stringify(saved).includes('file-one-0001'));
@@ -66,6 +84,5 @@ function harness({documentTab=false}={}){
  controller.stop();s=start();const conflicting=wrap(events[1]);conflicting.payload.data.eventId=crypto.randomUUID();conflicting.payload.data.request={body:{dosyaId:'file-one-0001'},query:{dosyaId:'file-two-0002'}};
  assert.equal(controller.accept(conflicting).reason,'request_identity_conflict');
  db.close();
- console.log(JSON.stringify({ok:true,tests:['synchronous_panel_action','parallel_reverse_responses_paired','async_origin_unknown','foreign_tab_rejected','old_session_rejected','duplicate_rejected','mismatch_diagnostic_stops','hashed_identity_graph','missing_source_stays_unknown','secrets_omitted','no_import_or_download'],portalRequests:0}));
+ console.log(JSON.stringify({ok:true,tests:['target_row_open_bound_to_panel','wrong_row_rejected','missing_panel_rejected','synchronous_panel_action','parallel_reverse_responses_paired','async_origin_unknown','foreign_tab_rejected','old_session_rejected','duplicate_rejected','mismatch_diagnostic_stops','hashed_identity_graph','missing_source_stays_unknown','secrets_omitted','no_import_or_download'],portalRequests:0}));
 })().catch(e=>{console.error(e);process.exitCode=1;});
-

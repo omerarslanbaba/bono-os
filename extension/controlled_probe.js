@@ -29,6 +29,14 @@
   }
   function emit(snapshot,status,data,reason){
    if(!snapshot||active?.id!==snapshot.sessionId)return;
+   if(snapshot.action.kind==='observed_target_row_open'){
+    const tabs=Array.from(document.querySelectorAll('[role="tab"]')).filter(e=>e.getClientRects().length>0&&normalize(e.textContent)==='Evrak');
+    const panel=tabs.length===1?panelFor(tabs[0]):null;
+    if(!panel){stop();return;}
+    if(action.panelElement&&action.panelElement!==panel.element){stop();return;}
+    action.panelElement=panel.element;action.titleElement=panel.title;
+    snapshot.action.panelReference=panel.reference;snapshot.panelContext.reference=panel.reference;
+   }
    const evidence=data?catalog.responseEvidence(data):{};
    send('network_observation',{...snapshot,status,responseEvidence:evidence,capture:{complete:!reason&&evidence.structure?.complete===true,reason:reason||null}});
   }
@@ -81,6 +89,13 @@
    if(action){stop();return;}
    for(const element of event.composedPath()){
     if(typeof element?.textContent!=='string')continue;
+    if(element.getAttribute?.('id')==='dosya-goruntule'){
+     const row=element.closest?.('[role="row"],tr');
+     const cells=row?Array.from(row.querySelectorAll('[role="gridcell"],td')).map(c=>normalize(c.textContent)):[];
+     if(cells[0]!==normalize(active.unitName)||cells[1]!==active.caseNo){stop();return;}
+     anchor=element;action={kind:'observed_target_row_open',caseNo:active.caseNo,at:Date.now(),id:crypto.randomUUID(),panelReference:crypto.randomUUID(),originEvent:event,rowElement:row};
+     causalAction=action;return;
+    }
     const label=catalog.groupLabel(element.textContent.trim());
     const documentTab=element.getAttribute?.('role')==='tab'&&normalize(element.textContent)==='Evrak';
     if(documentTab||(label.caseNo===active.caseNo&&label.type==='cbs_investigation')){
@@ -94,7 +109,16 @@
   },true);
   root.addEventListener('keydown',event=>{if(active&&event.isTrusted)stop();},true);
   for(const type of ['pagehide','popstate','hashchange'])root.addEventListener(type,stop);
-  const observer=new MutationObserver(()=>{if(active&&anchor&&(!anchor.isConnected||!action.panelElement.isConnected||!action.titleElement.isConnected||!normalize(action.titleElement.textContent).startsWith(active.caseNo+' '+normalize(active.unitName)+' - ')||(action.kind==='observed_target_group_click'?catalog.groupLabel(anchor.textContent.trim()).caseNo!==active.caseNo:normalize(anchor.textContent)!=='Evrak')))stop();});
+  const observer=new MutationObserver(()=>{
+   if(!active||!anchor)return;
+   if(!anchor.isConnected){stop();return;}
+   if(action.kind==='observed_target_row_open'){
+    const cells=Array.from(action.rowElement.querySelectorAll('[role="gridcell"],td')).map(c=>normalize(c.textContent));
+    if(!action.rowElement.isConnected||cells[0]!==normalize(active.unitName)||cells[1]!==active.caseNo){stop();return;}
+    if(!action.panelElement)return;
+   }
+   if(!action.panelElement.isConnected||!action.titleElement.isConnected||!normalize(action.titleElement.textContent).startsWith(active.caseNo+' '+normalize(active.unitName)+' - ')||(action.kind==='observed_target_group_click'?catalog.groupLabel(anchor.textContent.trim()).caseNo!==active.caseNo:action.kind==='observed_target_documents_tab'&&normalize(anchor.textContent)!=='Evrak'))stop();
+  });
   observer.observe(document.documentElement,{subtree:true,childList:true,characterData:true});
   send('probe_ready',{probeVersion:2,causalVersion:1,buildId:config.buildId,documentId:config.documentId});
  }
