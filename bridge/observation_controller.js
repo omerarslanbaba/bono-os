@@ -1,6 +1,7 @@
 'use strict';
 const crypto=require('node:crypto');
 const catalog=require('../extension/observation_contracts');
+const {reviewSources}=require('./uyap_cbs_document_evidence');
 const paths=new Set(['/list_dosya_evraklar.ajx','/listDosyaEvraklarPageTotal.ajx']);
 class ObservationController{
  constructor({db,caseReader,buildId,now=Date.now}){Object.assign(this,{db,caseReader,buildId,now});this.active=null;this.last=null;}
@@ -8,9 +9,10 @@ class ObservationController{
   if(this.active){this.last={id:this.active.id,state:'stopped',reason,events:this.active.events};this.active=null;}
   return this.last;
  }
- status(){if(this.active&&this.now()>this.active.expires)this.stop('expired');return this.active?{id:this.active.id,state:'active',events:this.active.events,expires:this.active.expires}:this.last||{state:'idle'};}
+ status(){if(this.active&&this.now()>this.active.expires)this.stop('expired');return {...(this.active?{id:this.active.id,state:'active',events:this.active.events,expires:this.active.expires}:this.last||{state:'idle'}),sourceReview:this.sourceReview||null};}
  start(input){
   if(this.status().state==='active')throw new Error('session_already_active');
+  this.sourceReview=null;
   if(input.buildId!==this.buildId||input.probeVersion!==2||!input.documentId||!input.contextConfirmed||input.causalVersion!==1)throw new Error('probe_or_context_unverified');
   if(!Number.isInteger(input.tabId)||!Number.isInteger(input.frameId)||input.frameId<0)throw new Error('invalid_target');
   const row=this.caseReader(input.caseId);if(!row?.uyap_dosya_id||!row.uyap_birim_id||!row.court||!/^20\d{2}\/\d+$/.test(row.court_file_no||''))throw new Error('case_binding_unavailable');
@@ -59,6 +61,7 @@ class ObservationController{
    expectedReference:pseudonym(s.expectedId),requestReference:pseudonym(requestId||''),path:url.pathname,method:['GET','POST'].includes(d.method)?d.method:'unknown',status:Number(d.status)||0,
    action:{kind:d.action.kind,caseNo:s.caseNo,id:d.action.id},panelReference:d.panelContext.reference,sequence:d.sequence,initiator:d.initiator,caseBinding:identityMatches?'request_id_matches_user_confirmed_case':'dosya_id_mismatch',ownership:'unknown',parameterProvenance:'unknown',identityGraph:{nodes:identityNodes,complete:raw.identityCandidates?.complete===true&&raw.identityCandidates.nodes.length===identityNodes.length,semantics:'unknown'},metadataImportAllowed:false,downloadAllowed:false,
    capture:{complete,reason:complete?null:'incomplete_capture',skipped:Number.isSafeInteger(raw.structure?.skipped)?raw.structure.skipped:null,privacyOmitted:Number.isSafeInteger(raw.structure?.privacyOmitted)?raw.structure.privacyOmitted:null},structure:{nodes,semantics:'unknown'},applicationError:error};
+  event.sourceReview=reviewSources(event);this.sourceReview=event.sourceReview;
   const changes=this.db.prepare('INSERT OR IGNORE INTO uyap_observation_events(event_id,captured_at,event_json) VALUES(?,?,?)').run(event.eventId,new Date(this.now()).toISOString(),JSON.stringify(event)).changes;
   s.events+=Number(changes);s.seen.set(d.eventId,d.sequence);
   if(!identityMatches){const reason=conflicting?'request_identity_conflict':'dosya_id_mismatch';this.stop(reason);return {accepted:false,diagnosticSaved:!!changes,reason,state:'stopped'};}

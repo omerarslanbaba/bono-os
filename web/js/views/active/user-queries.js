@@ -76,6 +76,12 @@ export async function mountUserQueries(caseId,onComplete,{documentCount=0}={}){
   }catch(e){if(alive())notice.textContent='İşlem tamamlanamadı: '+e.message+' · aynı işlemi yeniden denerseniz işlem anahtarı korunur.';}finally{busy=false;if(alive())enable();}
  }
  try{const support=await read(base+'/query-support');if(!alive())return;supported=support.supported===true;
+  const audit=support.identityEvidence;
+  if(audit?.transitions?.length){
+   const warning=document.createElement('p');warning.className='muted';
+   warning.textContent='UYAP dosya kimliği geçmişte değişti. Önceki sorgu kanıtları korundu; kimliklerin kalıcılığı ve eşdeğerliği doğrulanmadı. Evrak bağlantıları yeniden doğrulanmadan indirme açılmaz.';
+   notice.after(warning);
+  }
   const state=await snapshot();if(!alive())return;
   if(!supported){notice.textContent='Sorgu engeli / doğrulama gerekiyor: '+(support.reason||'Desteklenen akış yok');button.textContent='Doğrulama gerekiyor';}
   else {notice.textContent=support.operation==='cbs.search'?'CBS dosya listesinde bu kayıt aranır. Evrak listesi ve indirme bu işlemden ayrıdır.':'Sorgula geçerli önbelleği kullanır; yoksa Core desteklenen sorguyu sıraya alır. Yeniden sorgula önbelleği yeniler.';button.textContent='Sorgula / önbelleği göster';button.onclick=()=>start(false);refresh.onclick=()=>start(true);}
